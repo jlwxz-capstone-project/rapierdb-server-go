@@ -1,0 +1,44 @@
+# Go 构建产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+/bin/
+/cover.out
+/coverage.html
+
+# Go 模块
+/go.sum
+/vendor/
+
+# Rust 构建
+**/target/
+Cargo.lock
+
+# IDE配置
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 环境文件
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 测试快照
+__snapshots__/
+/testdata/
+
+# 项目特定忽略
+/loro-c-ffi/target/
+*.swp
+*.swo 
