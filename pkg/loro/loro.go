@@ -11,6 +11,16 @@ import (
 	"unsafe"
 )
 
+const LORO_VALUE_NULL = 0
+const LORO_VALUE_BOOL = 1
+const LORO_VALUE_DOUBLE = 2
+const LORO_VALUE_I64 = 3
+const LORO_VALUE_BINARY = 4
+const LORO_VALUE_STRING = 5
+const LORO_VALUE_LIST = 6
+const LORO_VALUE_MAP = 7
+const LORO_VALUE_CONTAINER = 8
+
 // ----------- Rust Bytes Vec -----------
 
 type RustBytesVec struct {
@@ -127,7 +137,39 @@ func (doc *LoroDoc) GetMap(id string) *LoroMap {
 
 func (doc *LoroDoc) ExportSnapshot() *RustBytesVec {
 	ptr := C.export_loro_doc_snapshot(doc.ptr)
+	bytesVec := &RustBytesVec{
+		ptr: ptr,
+	}
+	runtime.SetFinalizer(bytesVec, func(vec *RustBytesVec) {
+		vec.Destroy()
+	})
+	return bytesVec
+}
 
+func (doc *LoroDoc) ExportAllUpdates() *RustBytesVec {
+	ptr := C.export_loro_doc_all_updates(doc.ptr)
+	bytesVec := &RustBytesVec{
+		ptr: ptr,
+	}
+	runtime.SetFinalizer(bytesVec, func(vec *RustBytesVec) {
+		vec.Destroy()
+	})
+	return bytesVec
+}
+
+func (doc *LoroDoc) ExportUpdatesFrom(from *VersionVector) *RustBytesVec {
+	ptr := C.export_loro_doc_updates_from(doc.ptr, from.ptr)
+	bytesVec := &RustBytesVec{
+		ptr: ptr,
+	}
+	runtime.SetFinalizer(bytesVec, func(vec *RustBytesVec) {
+		vec.Destroy()
+	})
+	return bytesVec
+}
+
+func (doc *LoroDoc) ExportUpdatesTill(till *VersionVector) *RustBytesVec {
+	ptr := C.export_loro_doc_updates_till(doc.ptr, till.ptr)
 	bytesVec := &RustBytesVec{
 		ptr: ptr,
 	}
@@ -140,6 +182,174 @@ func (doc *LoroDoc) ExportSnapshot() *RustBytesVec {
 func (doc *LoroDoc) Import(data []byte) {
 	snapshot := NewRustVecFromBytes(data)
 	C.loro_doc_import(doc.ptr, snapshot.ptr)
+}
+
+func (doc *LoroDoc) GetOplogVv() *VersionVector {
+	ptr := C.get_oplog_vv(doc.ptr)
+	vv := &VersionVector{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(vv, func(vv *VersionVector) {
+		vv.Destroy()
+	})
+	return vv
+}
+
+func (doc *LoroDoc) GetStateVv() *VersionVector {
+	ptr := C.get_state_vv(doc.ptr)
+	vv := &VersionVector{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(vv, func(vv *VersionVector) {
+		vv.Destroy()
+	})
+	return vv
+}
+
+func (doc *LoroDoc) GetOplogFrontiers() *Frontiers {
+	ptr := C.get_oplog_frontiers(doc.ptr)
+	frontier := &Frontiers{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(frontier, func(f *Frontiers) {
+		f.Destroy()
+	})
+	return frontier
+}
+
+func (doc *LoroDoc) GetStateFrontiers() *Frontiers {
+	ptr := C.get_state_frontiers(doc.ptr)
+	frontier := &Frontiers{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(frontier, func(f *Frontiers) {
+		f.Destroy()
+	})
+	return frontier
+}
+
+func (doc *LoroDoc) FrontiersToVv(frontiers *Frontiers) *VersionVector {
+	ptr := C.frontiers_to_vv(doc.ptr, frontiers.ptr)
+	vv := &VersionVector{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(vv, func(vv *VersionVector) {
+		vv.Destroy()
+	})
+	return vv
+}
+
+func (doc *LoroDoc) VvToFrontiers(vv *VersionVector) *Frontiers {
+	ptr := C.vv_to_frontiers(doc.ptr, vv.ptr)
+	frontiers := &Frontiers{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(frontiers, func(f *Frontiers) {
+		f.Destroy()
+	})
+	return frontiers
+}
+
+// ----------- Version Vector -----------
+
+type VersionVector struct {
+	ptr unsafe.Pointer
+}
+
+func NewEmptyVv() *VersionVector {
+	ptr := C.vv_new_empty()
+	vv := &VersionVector{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(vv, func(vv *VersionVector) {
+		vv.Destroy()
+	})
+	return vv
+}
+
+func NewVvFromBytes(data *RustBytesVec) *VersionVector {
+	ptr := C.decode_vv(data.ptr)
+	vv := &VersionVector{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(vv, func(vv *VersionVector) {
+		vv.Destroy()
+	})
+	return vv
+}
+
+func (vv *VersionVector) Destroy() {
+	C.destroy_vv(vv.ptr)
+}
+
+func (vv *VersionVector) Encode() *RustBytesVec {
+	ptr := C.encode_vv(vv.ptr)
+	bytesVec := &RustBytesVec{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(bytesVec, func(vec *RustBytesVec) {
+		vec.Destroy()
+	})
+	return bytesVec
+}
+
+// -------------- Frontier -----------
+
+type Frontiers struct {
+	ptr unsafe.Pointer
+}
+
+func NewEmptyFrontiers() *Frontiers {
+	ptr := C.frontiers_new_empty()
+	frontiers := &Frontiers{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(frontiers, func(f *Frontiers) {
+		f.Destroy()
+	})
+	return frontiers
+}
+
+func NewFrontiersFromBytes(data *RustBytesVec) *Frontiers {
+	ptr := C.decode_frontiers(data.ptr)
+	frontiers := &Frontiers{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(frontiers, func(f *Frontiers) {
+		f.Destroy()
+	})
+	return frontiers
+}
+
+func (f *Frontiers) Destroy() {
+	C.destroy_frontiers(f.ptr)
+}
+
+func (f *Frontiers) Encode() *RustBytesVec {
+	ptr := C.encode_frontiers(f.ptr)
+	bytesVec := &RustBytesVec{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(bytesVec, func(vec *RustBytesVec) {
+		vec.Destroy()
+	})
+	return bytesVec
+}
+
+func (f *Frontiers) Contains(id *OpId) bool {
+	idPtr := unsafe.Pointer(&id.cLayoutId)
+	ret := C.frontiers_contains(f.ptr, idPtr)
+	return ret != 0
+}
+
+func (f *Frontiers) Push(id *OpId) {
+	idPtr := unsafe.Pointer(&id.cLayoutId)
+	C.frontiers_push(f.ptr, idPtr)
+}
+
+func (f *Frontiers) Remove(id *OpId) {
+	idPtr := unsafe.Pointer(&id.cLayoutId)
+	C.frontiers_remove(f.ptr, idPtr)
 }
 
 // ----------- Loro Text -----------
@@ -162,6 +372,12 @@ func (text *LoroText) UpdateText(content string) {
 	contentPtr := C.CString(content)
 	defer C.free(unsafe.Pointer(contentPtr))
 	C.update_loro_text(text.ptr, contentPtr)
+}
+
+func (text *LoroText) InsertText(content string, pos int) {
+	contentPtr := C.CString(content)
+	defer C.free(unsafe.Pointer(contentPtr))
+	C.insert_loro_text(text.ptr, C.uint32_t(pos), contentPtr)
 }
 
 // ----------- Loro Map -----------
@@ -195,4 +411,28 @@ type LoroMovableList struct {
 func (movableList *LoroMovableList) Destroy() {
 	// fmt.Println("destroying loro movable list")
 	C.destroy_loro_movable_list(movableList.ptr)
+}
+
+// ----------- OpId -----------
+
+type OpId struct {
+	cLayoutId C.CLayoutID
+}
+
+func NewOpId(peer uint64, counter int32) *OpId {
+	opId := &OpId{
+		cLayoutId: C.CLayoutID{
+			peer:    C.uint64_t(peer),
+			counter: C.uint32_t(counter),
+		},
+	}
+	return opId
+}
+
+func (id *OpId) GetPeer() uint64 {
+	return uint64(id.cLayoutId.peer)
+}
+
+func (id *OpId) GetCounter() int32 {
+	return int32(id.cLayoutId.counter)
 }

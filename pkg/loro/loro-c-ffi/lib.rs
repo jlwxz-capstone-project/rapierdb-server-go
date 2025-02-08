@@ -1,4 +1,7 @@
-use loro::{ExportMode, LoroDoc, LoroList, LoroMap, LoroMovableList, LoroText, UpdateOptions};
+use loro::{
+    Counter, ExportMode, Frontiers, LoroDoc, LoroList, LoroMap, LoroMovableList, LoroText, PeerID,
+    UpdateOptions, VersionVector, ID,
+};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
@@ -52,6 +55,15 @@ pub extern "C" fn update_loro_text(text_ptr: *mut LoroText, content: *const c_ch
         let text = &mut *text_ptr;
         let s = CStr::from_ptr(content).to_string_lossy().into_owned();
         text.update(&s, UpdateOptions::default()).unwrap();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn insert_loro_text(text_ptr: *mut LoroText, pos: usize, content: *const c_char) {
+    unsafe {
+        let text = &mut *text_ptr;
+        let s = CStr::from_ptr(content).to_string_lossy().into_owned();
+        text.insert(pos, &s).unwrap();
     }
 }
 
@@ -127,6 +139,47 @@ pub extern "C" fn export_loro_doc_snapshot(doc_ptr: *mut LoroDoc) -> *mut Vec<u8
 }
 
 #[no_mangle]
+pub extern "C" fn export_loro_doc_all_updates(doc_ptr: *mut LoroDoc) -> *mut Vec<u8> {
+    unsafe {
+        let doc = &mut *doc_ptr;
+        let snapshot = doc.export(ExportMode::all_updates()).unwrap();
+        let boxed = Box::new(snapshot);
+        let boxed_ptr = Box::into_raw(boxed);
+        boxed_ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn export_loro_doc_updates_from(
+    doc_ptr: *mut LoroDoc,
+    from_ptr: *mut VersionVector,
+) -> *mut Vec<u8> {
+    unsafe {
+        let doc = &mut *doc_ptr;
+        let from = &*from_ptr;
+        let snapshot = doc.export(ExportMode::updates(from)).unwrap();
+        let boxed = Box::new(snapshot);
+        let boxed_ptr = Box::into_raw(boxed);
+        boxed_ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn export_loro_doc_updates_till(
+    doc_ptr: *mut LoroDoc,
+    till_ptr: *mut VersionVector,
+) -> *mut Vec<u8> {
+    unsafe {
+        let doc = &mut *doc_ptr;
+        let till = &*till_ptr;
+        let snapshot = doc.export(ExportMode::updates_till(till)).unwrap();
+        let boxed = Box::new(snapshot);
+        let boxed_ptr = Box::into_raw(boxed);
+        boxed_ptr
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn new_vec_from_bytes(
     data_ptr: *mut u8,
     len: usize,
@@ -181,6 +234,218 @@ pub extern "C" fn get_vec_data(ptr: *mut Vec<u8>) -> *mut u8 {
     unsafe {
         let vec = &mut *ptr;
         vec.as_mut_ptr()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_oplog_vv(ptr: *mut LoroDoc) -> *mut VersionVector {
+    unsafe {
+        let doc = &*ptr;
+        let vv = doc.oplog_vv();
+        let boxed = Box::new(vv);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_state_vv(ptr: *mut LoroDoc) -> *mut VersionVector {
+    unsafe {
+        let doc = &*ptr;
+        let vv = doc.state_vv();
+        let boxed = Box::new(vv);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_vv(ptr: *mut VersionVector) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn vv_to_frontiers(
+    doc_ptr: *mut LoroDoc,
+    vv_ptr: *mut VersionVector,
+) -> *mut Frontiers {
+    unsafe {
+        let doc = &*doc_ptr;
+        let vv = &*vv_ptr;
+        let frontiers = doc.vv_to_frontiers(vv);
+        let boxed = Box::new(frontiers);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn frontiers_to_vv(
+    doc_ptr: *mut LoroDoc,
+    frontiers_ptr: *mut Frontiers,
+) -> *mut VersionVector {
+    unsafe {
+        let doc = &*doc_ptr;
+        let frontiers = &*frontiers_ptr;
+        let vv = doc.frontiers_to_vv(frontiers).unwrap();
+        let boxed = Box::new(vv);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_oplog_frontiers(ptr: *mut LoroDoc) -> *mut Frontiers {
+    unsafe {
+        let doc = &*ptr;
+        let frontiers = doc.oplog_frontiers();
+        let boxed = Box::new(frontiers);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_state_frontiers(ptr: *mut LoroDoc) -> *mut Frontiers {
+    unsafe {
+        let doc = &*ptr;
+        let frontiers = doc.state_frontiers();
+        let boxed = Box::new(frontiers);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_frontiers(ptr: *mut Frontiers) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn encode_frontiers(ptr: *mut Frontiers) -> *mut Vec<u8> {
+    unsafe {
+        let frontiers = &*ptr;
+        let encoded = frontiers.encode();
+        let boxed = Box::new(encoded);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn encode_vv(ptr: *mut VersionVector) -> *mut Vec<u8> {
+    unsafe {
+        let vv = &*ptr;
+        let encoded = vv.encode();
+        let boxed = Box::new(encoded);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn decode_frontiers(ptr: *mut Vec<u8>) -> *mut Frontiers {
+    unsafe {
+        let encoded = &*ptr;
+        let frontiers = Frontiers::decode(encoded).unwrap();
+        let boxed = Box::new(frontiers);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn decode_vv(ptr: *mut Vec<u8>) -> *mut VersionVector {
+    unsafe {
+        let encoded = &*ptr;
+        let vv = VersionVector::decode(encoded).unwrap();
+        let boxed = Box::new(vv);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_frontiers_len(ptr: *mut Frontiers) -> usize {
+    unsafe {
+        let frontiers = &*ptr;
+        frontiers.len()
+    }
+}
+
+#[repr(C, packed)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub struct CLayoutID {
+    pub peer: PeerID,
+    pub counter: Counter,
+}
+
+impl From<ID> for CLayoutID {
+    fn from(id: ID) -> Self {
+        Self {
+            peer: id.peer,
+            counter: id.counter,
+        }
+    }
+}
+
+impl From<CLayoutID> for ID {
+    fn from(id: CLayoutID) -> Self {
+        Self {
+            peer: id.peer,
+            counter: id.counter,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn frontiers_new_empty() -> *mut Frontiers {
+    let frontiers = Frontiers::new();
+    let boxed = Box::new(frontiers);
+    let ptr = Box::into_raw(boxed);
+    ptr
+}
+
+#[no_mangle]
+pub extern "C" fn vv_new_empty() -> *mut VersionVector {
+    let vv = VersionVector::new();
+    let boxed = Box::new(vv);
+    let ptr = Box::into_raw(boxed);
+    ptr
+}
+
+#[no_mangle]
+pub extern "C" fn frontiers_contains(ptr: *mut Frontiers, id_ptr: *const CLayoutID) -> i32 {
+    unsafe {
+        let frontiers = &*ptr;
+        let id: ID = (*id_ptr).into();
+        if frontiers.contains(&id) {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn frontiers_push(ptr: *mut Frontiers, id_ptr: *const CLayoutID) {
+    unsafe {
+        let frontiers = &mut *ptr;
+        let id: ID = (*id_ptr).into();
+        frontiers.push(id);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn frontiers_remove(ptr: *mut Frontiers, id_ptr: *const CLayoutID) {
+    unsafe {
+        let frontiers = &mut *ptr;
+        let id: ID = (*id_ptr).into();
+        frontiers.remove(&id);
     }
 }
 
