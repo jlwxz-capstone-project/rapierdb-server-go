@@ -14,26 +14,41 @@ import (
 // ----------- Rust Bytes Vec -----------
 
 type RustBytesVec struct {
-	ptr      unsafe.Pointer
-	dataPtr  unsafe.Pointer
-	len      uint32
-	capacity uint32
+	ptr unsafe.Pointer
+}
+
+func NewRustVecFromBytes(data []byte) *RustBytesVec {
+	dataPtr := unsafe.Pointer(&data[0])
+	dataLen := len(data)
+	var newDataPtr *C.uint8_t
+	ptr := C.new_vec_from_bytes(dataPtr, C.uint32_t(dataLen), C.uint32_t(dataLen), &newDataPtr)
+
+	ret := &RustBytesVec{
+		ptr: ptr,
+	}
+	runtime.SetFinalizer(ret, func(vec *RustBytesVec) {
+		vec.Destroy()
+	})
+	return ret
 }
 
 func (vec *RustBytesVec) Destroy() {
+	// fmt.Println("destroying rust bytes vec")
 	C.destroy_bytes_vec(vec.ptr)
 }
 
-func (vec *RustBytesVec) GetSize() uint32 {
-	return vec.len
+func (vec *RustBytesVec) GetLen() uint32 {
+	return uint32(C.get_vec_len(vec.ptr))
 }
 
 func (vec *RustBytesVec) GetCapacity() uint32 {
-	return vec.capacity
+	return uint32(C.get_vec_cap(vec.ptr))
 }
 
 func (vec *RustBytesVec) Bytes() []byte {
-	return unsafe.Slice((*byte)(vec.dataPtr), vec.len)
+	len := vec.GetLen()
+	dataPtr := C.get_vec_data(vec.ptr)
+	return unsafe.Slice((*byte)(dataPtr), len)
 }
 
 // ----------- Loro Doc -----------
@@ -43,6 +58,7 @@ type LoroDoc struct {
 }
 
 func (doc *LoroDoc) Destroy() {
+	// fmt.Println("destroying loro doc")
 	C.destroy_loro_doc(doc.ptr)
 }
 
@@ -110,27 +126,20 @@ func (doc *LoroDoc) GetMap(id string) *LoroMap {
 }
 
 func (doc *LoroDoc) ExportSnapshot() *RustBytesVec {
-	var dataPtr *C.uint8_t
-	var len C.uint32_t
-	var cap C.uint32_t
-
-	ptr := C.export_loro_doc_snapshot(
-		doc.ptr,
-		&dataPtr,
-		&len,
-		&cap,
-	)
+	ptr := C.export_loro_doc_snapshot(doc.ptr)
 
 	bytesVec := &RustBytesVec{
-		ptr:      ptr,
-		dataPtr:  unsafe.Pointer(dataPtr),
-		len:      uint32(len),
-		capacity: uint32(cap),
+		ptr: ptr,
 	}
 	runtime.SetFinalizer(bytesVec, func(vec *RustBytesVec) {
 		vec.Destroy()
 	})
 	return bytesVec
+}
+
+func (doc *LoroDoc) Import(data []byte) {
+	snapshot := NewRustVecFromBytes(data)
+	C.loro_doc_import(doc.ptr, snapshot.ptr)
 }
 
 // ----------- Loro Text -----------
@@ -140,6 +149,7 @@ type LoroText struct {
 }
 
 func (text *LoroText) Destroy() {
+	// fmt.Println("destroying loro text")
 	C.destroy_loro_text(text.ptr)
 }
 
@@ -161,6 +171,7 @@ type LoroMap struct {
 }
 
 func (m *LoroMap) Destroy() {
+	// fmt.Println("destroying loro map")
 	C.destroy_loro_map(m.ptr)
 }
 
@@ -171,6 +182,7 @@ type LoroList struct {
 }
 
 func (list *LoroList) Destroy() {
+	// fmt.Println("destroying loro list")
 	C.destroy_loro_list(list.ptr)
 }
 
@@ -181,5 +193,6 @@ type LoroMovableList struct {
 }
 
 func (movableList *LoroMovableList) Destroy() {
+	// fmt.Println("destroying loro movable list")
 	C.destroy_loro_movable_list(movableList.ptr)
 }

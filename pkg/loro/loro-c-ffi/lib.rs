@@ -116,24 +116,40 @@ pub extern "C" fn destroy_loro_map(ptr: *mut LoroMap) {
 }
 
 #[no_mangle]
-pub extern "C" fn export_loro_doc_snapshot(
-    doc_ptr: *mut LoroDoc,
-    arr_ptr: *mut *mut u8,
-    len_ptr: *mut usize,
-    cap_ptr: *mut usize,
-) -> *mut Vec<u8> {
+pub extern "C" fn export_loro_doc_snapshot(doc_ptr: *mut LoroDoc) -> *mut Vec<u8> {
     unsafe {
         let doc = &mut *doc_ptr;
         let snapshot = doc.export(ExportMode::snapshot()).unwrap();
         let boxed = Box::new(snapshot);
         let boxed_ptr = Box::into_raw(boxed);
-        let arr = (*boxed_ptr).as_mut_ptr();
-        let len = (*boxed_ptr).len();
-        let cap = (*boxed_ptr).capacity();
-        *arr_ptr = arr;
-        *len_ptr = len;
-        *cap_ptr = cap;
         boxed_ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn new_vec_from_bytes(
+    data_ptr: *mut u8,
+    len: usize,
+    cap: usize,
+    new_data_ptr: *mut *mut u8,
+) -> *mut Vec<u8> {
+    unsafe {
+        let mut new_vec = Vec::with_capacity(cap);
+        new_vec.set_len(len);
+        std::ptr::copy_nonoverlapping(data_ptr, new_vec.as_mut_ptr(), len);
+        let boxed = Box::new(new_vec);
+        let ptr = Box::into_raw(boxed);
+        *new_data_ptr = (*ptr).as_mut_ptr();
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_doc_import(doc_ptr: *mut LoroDoc, vec_ptr: *mut Vec<u8>) {
+    unsafe {
+        let doc = &mut *doc_ptr;
+        let vec = &mut *vec_ptr;
+        doc.import(vec).unwrap();
     }
 }
 
@@ -141,5 +157,52 @@ pub extern "C" fn export_loro_doc_snapshot(
 pub extern "C" fn destroy_bytes_vec(ptr: *mut Vec<u8>) {
     unsafe {
         let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_vec_len(ptr: *mut Vec<u8>) -> usize {
+    unsafe {
+        let vec = &*ptr;
+        vec.len()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_vec_cap(ptr: *mut Vec<u8>) -> usize {
+    unsafe {
+        let vec = &*ptr;
+        vec.capacity()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_vec_data(ptr: *mut Vec<u8>) -> *mut u8 {
+    unsafe {
+        let vec = &mut *ptr;
+        vec.as_mut_ptr()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_and_edit_many_loro_docs() {
+        let time_start = std::time::Instant::now();
+        let mut docs = Vec::new();
+        for i in 0..100000 {
+            let doc = LoroDoc::new();
+            let text = doc.get_text("test");
+            let content = format!("Hello, world! {}", i);
+            text.update(&content, UpdateOptions::default()).unwrap();
+            let snapshot = doc.export(ExportMode::snapshot()).unwrap();
+            let doc2 = LoroDoc::new();
+            doc2.import(&snapshot).unwrap();
+            docs.push(doc2);
+        }
+        let time_end = std::time::Instant::now();
+        println!("Time taken: {:?}", time_end.duration_since(time_start));
     }
 }
