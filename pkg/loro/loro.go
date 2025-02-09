@@ -250,6 +250,28 @@ func (doc *LoroDoc) VvToFrontiers(vv *VersionVector) *Frontiers {
 	return frontiers
 }
 
+func (doc *LoroDoc) Fork() *LoroDoc {
+	ptr := C.fork_doc(doc.ptr)
+	loroDoc := &LoroDoc{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(loroDoc, func(doc *LoroDoc) {
+		doc.Destroy()
+	})
+	return loroDoc
+}
+
+func (doc *LoroDoc) ForkAt(frontiers *Frontiers) *LoroDoc {
+	ptr := C.fork_doc_at(doc.ptr, frontiers.ptr)
+	loroDoc := &LoroDoc{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(loroDoc, func(doc *LoroDoc) {
+		doc.Destroy()
+	})
+	return loroDoc
+}
+
 // ----------- Version Vector -----------
 
 type VersionVector struct {
@@ -358,6 +380,17 @@ type LoroText struct {
 	ptr unsafe.Pointer
 }
 
+func NewLoroText() *LoroText {
+	ptr := C.new_loro_text()
+	text := &LoroText{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(text, func(text *LoroText) {
+		text.Destroy()
+	})
+	return text
+}
+
 func (text *LoroText) Destroy() {
 	// fmt.Println("destroying loro text")
 	C.destroy_loro_text(text.ptr)
@@ -374,10 +407,24 @@ func (text *LoroText) UpdateText(content string) {
 	C.update_loro_text(text.ptr, contentPtr)
 }
 
-func (text *LoroText) InsertText(content string, pos int) {
+func (text *LoroText) InsertText(content string, pos uint32) {
 	contentPtr := C.CString(content)
 	defer C.free(unsafe.Pointer(contentPtr))
 	C.insert_loro_text(text.ptr, C.uint32_t(pos), contentPtr)
+}
+
+func (text *LoroText) InsertTextUtf8(content string, pos uint32) {
+	contentPtr := C.CString(content)
+	defer C.free(unsafe.Pointer(contentPtr))
+	C.insert_loro_text_utf8(text.ptr, C.uint32_t(pos), contentPtr)
+}
+
+func (text *LoroText) GetLength() uint32 {
+	return uint32(C.loro_text_length(text.ptr))
+}
+
+func (text *LoroText) GetLengthUtf8() uint32 {
+	return uint32(C.loro_text_length_utf8(text.ptr))
 }
 
 // ----------- Loro Map -----------

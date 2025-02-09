@@ -1,6 +1,6 @@
 use loro::{
-    Counter, ExportMode, Frontiers, LoroDoc, LoroList, LoroMap, LoroMovableList, LoroText, PeerID,
-    UpdateOptions, VersionVector, ID,
+    Counter, ExportMode, Frontiers, ImportBlobMetadata, LoroDoc, LoroList, LoroMap,
+    LoroMovableList, LoroText, PeerID, UpdateOptions, VersionVector, ID,
 };
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -30,6 +30,14 @@ pub extern "C" fn get_text(doc_ptr: *mut LoroDoc, id_ptr: *const c_char) -> *mut
         let ptr = Box::into_raw(boxed);
         ptr
     }
+}
+
+#[no_mangle]
+pub extern "C" fn new_loro_text() -> *mut LoroText {
+    let text = LoroText::new();
+    let boxed = Box::new(text);
+    let ptr = Box::into_raw(boxed);
+    ptr
 }
 
 #[no_mangle]
@@ -64,6 +72,35 @@ pub extern "C" fn insert_loro_text(text_ptr: *mut LoroText, pos: usize, content:
         let text = &mut *text_ptr;
         let s = CStr::from_ptr(content).to_string_lossy().into_owned();
         text.insert(pos, &s).unwrap();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn insert_loro_text_utf8(
+    text_ptr: *mut LoroText,
+    pos: usize,
+    content: *const c_char,
+) {
+    unsafe {
+        let text = &mut *text_ptr;
+        let s = CStr::from_ptr(content).to_string_lossy().into_owned();
+        text.insert_utf8(pos, &s).unwrap();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_text_length(text_ptr: *mut LoroText) -> usize {
+    unsafe {
+        let text = &mut *text_ptr;
+        text.len_unicode()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_text_length_utf8(text_ptr: *mut LoroText) -> usize {
+    unsafe {
+        let text = &mut *text_ptr;
+        text.len_utf8()
     }
 }
 
@@ -374,6 +411,32 @@ pub extern "C" fn get_frontiers_len(ptr: *mut Frontiers) -> usize {
     unsafe {
         let frontiers = &*ptr;
         frontiers.len()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn fork_doc(doc_ptr: *mut LoroDoc) -> *mut LoroDoc {
+    unsafe {
+        let doc = &mut *doc_ptr;
+        let forked = doc.fork();
+        let boxed = Box::new(forked);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn fork_doc_at(
+    doc_ptr: *mut LoroDoc,
+    frontiers_ptr: *mut Frontiers,
+) -> *mut LoroDoc {
+    unsafe {
+        let doc = &mut *doc_ptr;
+        let frontiers = &*frontiers_ptr;
+        let forked = doc.fork_at(frontiers);
+        let boxed = Box::new(forked);
+        let ptr = Box::into_raw(boxed);
+        ptr
     }
 }
 
