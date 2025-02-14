@@ -45,18 +45,21 @@ func NewRustBytesVec(data []byte) *RustBytesVec {
 }
 
 func (vec *RustBytesVec) Destroy() {
-	// fmt.Println("destroying rust bytes vec")
 	C.destroy_bytes_vec(vec.ptr)
 }
 
+// 获取字节向量的长度，即字节数
 func (vec *RustBytesVec) GetLen() uint32 {
 	return uint32(C.get_vec_len(vec.ptr))
 }
 
+// 获取字节向量的容量，即字节数组的最大长度
 func (vec *RustBytesVec) GetCapacity() uint32 {
 	return uint32(C.get_vec_cap(vec.ptr))
 }
 
+// 转换为 Go 字节切片，注意：返回的切片是原始字节数组的视图，
+// 可以修改原始字节数组的内容，但不要修改切片的长度！
 func (vec *RustBytesVec) Bytes() []byte {
 	len := vec.GetLen()
 	dataPtr := C.get_vec_data(vec.ptr)
@@ -65,6 +68,10 @@ func (vec *RustBytesVec) Bytes() []byte {
 
 // ----------- Rust Ptr Vec ----------
 
+// RustPtrVec 内部封装的是 Rust 中 Vec<*mut u8>
+// 它是一个用于存储指针的向量，可以存储任意类型的指针，
+// RustPtrVec 常作为 Go 和 Rust 之间复杂数据的中间表示。
+// 比如：HashMap<String, LoroValue> <=> RustPtrVec <=> map[string]*LoroValue
 type RustPtrVec struct {
 	ptr unsafe.Pointer
 }
@@ -81,7 +88,6 @@ func NewRustPtrVec() *RustPtrVec {
 }
 
 func (vec *RustPtrVec) Destroy() {
-	// fmt.Println("destroying rust bytes vec")
 	C.destroy_ptr_vec(vec.ptr)
 }
 
@@ -114,7 +120,6 @@ type LoroDoc struct {
 }
 
 func (doc *LoroDoc) Destroy() {
-	// fmt.Println("destroying loro doc")
 	C.destroy_loro_doc(doc.Ptr)
 }
 
@@ -129,6 +134,8 @@ func NewLoroDoc() *LoroDoc {
 	return loroDoc
 }
 
+// 获取指定 ID 的文本容器。如果指定 ID 的文本容器不存在，
+// 则创建一个并 attach 到当前文档
 func (doc *LoroDoc) GetText(id string) *LoroText {
 	idPtr := C.CString(id)
 	defer C.free(unsafe.Pointer(idPtr))
@@ -142,6 +149,8 @@ func (doc *LoroDoc) GetText(id string) *LoroText {
 	return loroText
 }
 
+// 获取指定 ID 的列表容器。如果指定 ID 的列表容器不存在，
+// 则创建一个并 attach 到当前文档
 func (doc *LoroDoc) GetList(id string) *LoroList {
 	idPtr := C.CString(id)
 	defer C.free(unsafe.Pointer(idPtr))
@@ -155,6 +164,8 @@ func (doc *LoroDoc) GetList(id string) *LoroList {
 	return loroList
 }
 
+// 获取指定 ID 的可移动列表容器。如果指定 ID 的可移动列表容器不存在，
+// 则创建一个并 attach 到当前文档
 func (doc *LoroDoc) GetMovableList(id string) *LoroMovableList {
 	idPtr := C.CString(id)
 	defer C.free(unsafe.Pointer(idPtr))
@@ -168,6 +179,8 @@ func (doc *LoroDoc) GetMovableList(id string) *LoroMovableList {
 	return loroMovableList
 }
 
+// 获取指定 ID 的映射容器。如果指定 ID 的映射容器不存在，
+// 则创建一个并 attach 到当前文档
 func (doc *LoroDoc) GetMap(id string) *LoroMap {
 	idPtr := C.CString(id)
 	defer C.free(unsafe.Pointer(idPtr))
@@ -181,6 +194,7 @@ func (doc *LoroDoc) GetMap(id string) *LoroMap {
 	return loroMap
 }
 
+// 以快照的形式导出。快照包含文档的完整历史
 func (doc *LoroDoc) ExportSnapshot() *RustBytesVec {
 	ptr := C.export_loro_doc_snapshot(doc.Ptr)
 	bytesVec := &RustBytesVec{
@@ -192,6 +206,9 @@ func (doc *LoroDoc) ExportSnapshot() *RustBytesVec {
 	return bytesVec
 }
 
+// 导出文档的所有更新。导入所有更新和导入快照都可以恢复文档历史，但快照更节省空间。
+// 导出更新的优势是可以通过 ExportUpdatesFrom 和 ExportUpdatesTill 等函数选择性地
+// 导出部分更新（例如从特定版本开始），无需导出全部历史，这对增量同步场景很有帮助。
 func (doc *LoroDoc) ExportAllUpdates() *RustBytesVec {
 	ptr := C.export_loro_doc_all_updates(doc.Ptr)
 	bytesVec := &RustBytesVec{
@@ -203,6 +220,7 @@ func (doc *LoroDoc) ExportAllUpdates() *RustBytesVec {
 	return bytesVec
 }
 
+// 导出从指定版本开始，到最新版本的更新。
 func (doc *LoroDoc) ExportUpdatesFrom(from *VersionVector) *RustBytesVec {
 	ptr := C.export_loro_doc_updates_from(doc.Ptr, from.ptr)
 	bytesVec := &RustBytesVec{
@@ -214,6 +232,7 @@ func (doc *LoroDoc) ExportUpdatesFrom(from *VersionVector) *RustBytesVec {
 	return bytesVec
 }
 
+// 导出从初始状态开始，到指定版本的更新。
 func (doc *LoroDoc) ExportUpdatesTill(till *VersionVector) *RustBytesVec {
 	ptr := C.export_loro_doc_updates_till(doc.Ptr, till.ptr)
 	bytesVec := &RustBytesVec{
@@ -225,6 +244,7 @@ func (doc *LoroDoc) ExportUpdatesTill(till *VersionVector) *RustBytesVec {
 	return bytesVec
 }
 
+// 导入快照 / 更新（都是一堆字节）
 func (doc *LoroDoc) Import(data []byte) {
 	snapshot := NewRustBytesVec(data)
 	C.loro_doc_import(doc.Ptr, snapshot.ptr)
