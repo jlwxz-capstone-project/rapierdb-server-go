@@ -4,16 +4,18 @@ import (
 	"bytes"
 	"encoding/gob"
 	"time"
+
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/schema"
 )
 
 type DatabaseMeta struct {
-	Schema    DatabaseSchema
+	Schema    schema.DatabaseSchema
 	CreatedAt uint64
 }
 
 func NewEmptyDatabaseMeta() *DatabaseMeta {
 	return &DatabaseMeta{
-		Schema:    DatabaseSchema{},
+		Schema:    schema.DatabaseSchema{},
 		CreatedAt: uint64(time.Now().Unix()),
 	}
 }

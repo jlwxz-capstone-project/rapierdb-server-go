@@ -1,9 +1,37 @@
+mod loro_container;
+mod loro_container_value;
+mod loro_diff_event;
+mod loro_list;
+mod loro_list_diff_item;
+mod loro_map;
+mod loro_movable_list;
+mod loro_text;
+mod loro_text_delta;
+mod loro_tree;
+mod loro_value;
+
+use loro::event::{Diff, DiffBatch, ListDiffItem, MapDelta};
 use loro::{
-    Counter, ExportMode, Frontiers, ImportBlobMetadata, LoroDoc, LoroList, LoroMap,
-    LoroMovableList, LoroText, PeerID, UpdateOptions, VersionVector, ID,
+    ContainerID, ContainerTrait, Counter, ExportMode, Frontiers, ImportBlobMetadata,
+    LoroBinaryValue, LoroDoc, LoroList, LoroListValue, LoroMap, LoroMovableList, LoroStringValue,
+    LoroText, LoroValue, PeerID, TextDelta, TreeDiff, UpdateOptions, ValueOrContainer,
+    VersionVector, ID,
 };
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+
+// re-exports
+pub use loro_container::*;
+pub use loro_container_value::*;
+pub use loro_diff_event::*;
+pub use loro_list::*;
+pub use loro_list_diff_item::*;
+pub use loro_map::*;
+pub use loro_movable_list::*;
+pub use loro_text::*;
+pub use loro_text_delta::*;
+pub use loro_tree::*;
+pub use loro_value::*;
 
 #[no_mangle]
 pub extern "C" fn create_loro_doc() -> *mut LoroDoc {
@@ -33,78 +61,6 @@ pub extern "C" fn get_text(doc_ptr: *mut LoroDoc, id_ptr: *const c_char) -> *mut
 }
 
 #[no_mangle]
-pub extern "C" fn new_loro_text() -> *mut LoroText {
-    let text = LoroText::new();
-    let boxed = Box::new(text);
-    let ptr = Box::into_raw(boxed);
-    ptr
-}
-
-#[no_mangle]
-pub extern "C" fn destroy_loro_text(ptr: *mut LoroText) {
-    unsafe {
-        let _ = Box::from_raw(ptr);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn loro_text_to_string(text_ptr: *mut LoroText) -> *mut c_char {
-    unsafe {
-        let text = &mut *text_ptr;
-        let s = text.to_string();
-        let ptr = CString::new(s).unwrap().into_raw();
-        ptr
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn update_loro_text(text_ptr: *mut LoroText, content: *const c_char) {
-    unsafe {
-        let text = &mut *text_ptr;
-        let s = CStr::from_ptr(content).to_string_lossy().into_owned();
-        text.update(&s, UpdateOptions::default()).unwrap();
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn insert_loro_text(text_ptr: *mut LoroText, pos: usize, content: *const c_char) {
-    unsafe {
-        let text = &mut *text_ptr;
-        let s = CStr::from_ptr(content).to_string_lossy().into_owned();
-        text.insert(pos, &s).unwrap();
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn insert_loro_text_utf8(
-    text_ptr: *mut LoroText,
-    pos: usize,
-    content: *const c_char,
-) {
-    unsafe {
-        let text = &mut *text_ptr;
-        let s = CStr::from_ptr(content).to_string_lossy().into_owned();
-        text.insert_utf8(pos, &s).unwrap();
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn loro_text_length(text_ptr: *mut LoroText) -> usize {
-    unsafe {
-        let text = &mut *text_ptr;
-        text.len_unicode()
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn loro_text_length_utf8(text_ptr: *mut LoroText) -> usize {
-    unsafe {
-        let text = &mut *text_ptr;
-        text.len_utf8()
-    }
-}
-
-#[no_mangle]
 pub extern "C" fn get_list(doc_ptr: *mut LoroDoc, id_ptr: *const c_char) -> *mut LoroList {
     unsafe {
         let doc = &mut *doc_ptr;
@@ -113,13 +69,6 @@ pub extern "C" fn get_list(doc_ptr: *mut LoroDoc, id_ptr: *const c_char) -> *mut
         let boxed = Box::new(list);
         let ptr = Box::into_raw(boxed);
         ptr
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn destroy_loro_list(ptr: *mut LoroList) {
-    unsafe {
-        let _ = Box::from_raw(ptr);
     }
 }
 
@@ -139,13 +88,6 @@ pub extern "C" fn get_movable_list(
 }
 
 #[no_mangle]
-pub extern "C" fn destroy_loro_movable_list(ptr: *mut LoroMovableList) {
-    unsafe {
-        let _ = Box::from_raw(ptr);
-    }
-}
-
-#[no_mangle]
 pub extern "C" fn get_map(doc_ptr: *mut LoroDoc, id_ptr: *const c_char) -> *mut LoroMap {
     unsafe {
         let doc = &mut *doc_ptr;
@@ -154,13 +96,6 @@ pub extern "C" fn get_map(doc_ptr: *mut LoroDoc, id_ptr: *const c_char) -> *mut 
         let boxed = Box::new(map);
         let ptr = Box::into_raw(boxed);
         ptr
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn destroy_loro_map(ptr: *mut LoroMap) {
-    unsafe {
-        let _ = Box::from_raw(ptr);
     }
 }
 
@@ -268,6 +203,61 @@ pub extern "C" fn get_vec_cap(ptr: *mut Vec<u8>) -> usize {
 
 #[no_mangle]
 pub extern "C" fn get_vec_data(ptr: *mut Vec<u8>) -> *mut u8 {
+    unsafe {
+        let vec = &mut *ptr;
+        vec.as_mut_ptr()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn new_ptr_vec() -> *mut Vec<*mut u8> {
+    let vec = Vec::new();
+    let boxed = Box::new(vec);
+    let ptr = Box::into_raw(boxed);
+    ptr
+}
+
+#[no_mangle]
+pub extern "C" fn ptr_vec_push(ptr: *mut Vec<*mut u8>, value: *mut u8) {
+    unsafe {
+        let vec = &mut *ptr;
+        vec.push(value);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn ptr_vec_get(ptr: *mut Vec<*mut u8>, index: usize) -> *mut u8 {
+    unsafe {
+        let vec = &mut *ptr;
+        vec[index]
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_ptr_vec(ptr: *mut Vec<*mut u8>) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_ptr_vec_len(ptr: *mut Vec<*mut u8>) -> usize {
+    unsafe {
+        let vec = &*ptr;
+        vec.len()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_ptr_vec_cap(ptr: *mut Vec<*mut u8>) -> usize {
+    unsafe {
+        let vec = &*ptr;
+        vec.capacity()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_ptr_vec_data(ptr: *mut Vec<*mut u8>) -> *mut *mut u8 {
     unsafe {
         let vec = &mut *ptr;
         vec.as_mut_ptr()
@@ -512,6 +502,183 @@ pub extern "C" fn frontiers_remove(ptr: *mut Frontiers, id_ptr: *const CLayoutID
     }
 }
 
+#[no_mangle]
+pub extern "C" fn diff_loro_doc(
+    doc_ptr: *mut LoroDoc,
+    v1_ptr: *mut Frontiers,
+    v2_ptr: *mut Frontiers,
+) -> *mut DiffBatch {
+    unsafe {
+        let doc1 = &*doc_ptr;
+        let v1 = &*v1_ptr;
+        let v2 = &*v2_ptr;
+        let diff = doc1.diff(v1, v2).unwrap();
+        let boxed = Box::new(diff);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_diff_batch(ptr: *mut DiffBatch) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn diff_batch_events(
+    ptr: *mut DiffBatch,
+    cids_ptr: *mut *mut Vec<*mut u8>,
+    events_ptr: *mut *mut Vec<*mut u8>,
+) {
+    unsafe {
+        let diff = &*ptr;
+        let mut cids = Box::new(Vec::new());
+        let mut events = Box::new(Vec::new());
+        for (cid, event) in diff.iter() {
+            let cid = Box::into_raw(Box::new(cid.clone()));
+            let event = Box::into_raw(Box::new(event.clone()));
+            cids.push(cid);
+            events.push(event);
+        }
+        // make rust happy
+        *cids_ptr = Box::into_raw(cids) as *mut _;
+        *events_ptr = Box::into_raw(events) as *mut _;
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_container_id(ptr: *mut ContainerID) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn is_container_id_root(ptr: *mut ContainerID) -> i32 {
+    unsafe {
+        let cid = &*ptr;
+        match cid {
+            ContainerID::Root { .. } => 1,
+            _ => 0,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn is_container_id_normal(ptr: *mut ContainerID) -> i32 {
+    unsafe {
+        let cid = &*ptr;
+        match cid {
+            ContainerID::Normal { .. } => 1,
+            _ => 0,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn container_id_root_name(ptr: *mut ContainerID) -> *mut c_char {
+    unsafe {
+        let cid = &*ptr;
+        match cid {
+            ContainerID::Root { name, .. } => {
+                let ptr = CString::new(name.as_str()).unwrap().into_raw();
+                ptr
+            }
+            _ => panic!("ContainerID is not root"),
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn container_id_normal_peer(ptr: *mut ContainerID) -> PeerID {
+    unsafe {
+        let cid = &*ptr;
+        match cid {
+            ContainerID::Normal { peer, .. } => *peer,
+            _ => panic!("ContainerID is not normal"),
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn container_id_normal_counter(ptr: *mut ContainerID) -> Counter {
+    unsafe {
+        let cid = &*ptr;
+        match cid {
+            ContainerID::Normal { counter, .. } => *counter,
+            _ => panic!("ContainerID is not normal"),
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn container_id_container_type(ptr: *mut ContainerID) -> u8 {
+    unsafe {
+        let cid = &*ptr;
+        cid.container_type().to_u8()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_map_delta(ptr: *mut MapDelta) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_tree_diff(ptr: *mut TreeDiff) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_to_value(ptr: *mut LoroList) -> *mut LoroValue {
+    unsafe {
+        let list = &*ptr;
+        let value = list.get_value();
+        let boxed = Box::new(value);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_map_to_value(ptr: *mut LoroMap) -> *mut LoroValue {
+    unsafe {
+        let map = &*ptr;
+        let value = map.get_value();
+        let boxed = Box::new(value);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_movable_list_to_value(ptr: *mut LoroMovableList) -> *mut LoroValue {
+    unsafe {
+        let list = &*ptr;
+        let value = list.get_value();
+        let boxed = Box::new(value);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_text_to_value(ptr: *mut LoroText) -> *mut LoroValue {
+    unsafe {
+        let text = &*ptr;
+        let value = text.get_richtext_value();
+        let boxed = Box::new(value);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,5 +699,36 @@ mod tests {
         }
         let time_end = std::time::Instant::now();
         println!("Time taken: {:?}", time_end.duration_since(time_start));
+    }
+
+    #[test]
+    fn test_loro_diff() {
+        let time_start = std::time::Instant::now();
+        let mut cids = Vec::new();
+        let mut events = Vec::new();
+        for _ in 0..100000 {
+            let doc = LoroDoc::new();
+            let f1 = doc.state_frontiers();
+            let text = doc.get_text("test");
+            text.update("Hello, world!", UpdateOptions::default())
+                .unwrap();
+            let f2 = doc.state_frontiers();
+            let diff = doc.diff(&f1, &f2).unwrap();
+            for (cid, event) in diff.iter() {
+                cids.push(cid.clone());
+                events.push(event.clone());
+            }
+        }
+        println!("cids: {:?}", cids.len());
+        println!("events: {:?}", events.len());
+        let time_end = std::time::Instant::now();
+        println!("Time taken: {:?}", time_end.duration_since(time_start));
+    }
+
+    #[test]
+    fn test_heap_alloc() {
+        let arr = [0; 1000000];
+        let boxed = Box::new(arr);
+        println!("arr len: {}", boxed.len());
     }
 }

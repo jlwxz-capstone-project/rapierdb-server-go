@@ -1,0 +1,100 @@
+{
+  "name": "test-database",
+  "version": "1.1.0",
+  "collections": {
+    "users": {
+      "name": "users",
+      "docSchema": {
+        "type": "object",
+        "shape": {
+          "id": {
+            "type": "string",
+            "unique": true,
+            "indexed": { "type": "hash" }
+          },
+          "name": { "type": "text", "indexed": { "type": "fulltext" } },
+          "age": { "type": "number", "nullable": true },
+          "tags": {
+            "type": "list",
+            "listOf": {
+              "type": "enum",
+              "values": ["vip", "normal", "banned"]
+            }
+          },
+          "permissions": {
+            "type": "movableList",
+            "listOf": { "type": "string" }
+          },
+          "employmentHistory": {
+            "type": "record",
+            "recordOf": {
+              "type": "object",
+              "shape": {
+                "company": { "type": "string" },
+                "duration": { "type": "number" }
+              }
+            }
+          },
+          "familyTree": {
+            "type": "tree",
+            "treeOf": {
+              "type": "object",
+              "shape": {
+                "name": { "type": "string" },
+                "relation": { "type": "string" }
+              }
+            }
+          },
+          "metadata": {
+            "type": "any",
+            "nullable": true
+          },
+          "createdAt": { "type": "date", "indexed": { "type": "btree" } },
+          "isVerified": { "type": "boolean" },
+          "address": {
+            "type": "object",
+            "shape": {
+              "street": { "type": "string" },
+              "city": { "type": "string" },
+              "coordinates": {
+                "type": "list",
+                "listOf": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "loadOn": "init"
+    },
+    "products": {
+      "name": "products",
+      "docSchema": {
+        "type": "object",
+        "shape": {
+          "sku": { "type": "string", "unique": true },
+          "price": { "type": "number", "indexed": { "type": "btree" } },
+          "variants": {
+            "type": "movableList",
+            "listOf": {
+              "type": "object",
+              "shape": {
+                "color": { "type": "string" },
+                "size": { "type": "enum", "values": ["S", "M", "L"] }
+              }
+            }
+          },
+          "reviews": {
+            "type": "list",
+            "listOf": {
+              "type": "object",
+              "shape": {
+                "rating": { "type": "number" },
+                "comment": { "type": "text" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
