@@ -8,20 +8,31 @@ package loro
 import "C"
 import (
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"unsafe"
 )
 
-const LORO_VALUE_NULL = 0
-const LORO_VALUE_BOOL = 1
-const LORO_VALUE_DOUBLE = 2
-const LORO_VALUE_I64 = 3
-const LORO_VALUE_BINARY = 4
-const LORO_VALUE_STRING = 5
-const LORO_VALUE_LIST = 6
-const LORO_VALUE_MAP = 7
-const LORO_VALUE_CONTAINER = 8
+const (
+	LORO_VALUE_NULL      = 0
+	LORO_VALUE_BOOL      = 1
+	LORO_VALUE_DOUBLE    = 2
+	LORO_VALUE_I64       = 3
+	LORO_VALUE_BINARY    = 4
+	LORO_VALUE_STRING    = 5
+	LORO_VALUE_LIST      = 6
+	LORO_VALUE_MAP       = 7
+	LORO_VALUE_CONTAINER = 8
+)
+
+var (
+	ErrLoroGetFailed       = errors.New("loro get failed")
+	ErrLoroInsertFailed    = errors.New("loro insert failed")
+	ErrLoroEncodeFailed    = errors.New("loro encode failed")
+	ErrLoroDecodeFailed    = errors.New("loro decode failed")
+	ErrInspectImportFailed = errors.New("inspect import failed")
+)
 
 // ----------- Rust Bytes Vec -----------
 
@@ -545,27 +556,6 @@ func (text *LoroText) IsAttached() bool {
 
 // ----------- Loro Map -----------
 
-var (
-	ErrFailedToGetMapNull           = errors.New("failed to get null from map")
-	ErrFailedToGetMapBool           = errors.New("failed to get bool from map")
-	ErrFailedToGetMapDouble         = errors.New("failed to get double from map")
-	ErrFailedToGetMapI64            = errors.New("failed to get i64 from map")
-	ErrFailedToGetMapString         = errors.New("failed to get string from map")
-	ErrFailedToGetMapText           = errors.New("failed to get text from map")
-	ErrFailedToGetMapList           = errors.New("failed to get list from map")
-	ErrFailedToGetMapMovableList    = errors.New("failed to get movable list from map")
-	ErrFailedToGetMapMap            = errors.New("failed to get map from map")
-	ErrFailedToInsertMapNull        = errors.New("failed to insert null to map")
-	ErrFailedToInsertMapBool        = errors.New("failed to insert bool to map")
-	ErrFailedToInsertMapDouble      = errors.New("failed to insert double to map")
-	ErrFailedToInsertMapI64         = errors.New("failed to insert i64 to map")
-	ErrFailedToInsertMapString      = errors.New("failed to insert string to map")
-	ErrFailedToInsertMapText        = errors.New("failed to insert text to map")
-	ErrFailedToInsertMapList        = errors.New("failed to insert list to map")
-	ErrFailedToInsertMapMovableList = errors.New("failed to insert movable list to map")
-	ErrFailedToInsertMapMap         = errors.New("failed to insert map to map")
-)
-
 type LoroMap struct {
 	ptr unsafe.Pointer
 }
@@ -616,7 +606,7 @@ func (m *LoroMap) GetNull(key string) error {
 	defer C.free(unsafe.Pointer(keyPtr))
 	C.loro_map_get_null(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return ErrFailedToGetMapNull
+		return fmt.Errorf("%w: get null from map, key=%s", ErrLoroGetFailed, key)
 	}
 	return nil
 }
@@ -627,7 +617,7 @@ func (m *LoroMap) GetBool(key string) (bool, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_bool(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return false, ErrFailedToGetMapBool
+		return false, fmt.Errorf("%w: get bool from map, key=%s", ErrLoroGetFailed, key)
 	}
 	return ret != 0, nil
 }
@@ -638,7 +628,7 @@ func (m *LoroMap) GetDouble(key string) (float64, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_double(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return 0, ErrFailedToGetMapDouble
+		return 0, fmt.Errorf("%w: get double from map, key=%s", ErrLoroGetFailed, key)
 	}
 	return float64(ret), nil
 }
@@ -649,7 +639,7 @@ func (m *LoroMap) GetI64(key string) (int64, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_i64(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return 0, ErrFailedToGetMapI64
+		return 0, fmt.Errorf("%w: get i64 from map, key=%s", ErrLoroGetFailed, key)
 	}
 	return int64(ret), nil
 }
@@ -660,7 +650,7 @@ func (m *LoroMap) GetString(key string) (string, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_string(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return "", ErrFailedToGetMapString
+		return "", fmt.Errorf("%w: get string from map, key=%s", ErrLoroGetFailed, key)
 	}
 	return C.GoString(ret), nil
 }
@@ -671,7 +661,7 @@ func (m *LoroMap) GetText(key string) (*LoroText, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_text(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMapText
+		return nil, fmt.Errorf("%w: get text from map, key=%s", ErrLoroGetFailed, key)
 	}
 	text := &LoroText{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(text, func(text *LoroText) {
@@ -686,7 +676,7 @@ func (m *LoroMap) GetList(key string) (*LoroList, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_list(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMapList
+		return nil, fmt.Errorf("%w: get list from map, key=%s", ErrLoroGetFailed, key)
 	}
 	list := &LoroList{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(list, func(list *LoroList) {
@@ -701,7 +691,7 @@ func (m *LoroMap) GetMovableList(key string) (*LoroMovableList, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_movable_list(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMapMovableList
+		return nil, fmt.Errorf("%w: get movable list from map, key=%s", ErrLoroGetFailed, key)
 	}
 	list := &LoroMovableList{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(list, func(list *LoroMovableList) {
@@ -716,7 +706,7 @@ func (m *LoroMap) GetMap(key string) (*LoroMap, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_get_map(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMapMap
+		return nil, fmt.Errorf("%w: get map from map, key=%s", ErrLoroGetFailed, key)
 	}
 	newMap := &LoroMap{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newMap, func(m *LoroMap) {
@@ -731,7 +721,7 @@ func (m *LoroMap) InsertNull(key string) error {
 	defer C.free(unsafe.Pointer(keyPtr))
 	C.loro_map_insert_null(m.ptr, keyPtr, &err)
 	if err != 0 {
-		return ErrFailedToInsertMapNull
+		return fmt.Errorf("%w: insert null to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	return nil
 }
@@ -746,7 +736,7 @@ func (m *LoroMap) InsertBool(key string, value bool) error {
 	}
 	C.loro_map_insert_bool(m.ptr, keyPtr, C.int(boolValue), &err)
 	if err != 0 {
-		return ErrFailedToInsertMapBool
+		return fmt.Errorf("%w: insert bool to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	return nil
 }
@@ -757,7 +747,7 @@ func (m *LoroMap) InsertDouble(key string, value float64) error {
 	defer C.free(unsafe.Pointer(keyPtr))
 	C.loro_map_insert_double(m.ptr, keyPtr, C.double(value), &err)
 	if err != 0 {
-		return ErrFailedToInsertMapDouble
+		return fmt.Errorf("%w: insert double to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	return nil
 }
@@ -768,7 +758,7 @@ func (m *LoroMap) InsertI64(key string, value int64) error {
 	defer C.free(unsafe.Pointer(keyPtr))
 	C.loro_map_insert_i64(m.ptr, keyPtr, C.int64_t(value), &err)
 	if err != 0 {
-		return ErrFailedToInsertMapI64
+		return fmt.Errorf("%w: insert i64 to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	return nil
 }
@@ -781,7 +771,7 @@ func (m *LoroMap) InsertString(key string, value string) error {
 	defer C.free(unsafe.Pointer(valuePtr))
 	C.loro_map_insert_string(m.ptr, keyPtr, valuePtr, &err)
 	if err != 0 {
-		return ErrFailedToInsertMapString
+		return fmt.Errorf("%w: insert string to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	return nil
 }
@@ -792,7 +782,7 @@ func (m *LoroMap) InsertText(key string, text *LoroText) (*LoroText, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_insert_text(m.ptr, keyPtr, text.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToInsertMapText
+		return nil, fmt.Errorf("%w: insert text to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	newText := &LoroText{ptr: ret}
 	runtime.SetFinalizer(newText, func(text *LoroText) {
@@ -807,7 +797,7 @@ func (m *LoroMap) InsertList(key string, list *LoroList) (*LoroList, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_insert_list(m.ptr, keyPtr, list.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToInsertMapList
+		return nil, fmt.Errorf("%w: insert list to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	newList := &LoroList{ptr: ret}
 	runtime.SetFinalizer(newList, func(list *LoroList) {
@@ -822,7 +812,7 @@ func (m *LoroMap) InsertMovableList(key string, list *LoroMovableList) (*LoroMov
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_insert_movable_list(m.ptr, keyPtr, list.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToInsertMapMovableList
+		return nil, fmt.Errorf("%w: insert movable list to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	newList := &LoroMovableList{ptr: ret}
 	runtime.SetFinalizer(newList, func(list *LoroMovableList) {
@@ -837,7 +827,7 @@ func (m *LoroMap) InsertMap(key string, mapValue *LoroMap) (*LoroMap, error) {
 	defer C.free(unsafe.Pointer(keyPtr))
 	ret := C.loro_map_insert_map(m.ptr, keyPtr, mapValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToInsertMapMap
+		return nil, fmt.Errorf("%w: insert map to map, key=%s", ErrLoroInsertFailed, key)
 	}
 	newMap := &LoroMap{ptr: ret}
 	runtime.SetFinalizer(newMap, func(m *LoroMap) {
@@ -851,25 +841,6 @@ func (m *LoroMap) IsAttached() bool {
 }
 
 // ----------- Loro List -----------
-
-var ErrFailedToPushNull = errors.New("failed to push null")
-var ErrFailedToPushBool = errors.New("failed to push bool")
-var ErrFailedToPushDouble = errors.New("failed to push double")
-var ErrFailedToPushI64 = errors.New("failed to push i64")
-var ErrFailedToPushString = errors.New("failed to push string")
-var ErrFailedToPushText = errors.New("failed to push text")
-var ErrFailedToPushList = errors.New("failed to push list")
-var ErrFailedToPushMovableList = errors.New("failed to push movable list")
-var ErrFailedToPushMap = errors.New("failed to push map")
-var ErrFailedToGetNull = errors.New("failed to get null")
-var ErrFailedToGetBool = errors.New("failed to get bool")
-var ErrFailedToGetDouble = errors.New("failed to get double")
-var ErrFailedToGetI64 = errors.New("failed to get i64")
-var ErrFailedToGetString = errors.New("failed to get string")
-var ErrFailedToGetText = errors.New("failed to get text")
-var ErrFailedToList = errors.New("failed to get list")
-var ErrFailedToGetMovableList = errors.New("failed to get movable list")
-var ErrFailedToGetMap = errors.New("failed to get map")
 
 type LoroList struct {
 	ptr unsafe.Pointer
@@ -900,13 +871,13 @@ func (list *LoroList) ToContainer() *LoroContainer {
 	return container
 }
 
-func (list *LoroList) PushNull() (interface{}, error) {
+func (list *LoroList) PushNull() error {
 	var err C.uint8_t
 	C.loro_list_push_null(list.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushNull
+		return fmt.Errorf("%w: push null to list", ErrLoroInsertFailed)
 	}
-	return nil, nil
+	return nil
 }
 
 func (list *LoroList) PushBool(value bool) (bool, error) {
@@ -917,7 +888,7 @@ func (list *LoroList) PushBool(value bool) (bool, error) {
 	}
 	C.loro_list_push_bool(list.ptr, C.int32_t(boolValue), &err)
 	if err != 0 {
-		return false, ErrFailedToPushBool
+		return false, fmt.Errorf("%w: push bool to list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -926,7 +897,7 @@ func (list *LoroList) PushDouble(value float64) (float64, error) {
 	var err C.uint8_t
 	C.loro_list_push_double(list.ptr, C.double(value), &err)
 	if err != 0 {
-		return math.NaN(), ErrFailedToPushDouble
+		return math.NaN(), fmt.Errorf("%w: push double to list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -935,7 +906,7 @@ func (list *LoroList) PushI64(value int64) (int64, error) {
 	var err C.uint8_t
 	C.loro_list_push_i64(list.ptr, C.int64_t(value), &err)
 	if err != 0 {
-		return -1, ErrFailedToPushI64
+		return -1, fmt.Errorf("%w: push i64 to list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -944,7 +915,7 @@ func (list *LoroList) PushString(value string) (string, error) {
 	var err C.uint8_t
 	C.loro_list_push_string(list.ptr, C.CString(value), &err)
 	if err != 0 {
-		return "", ErrFailedToPushString
+		return "", fmt.Errorf("%w: push string to list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -953,7 +924,7 @@ func (list *LoroList) PushText(textValue *LoroText) (*LoroText, error) {
 	var err C.uint8_t
 	ptr := C.loro_list_push_text(list.ptr, textValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushText
+		return nil, fmt.Errorf("%w: push text to list", ErrLoroInsertFailed)
 	}
 	newText := &LoroText{ptr: ptr}
 	runtime.SetFinalizer(newText, func(text *LoroText) {
@@ -966,7 +937,7 @@ func (list *LoroList) PushList(listValue *LoroList) (*LoroList, error) {
 	var err C.uint8_t
 	ptr := C.loro_list_push_list(list.ptr, listValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushList
+		return nil, fmt.Errorf("%w: push list to list", ErrLoroInsertFailed)
 	}
 	newList := &LoroList{ptr: ptr}
 	runtime.SetFinalizer(newList, func(list *LoroList) {
@@ -979,7 +950,7 @@ func (list *LoroList) PushMovableList(movableList *LoroMovableList) (*LoroMovabl
 	var err C.uint8_t
 	ptr := C.loro_list_push_movable_list(list.ptr, movableList.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMovableList
+		return nil, fmt.Errorf("%w: push movable list to list", ErrLoroInsertFailed)
 	}
 	newMovableList := &LoroMovableList{ptr: ptr}
 	runtime.SetFinalizer(newMovableList, func(movableList *LoroMovableList) {
@@ -992,7 +963,7 @@ func (list *LoroList) PushMap(mapValue *LoroMap) (*LoroMap, error) {
 	var err C.uint8_t
 	ptr := C.loro_list_push_map(list.ptr, mapValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMap
+		return nil, fmt.Errorf("%w: push map to list", ErrLoroInsertFailed)
 	}
 	newMap := &LoroMap{ptr: ptr}
 	runtime.SetFinalizer(newMap, func(mapValue *LoroMap) {
@@ -1021,7 +992,7 @@ func (list *LoroList) GetNull(index uint32) error {
 	var err C.uint8_t
 	C.loro_list_get_null(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return ErrFailedToGetNull
+		return fmt.Errorf("%w: get null from list", ErrLoroGetFailed)
 	}
 	return nil
 }
@@ -1030,7 +1001,7 @@ func (list *LoroList) GetBool(index uint32) (bool, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_bool(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return false, ErrFailedToGetBool
+		return false, fmt.Errorf("%w: get bool from list", ErrLoroGetFailed)
 	}
 	return ret != 0, nil
 }
@@ -1039,7 +1010,7 @@ func (list *LoroList) GetDouble(index uint32) (float64, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_double(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return 0, ErrFailedToGetDouble
+		return 0, fmt.Errorf("%w: get double from list", ErrLoroGetFailed)
 	}
 	return float64(ret), nil
 }
@@ -1048,7 +1019,7 @@ func (list *LoroList) GetI64(index uint32) (int64, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_i64(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return 0, ErrFailedToGetI64
+		return 0, fmt.Errorf("%w: get i64 from list", ErrLoroGetFailed)
 	}
 	return int64(ret), nil
 }
@@ -1057,7 +1028,7 @@ func (list *LoroList) GetString(index uint32) (string, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_string(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return "", ErrFailedToGetString
+		return "", fmt.Errorf("%w: get string from list", ErrLoroGetFailed)
 	}
 	return C.GoString(ret), nil
 }
@@ -1066,7 +1037,7 @@ func (list *LoroList) GetText(index uint32) (*LoroText, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_text(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetText
+		return nil, fmt.Errorf("%w: get text from list", ErrLoroGetFailed)
 	}
 	text := &LoroText{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(text, func(text *LoroText) {
@@ -1079,7 +1050,7 @@ func (list *LoroList) GetList(index uint32) (*LoroList, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_list(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToList
+		return nil, fmt.Errorf("%w: get list from list", ErrLoroGetFailed)
 	}
 	newList := &LoroList{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newList, func(list *LoroList) {
@@ -1092,7 +1063,7 @@ func (list *LoroList) GetMovableList(index uint32) (*LoroMovableList, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_movable_list(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMovableList
+		return nil, fmt.Errorf("%w: get movable list from list", ErrLoroGetFailed)
 	}
 	newMovableList := &LoroMovableList{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newMovableList, func(movableList *LoroMovableList) {
@@ -1105,7 +1076,7 @@ func (list *LoroList) GetMap(index uint32) (*LoroMap, error) {
 	var err C.uint8_t
 	ret := C.loro_list_get_map(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMap
+		return nil, fmt.Errorf("%w: get map from list", ErrLoroGetFailed)
 	}
 	newMap := &LoroMap{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newMap, func(mapValue *LoroMap) {
@@ -1119,27 +1090,6 @@ func (list *LoroList) IsAttached() bool {
 }
 
 // ----------- Loro Movable List -----------
-var (
-	ErrFailedToPushMovableListNull        = errors.New("failed to push null to movable list")
-	ErrFailedToPushMovableListBool        = errors.New("failed to push bool to movable list")
-	ErrFailedToPushMovableListDouble      = errors.New("failed to push double to movable list")
-	ErrFailedToPushMovableListI64         = errors.New("failed to push i64 to movable list")
-	ErrFailedToPushMovableListString      = errors.New("failed to push string to movable list")
-	ErrFailedToPushMovableListText        = errors.New("failed to push text to movable list")
-	ErrFailedToPushMovableListList        = errors.New("failed to push list to movable list")
-	ErrFailedToPushMovableListMovableList = errors.New("failed to push movable list to movable list")
-	ErrFailedToPushMovableListMap         = errors.New("failed to push map to movable list")
-	ErrFailedToGetMovableListNull         = errors.New("failed to get null from movable list")
-	ErrFailedToGetMovableListBool         = errors.New("failed to get bool from movable list")
-	ErrFailedToGetMovableListDouble       = errors.New("failed to get double from movable list")
-	ErrFailedToGetMovableListI64          = errors.New("failed to get i64 from movable list")
-	ErrFailedToGetMovableListString       = errors.New("failed to get string from movable list")
-	ErrFailedToGetMovableListText         = errors.New("failed to get text from movable list")
-	ErrFailedToGetMovableListList         = errors.New("failed to get list from movable list")
-	ErrFailedToGetMovableListMovableList  = errors.New("failed to get movable list from movable list")
-	ErrFailedToGetMovableListMap          = errors.New("failed to get map from movable list")
-)
-
 type LoroMovableList struct {
 	ptr unsafe.Pointer
 }
@@ -1177,7 +1127,7 @@ func (list *LoroMovableList) PushNull() (interface{}, error) {
 	var err C.uint8_t
 	C.loro_movable_list_push_null(list.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMovableListNull
+		return nil, fmt.Errorf("%w: push null to movable list", ErrLoroInsertFailed)
 	}
 	return nil, nil
 }
@@ -1190,7 +1140,7 @@ func (list *LoroMovableList) PushBool(value bool) (bool, error) {
 	}
 	C.loro_movable_list_push_bool(list.ptr, C.int32_t(boolValue), &err)
 	if err != 0 {
-		return false, ErrFailedToPushMovableListBool
+		return false, fmt.Errorf("%w: push bool to movable list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -1199,7 +1149,7 @@ func (list *LoroMovableList) PushDouble(value float64) (float64, error) {
 	var err C.uint8_t
 	C.loro_movable_list_push_double(list.ptr, C.double(value), &err)
 	if err != 0 {
-		return math.NaN(), ErrFailedToPushMovableListDouble
+		return math.NaN(), fmt.Errorf("%w: push double to movable list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -1208,7 +1158,7 @@ func (list *LoroMovableList) PushI64(value int64) (int64, error) {
 	var err C.uint8_t
 	C.loro_movable_list_push_i64(list.ptr, C.int64_t(value), &err)
 	if err != 0 {
-		return -1, ErrFailedToPushMovableListI64
+		return -1, fmt.Errorf("%w: push i64 to movable list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -1217,7 +1167,7 @@ func (list *LoroMovableList) PushString(value string) (string, error) {
 	var err C.uint8_t
 	C.loro_movable_list_push_string(list.ptr, C.CString(value), &err)
 	if err != 0 {
-		return "", ErrFailedToPushMovableListString
+		return "", fmt.Errorf("%w: push string to movable list", ErrLoroInsertFailed)
 	}
 	return value, nil
 }
@@ -1226,7 +1176,7 @@ func (list *LoroMovableList) PushText(textValue *LoroText) (*LoroText, error) {
 	var err C.uint8_t
 	ptr := C.loro_movable_list_push_text(list.ptr, textValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMovableListText
+		return nil, fmt.Errorf("%w: push text to movable list", ErrLoroInsertFailed)
 	}
 	newText := &LoroText{ptr: ptr}
 	runtime.SetFinalizer(newText, func(text *LoroText) {
@@ -1239,7 +1189,7 @@ func (list *LoroMovableList) PushList(listValue *LoroList) (*LoroList, error) {
 	var err C.uint8_t
 	ptr := C.loro_movable_list_push_list(list.ptr, listValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMovableListList
+		return nil, fmt.Errorf("%w: push list to movable list", ErrLoroInsertFailed)
 	}
 	newList := &LoroList{ptr: ptr}
 	runtime.SetFinalizer(newList, func(list *LoroList) {
@@ -1252,7 +1202,7 @@ func (list *LoroMovableList) PushMovableList(movableList *LoroMovableList) (*Lor
 	var err C.uint8_t
 	ptr := C.loro_movable_list_push_movable_list(list.ptr, movableList.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMovableListMovableList
+		return nil, fmt.Errorf("%w: push movable list to movable list", ErrLoroInsertFailed)
 	}
 	newMovableList := &LoroMovableList{ptr: ptr}
 	runtime.SetFinalizer(newMovableList, func(movableList *LoroMovableList) {
@@ -1265,7 +1215,7 @@ func (list *LoroMovableList) PushMap(mapValue *LoroMap) (*LoroMap, error) {
 	var err C.uint8_t
 	ptr := C.loro_movable_list_push_map(list.ptr, mapValue.ptr, &err)
 	if err != 0 {
-		return nil, ErrFailedToPushMovableListMap
+		return nil, fmt.Errorf("%w: push map to movable list", ErrLoroInsertFailed)
 	}
 	newMap := &LoroMap{ptr: ptr}
 	runtime.SetFinalizer(newMap, func(mapValue *LoroMap) {
@@ -1290,7 +1240,7 @@ func (list *LoroMovableList) GetNull(index uint32) error {
 	var err C.uint8_t
 	C.loro_movable_list_get_null(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return ErrFailedToGetMovableListNull
+		return fmt.Errorf("%w: get null from movable list", ErrLoroGetFailed)
 	}
 	return nil
 }
@@ -1299,7 +1249,7 @@ func (list *LoroMovableList) GetBool(index uint32) (bool, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_bool(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return false, ErrFailedToGetMovableListBool
+		return false, fmt.Errorf("%w: get bool from movable list", ErrLoroGetFailed)
 	}
 	return ret != 0, nil
 }
@@ -1308,7 +1258,7 @@ func (list *LoroMovableList) GetDouble(index uint32) (float64, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_double(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return 0, ErrFailedToGetMovableListDouble
+		return 0, fmt.Errorf("%w: get double from movable list", ErrLoroGetFailed)
 	}
 	return float64(ret), nil
 }
@@ -1317,7 +1267,7 @@ func (list *LoroMovableList) GetI64(index uint32) (int64, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_i64(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return 0, ErrFailedToGetMovableListI64
+		return 0, fmt.Errorf("%w: get i64 from movable list", ErrLoroGetFailed)
 	}
 	return int64(ret), nil
 }
@@ -1326,7 +1276,7 @@ func (list *LoroMovableList) GetString(index uint32) (string, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_string(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return "", ErrFailedToGetMovableListString
+		return "", fmt.Errorf("%w: get string from movable list", ErrLoroGetFailed)
 	}
 	return C.GoString(ret), nil
 }
@@ -1335,7 +1285,7 @@ func (list *LoroMovableList) GetText(index uint32) (*LoroText, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_text(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMovableListText
+		return nil, fmt.Errorf("%w: get text from movable list", ErrLoroGetFailed)
 	}
 	text := &LoroText{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(text, func(text *LoroText) {
@@ -1348,7 +1298,7 @@ func (list *LoroMovableList) GetList(index uint32) (*LoroList, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_list(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMovableListList
+		return nil, fmt.Errorf("%w: get list from movable list", ErrLoroGetFailed)
 	}
 	newList := &LoroList{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newList, func(list *LoroList) {
@@ -1361,7 +1311,7 @@ func (list *LoroMovableList) GetMovableList(index uint32) (*LoroMovableList, err
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_movable_list(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMovableListMovableList
+		return nil, fmt.Errorf("%w: get movable list from movable list", ErrLoroGetFailed)
 	}
 	newMovableList := &LoroMovableList{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newMovableList, func(movableList *LoroMovableList) {
@@ -1374,7 +1324,7 @@ func (list *LoroMovableList) GetMap(index uint32) (*LoroMap, error) {
 	var err C.uint8_t
 	ret := C.loro_movable_list_get_map(list.ptr, C.uint32_t(index), &err)
 	if err != 0 {
-		return nil, ErrFailedToGetMovableListMap
+		return nil, fmt.Errorf("%w: get map from movable list", ErrLoroGetFailed)
 	}
 	newMap := &LoroMap{ptr: unsafe.Pointer(ret)}
 	runtime.SetFinalizer(newMap, func(mapValue *LoroMap) {
@@ -1625,12 +1575,6 @@ const (
 	LIST_DIFF_ITEM_RETAIN ListDiffItemType = 2
 )
 
-var (
-	ErrFailedGetInsertedThings = errors.New("failed to get inserted things")
-	ErrFailedGetDeleteCount    = errors.New("failed to get delete count")
-	ErrFailedGetRetainCount    = errors.New("failed to get retain count")
-)
-
 type ListDiffItemType int32
 
 type ListDiffItem struct {
@@ -1650,7 +1594,7 @@ func (li *ListDiffItem) GetInserted() ([]*LoroContainerOrValue, bool, error) {
 	var is_move C.uint8_t
 	inserted := C.list_diff_item_get_insert(li.ptr, &is_move, &err)
 	if err != 0 {
-		return nil, false, ErrFailedGetInsertedThings
+		return nil, false, fmt.Errorf("%w: get inserted from list diff item", ErrLoroGetFailed)
 	}
 	vec := &RustPtrVec{ptr: inserted}
 	items := make([]*LoroContainerOrValue, vec.GetLen())
@@ -1669,7 +1613,7 @@ func (li *ListDiffItem) GetDeleteCount() (uint32, error) {
 	var err C.uint8_t
 	count := C.list_diff_item_get_delete_count(li.ptr, &err)
 	if err != 0 {
-		return 0, ErrFailedGetDeleteCount
+		return 0, fmt.Errorf("%w: get delete count from list diff item", ErrLoroGetFailed)
 	}
 	return uint32(count), nil
 }
@@ -1678,7 +1622,7 @@ func (li *ListDiffItem) GetRetainCount() (uint32, error) {
 	var err C.uint8_t
 	count := C.list_diff_item_get_retain_count(li.ptr, &err)
 	if err != 0 {
-		return 0, ErrFailedGetRetainCount
+		return 0, fmt.Errorf("%w: get retain count from list diff item", ErrLoroGetFailed)
 	}
 	return uint32(count), nil
 }
@@ -1730,12 +1674,6 @@ const (
 	LORO_CONTAINER_ID    LoroValueOrContainerType = 9
 )
 
-var (
-	ErrGetLoroValue           = errors.New("failed to get loro value")
-	ErrFailedConvertLoroValue = errors.New("failed to convert loro value")
-	ErrDumpJson               = errors.New("failed to get loro value json")
-)
-
 type LoroValue struct {
 	ptr unsafe.Pointer
 }
@@ -1743,7 +1681,7 @@ type LoroValue struct {
 func NewLoroValueFromJson(json string) (*LoroValue, error) {
 	ptr := C.loro_value_from_json(C.CString(json))
 	if ptr == nil {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: from json \"%s\"", ErrLoroDecodeFailed, json)
 	}
 	lv := &LoroValue{ptr: ptr}
 	runtime.SetFinalizer(lv, func(lv *LoroValue) {
@@ -1789,7 +1727,7 @@ func NewLoroValue(value interface{}) (*LoroValue, error) {
 		}
 		return NewLoroValueMap(m), nil
 	default:
-		return nil, ErrFailedConvertLoroValue
+		return nil, fmt.Errorf("%w: convert %T to loro value", ErrLoroEncodeFailed, value)
 	}
 }
 
@@ -1910,7 +1848,7 @@ func (lv *LoroValue) GetBool() (bool, error) {
 	var err C.uint8_t
 	ret := C.loro_value_get_bool(lv.ptr, &err)
 	if err != 0 {
-		return false, ErrGetLoroValue
+		return false, fmt.Errorf("%w: get bool from loro value", ErrLoroGetFailed)
 	}
 	return ret != 0, nil
 }
@@ -1919,7 +1857,7 @@ func (lv *LoroValue) GetDouble() (float64, error) {
 	var err C.uint8_t
 	ret := C.loro_value_get_double(lv.ptr, &err)
 	if err != 0 {
-		return 0, ErrGetLoroValue
+		return 0, fmt.Errorf("%w: get double from loro value", ErrLoroGetFailed)
 	}
 	return float64(ret), nil
 }
@@ -1928,7 +1866,7 @@ func (lv *LoroValue) GetI64() (int64, error) {
 	var err C.uint8_t
 	ret := C.loro_value_get_i64(lv.ptr, &err)
 	if err != 0 {
-		return 0, ErrGetLoroValue
+		return 0, fmt.Errorf("%w: get i64 from loro value", ErrLoroGetFailed)
 	}
 	return int64(ret), nil
 }
@@ -1937,7 +1875,7 @@ func (lv *LoroValue) GetString() (string, error) {
 	var err C.uint8_t
 	ret := C.loro_value_get_string(lv.ptr, &err)
 	if err != 0 {
-		return "", ErrGetLoroValue
+		return "", fmt.Errorf("%w: get string from loro value", ErrLoroGetFailed)
 	}
 	return C.GoString(ret), nil
 }
@@ -1946,7 +1884,7 @@ func (lv *LoroValue) GetMap() (map[string]*LoroValue, error) {
 	var err C.uint8_t
 	ptr := C.loro_value_get_map(lv.ptr, &err)
 	if err != 0 {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get map from loro value", ErrLoroGetFailed)
 	}
 	ptrVec := &RustPtrVec{ptr: ptr}
 	items := make(map[string]*LoroValue)
@@ -1986,7 +1924,7 @@ func (lv *LoroValue) GetList() ([]*LoroValue, error) {
 	var err C.uint8_t
 	ptr := C.loro_value_get_list(lv.ptr, &err)
 	if err != 0 {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get list from loro value", ErrLoroGetFailed)
 	}
 	ptrVec := &RustPtrVec{ptr: ptr}
 	items := make([]*LoroValue, ptrVec.GetLen())
@@ -2021,7 +1959,7 @@ func (lv *LoroValue) GetBinary() (*RustBytesVec, error) {
 	var err C.uint8_t
 	ptr := C.loro_value_get_binary(lv.ptr, &err)
 	if err != 0 {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get binary from loro value", ErrLoroGetFailed)
 	}
 	bytesVec := &RustBytesVec{ptr: ptr}
 	runtime.SetFinalizer(bytesVec, func(bytesVec *RustBytesVec) {
@@ -2034,7 +1972,7 @@ func (lv *LoroValue) GetContainerId() (*ContainerId, error) {
 	var err C.uint8_t
 	ptr := C.loro_value_get_container_id(lv.ptr, &err)
 	if err != 0 {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get container id from loro value", ErrLoroGetFailed)
 	}
 	cid := &ContainerId{ptr: ptr}
 	runtime.SetFinalizer(cid, func(cid *ContainerId) {
@@ -2046,7 +1984,7 @@ func (lv *LoroValue) GetContainerId() (*ContainerId, error) {
 func (lv *LoroValue) ToJson() (string, error) {
 	ptr := C.loro_value_to_json(lv.ptr)
 	if ptr == nil {
-		return "", ErrDumpJson
+		return "", fmt.Errorf("%w: dump json from loro value", ErrLoroEncodeFailed)
 	}
 	return C.GoString(ptr), nil
 }
@@ -2054,12 +1992,13 @@ func (lv *LoroValue) ToJson() (string, error) {
 // -------------- Loro Container --------------
 
 const (
-	LORO_CONTAINER_LIST         = 0
-	LORO_CONTAINER_MAP          = 1
+	LORO_CONTAINER_MAP          = 0
+	LORO_CONTAINER_LIST         = 1
 	LORO_CONTAINER_TEXT         = 2
-	LORO_CONTAINER_MOVABLE_LIST = 3
-	LORO_CONTAINER_TREE         = 4
-	LORO_CONTAINER_UNKNOWN      = 5
+	LORO_CONTAINER_TREE         = 3
+	LORO_CONTAINER_MOVABLE_LIST = 4
+	LORO_CONTAINER_COUNTER      = 5
+	LORO_CONTAINER_UNKNOWN      = 6
 )
 
 type LoroContainerType int32
@@ -2080,7 +2019,7 @@ func (c *LoroContainer) GetType() LoroContainerType {
 func (c *LoroContainer) GetList() (*LoroList, error) {
 	ptr := C.loro_container_get_list(c.ptr)
 	if ptr == nil {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get list from loro container", ErrLoroGetFailed)
 	}
 	list := &LoroList{ptr: ptr}
 	runtime.SetFinalizer(list, func(list *LoroList) {
@@ -2092,7 +2031,7 @@ func (c *LoroContainer) GetList() (*LoroList, error) {
 func (c *LoroContainer) GetMap() (*LoroMap, error) {
 	ptr := C.loro_container_get_map(c.ptr)
 	if ptr == nil {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get map from loro container", ErrLoroGetFailed)
 	}
 	m := &LoroMap{ptr: ptr}
 	runtime.SetFinalizer(m, func(m *LoroMap) {
@@ -2104,7 +2043,7 @@ func (c *LoroContainer) GetMap() (*LoroMap, error) {
 func (c *LoroContainer) GetText() (*LoroText, error) {
 	ptr := C.loro_container_get_text(c.ptr)
 	if ptr == nil {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get text from loro container", ErrLoroGetFailed)
 	}
 	text := &LoroText{ptr: ptr}
 	runtime.SetFinalizer(text, func(text *LoroText) {
@@ -2116,7 +2055,7 @@ func (c *LoroContainer) GetText() (*LoroText, error) {
 func (c *LoroContainer) GetMovableList() (*LoroMovableList, error) {
 	ptr := C.loro_container_get_movable_list(c.ptr)
 	if ptr == nil {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get movable list from loro container", ErrLoroGetFailed)
 	}
 	list := &LoroMovableList{ptr: ptr}
 	runtime.SetFinalizer(list, func(list *LoroMovableList) {
@@ -2128,7 +2067,7 @@ func (c *LoroContainer) GetMovableList() (*LoroMovableList, error) {
 func (c *LoroContainer) GetTree() (*LoroTree, error) {
 	ptr := C.loro_container_get_tree(c.ptr)
 	if ptr == nil {
-		return nil, ErrGetLoroValue
+		return nil, fmt.Errorf("%w: get tree from loro container", ErrLoroGetFailed)
 	}
 	tree := &LoroTree{ptr: ptr}
 	runtime.SetFinalizer(tree, func(tree *LoroTree) {
@@ -2142,11 +2081,6 @@ func (c *LoroContainer) GetTree() (*LoroTree, error) {
 const (
 	LORO_VALUE_TYPE     = 0
 	LORO_CONTAINER_TYPE = 1
-)
-
-var (
-	ErrFailedGetValue     = errors.New("failed to get loro value")
-	ErrFailedGetContainer = errors.New("failed to get loro container")
 )
 
 type LoroContainerValueType int32
@@ -2167,7 +2101,7 @@ func (lv *LoroContainerOrValue) GetType() LoroContainerType {
 func (lv *LoroContainerOrValue) GetContainer() (*LoroContainer, error) {
 	ptr := C.loro_container_value_get_container(lv.ptr)
 	if ptr == nil {
-		return nil, ErrFailedGetContainer
+		return nil, fmt.Errorf("%w: get container from loro container or value", ErrLoroGetFailed)
 	}
 	container := &LoroContainer{ptr: ptr}
 	runtime.SetFinalizer(container, func(container *LoroContainer) {
@@ -2179,11 +2113,98 @@ func (lv *LoroContainerOrValue) GetContainer() (*LoroContainer, error) {
 func (lv *LoroContainerOrValue) GetValue() (*LoroValue, error) {
 	ptr := C.loro_container_value_get_value(lv.ptr)
 	if ptr == nil {
-		return nil, ErrFailedGetValue
+		return nil, fmt.Errorf("%w: get value from loro container or value", ErrLoroGetFailed)
 	}
 	value := &LoroValue{ptr: ptr}
 	runtime.SetFinalizer(value, func(value *LoroValue) {
 		value.Destroy()
 	})
 	return value, nil
+}
+
+// ----------- Import Blob Meta --------------
+
+const (
+	ENCODE_BLOB_SNAPSHOT          = 0
+	ENCODE_BLOB_OUTDATED_SNAPSHOT = 1
+	ENCODE_BLOB_SHALLOW_SNAPSHOT  = 2
+	ENCODE_BLOB_OUTDATED_RLE      = 3
+	ENCODE_BLOB_UPDATES           = 4
+)
+
+type EncodeBlobMode int32
+
+type ImportBlobMeta struct {
+	Mode           EncodeBlobMode
+	PartialStartVV *VersionVector
+	PartialEndVV   *VersionVector
+	StartFrontiers *Frontiers
+	StartTimestamp int64
+	EndTimestamp   int64
+	ChangeNumber   uint32
+}
+
+func InspectImport[T *RustBytesVec | []byte](importBlob T, checkChecksum bool) (*ImportBlobMeta, error) {
+	var err C.uint8_t
+	var psvvPtr unsafe.Pointer
+	var pevvPtr unsafe.Pointer
+	var sfPtr unsafe.Pointer
+	var mode C.uint8_t
+	var st C.int64_t
+	var et C.int64_t
+	var cn C.uint32_t
+
+	var vec *RustBytesVec
+	if bytes, ok := any(importBlob).([]byte); ok {
+		vec = NewRustBytesVec(bytes)
+		defer vec.Destroy()
+	} else {
+		vec = (any)(importBlob).(*RustBytesVec)
+	}
+
+	checkChecksumI := 0
+	if checkChecksum {
+		checkChecksumI = 1
+	}
+
+	C.loro_doc_decode_import_blob_meta(
+		vec.ptr,
+		C.int32_t(checkChecksumI),
+		&err,
+		unsafe.Pointer(&psvvPtr),
+		unsafe.Pointer(&pevvPtr),
+		unsafe.Pointer(&sfPtr),
+		&mode,
+		&st,
+		&et,
+		&cn,
+	)
+	if err != 0 {
+		return nil, ErrInspectImportFailed
+	}
+
+	psvv := &VersionVector{ptr: psvvPtr}
+	runtime.SetFinalizer(psvv, func(psvv *VersionVector) {
+		psvv.Destroy()
+	})
+
+	pevv := &VersionVector{ptr: pevvPtr}
+	runtime.SetFinalizer(pevv, func(pevv *VersionVector) {
+		pevv.Destroy()
+	})
+
+	sf := &Frontiers{ptr: sfPtr}
+	runtime.SetFinalizer(sf, func(sf *Frontiers) {
+		sf.Destroy()
+	})
+
+	return &ImportBlobMeta{
+		Mode:           EncodeBlobMode(mode),
+		PartialStartVV: psvv,
+		PartialEndVV:   pevv,
+		StartFrontiers: sf,
+		StartTimestamp: int64(st),
+		EndTimestamp:   int64(et),
+		ChangeNumber:   uint32(cn),
+	}, nil
 }

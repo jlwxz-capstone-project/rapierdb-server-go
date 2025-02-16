@@ -1,6 +1,7 @@
 mod loro_container;
 mod loro_container_value;
 mod loro_diff_event;
+mod loro_doc;
 mod loro_list;
 mod loro_list_diff_item;
 mod loro_map;
@@ -24,6 +25,7 @@ use std::os::raw::c_char;
 pub use loro_container::*;
 pub use loro_container_value::*;
 pub use loro_diff_event::*;
+pub use loro_doc::*;
 pub use loro_list::*;
 pub use loro_list_diff_item::*;
 pub use loro_map::*;

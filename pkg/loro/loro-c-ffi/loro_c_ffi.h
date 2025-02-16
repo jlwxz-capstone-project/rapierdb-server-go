@@ -6,20 +6,6 @@ typedef struct CLayoutID {
   uint32_t counter;
 } CLayoutID;
 
-extern void* create_loro_doc();
-extern void* get_text(void* doc_ptr, char* id_ptr);
-extern void* get_list(void* doc_ptr, char* id_ptr);
-extern void* get_movable_list(void* doc_ptr, char* id_ptr);
-extern void* get_map(void* doc_ptr, char* id_ptr);
-
-extern void* export_loro_doc_snapshot(void* doc_ptr);
-extern void* export_loro_doc_all_updates(void* doc_ptr);
-extern void* export_loro_doc_updates_from(void* doc_ptr, void* from_ptr);
-extern void* export_loro_doc_updates_till(void* doc_ptr, void* till_ptr);
-extern void loro_doc_import(void* doc_ptr, void* vec_ptr);
-
-extern void destroy_loro_doc(void* ptr);
-
 extern uint32_t get_vec_len(void* ptr);
 extern uint32_t get_vec_cap(void* ptr);
 extern void* get_vec_data(void* ptr);
@@ -58,6 +44,31 @@ extern void destroy_text_delta(void* ptr);
 extern void destroy_map_delta(void* ptr);
 extern void destroy_tree_diff(void* ptr);
 extern int diff_event_get_type(void* ptr);
+
+// Loro Doc
+extern void* create_loro_doc();
+extern void destroy_loro_doc(void* ptr);
+extern void* get_text(void* doc_ptr, char* id_ptr);
+extern void* get_list(void* doc_ptr, char* id_ptr);
+extern void* get_movable_list(void* doc_ptr, char* id_ptr);
+extern void* get_map(void* doc_ptr, char* id_ptr);
+extern void* export_loro_doc_snapshot(void* doc_ptr);
+extern void* export_loro_doc_all_updates(void* doc_ptr);
+extern void* export_loro_doc_updates_from(void* doc_ptr, void* from_ptr);
+extern void* export_loro_doc_updates_till(void* doc_ptr, void* till_ptr);
+extern void loro_doc_import(void* doc_ptr, void* vec_ptr);
+extern void loro_doc_decode_import_blob_meta(
+  void* blob,
+  int check_checksum,
+  uint8_t* err,
+  void* psvv,
+  void* pevv,
+  void* sf,
+  uint8_t* mode,
+  int64_t* start_timestamp,
+  int64_t* end_timestamp,
+  uint32_t* change_num
+);
 
 // Loro List Diff Item
 extern void destroy_list_diff_item(void* ptr);

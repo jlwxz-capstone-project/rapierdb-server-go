@@ -1,25 +1,26 @@
-schema = Schema.database({
-  name: "test",
+Schema.database({
+  name: "testDB",
   version: "1.0.0",
   collections: {
     users: Schema.collection({
       name: "users",
       docSchema: Schema.doc({
-        userId: Schema.string().unique(),
-        username: Schema.string(),
-        email: Schema.string(),
-        passwordHash: Schema.string(),
+        id: Schema.string().unique().index("hash"),
+        name: Schema.string().nullable(),
+        age: Schema.number().index("range"),
+        isActive: Schema.boolean(),
+        tags: Schema.list(Schema.string()),
+        profile: Schema.object({
+          address: Schema.string(),
+          phone: Schema.string().nullable(),
+        }),
+        createdAt: Schema.date(),
+        type: Schema.enum(["admin", "user", "guest"]),
+        description: Schema.text().index("fulltext"),
+        preferences: Schema.record(Schema.string()),
+        categories: Schema.tree(Schema.string()),
+        sortedItems: Schema.movableList(Schema.string()),
       }),
-    }),
-    postMetas: Schema.collection({
-      postId: Schema.string().unique(),
-      title: Schema.string(),
-      caption: Schema.string(),
-      authorId: Schema.string(),
-    }),
-    postContents: Schema.collection({
-      postId: Schema.string(),
-      content: Schema.string(),
     }),
   },
 });

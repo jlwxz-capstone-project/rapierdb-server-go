@@ -12,12 +12,12 @@ pub extern "C" fn loro_container_get_type(ptr: *mut Container) -> u8 {
     unsafe {
         let container = &*ptr;
         match container {
-            Container::List(..) => 0,
-            Container::Map(..) => 1,
+            Container::Map(..) => 0,
+            Container::List(..) => 1,
             Container::Text(..) => 2,
-            Container::MovableList(..) => 3,
-            Container::Tree(..) => 4,
-            Container::Unknown(..) => 5,
+            Container::Tree(..) => 3,
+            Container::MovableList(..) => 4,
+            Container::Unknown(..) => 6,
         }
     }
 }

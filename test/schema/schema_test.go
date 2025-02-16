@@ -2,83 +2,18 @@ package main
 
 import (
 	_ "embed"
-	"encoding/json"
-	"os"
 	"testing"
 
-	"github.com/dop251/goja"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/schema"
 	"github.com/stretchr/testify/assert"
 )
 
-func readSchemaBuilderScript() string {
-	content, err := os.ReadFile("../../pkg/schema/schema_builder.js")
-	if err != nil {
-		return ""
-	}
-	return string(content)
-}
+//go:embed test_schema1.js
+var testSchema1 string
 
 func TestNewDatabaseSchemaFromJSON(t *testing.T) {
-	// 准备测试数据
-	script := readSchemaBuilderScript()
-	vm := goja.New()
-	program, err := goja.Compile("schemaBuilder", script, true)
-	if err != nil {
-		t.Fatalf("Failed to compile schema builder: %v", err)
-	}
-	vm.RunProgram(program)
-
-	// 创建一个复杂的 schema 用于测试
-	_, err = vm.RunString(`
-		window = { Schema }
-		var schema = Schema.database({
-			name: "testDB",
-			version: "1.0.0",
-			collections: {
-				users: Schema.collection({
-					name: "users",
-					docSchema: Schema.doc({
-						id: Schema.string().unique().index("hash"),
-						name: Schema.string().nullable(),
-						age: Schema.number().index("range"),
-						isActive: Schema.boolean(),
-						tags: Schema.list(Schema.string()),
-						profile: Schema.object({
-							address: Schema.string(),
-							phone: Schema.string().nullable(),
-						}),
-						createdAt: Schema.date(),
-						type: Schema.enum(["admin", "user", "guest"]),
-						description: Schema.text().index("fulltext"),
-						preferences: Schema.record(Schema.string()),
-						categories: Schema.tree(Schema.string()),
-						sortedItems: Schema.movableList(Schema.string()),
-					}),
-				}),
-			},
-		})
-		var schemaJson = JSON.stringify(schema.toJSON())
-	`)
-	if err != nil {
-		t.Fatalf("Failed to run schema builder script: %v", err)
-	}
-
-	// 获取生成的 JSON
-	schemaJSON := vm.Get("schemaJson").String()
-
-	// 解析JSON字符串为map
-	var schemaData map[string]interface{}
-	err = json.Unmarshal([]byte(schemaJSON), &schemaData)
-	if err != nil {
-		t.Fatalf("Failed to parse schema JSON: %v", err)
-	}
-
-	// 使用NewDatabaseSchemaFromJSON解析schema
-	dbSchema, err := schema.NewDatabaseSchemaFromJSON(schemaData)
-	if err != nil {
-		t.Fatalf("Failed to parse database schema: %v", err)
-	}
+	dbSchema, err := schema.NewDatabaseSchemaFromJs(testSchema1)
+	assert.NoError(t, err)
 
 	// 验证解析结果
 	assert.Equal(t, schema.DATABASE_SCHEMA, dbSchema.Type)
