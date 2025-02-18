@@ -6,15 +6,9 @@ import (
 	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
-
-func Must[T any](obj T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
 
 // 基础文档操作测试
 func TestLoroDocBasic(t *testing.T) {
@@ -28,8 +22,8 @@ func TestLoroDocBasic(t *testing.T) {
 		doc2.Import(snapshot.Bytes())
 		doc3 := loro.NewLoroDoc()
 		doc3.Import(allUpdates.Bytes())
-		assert.Equal(t, Must(doc2.GetText("test").ToString()), "Hello, World!")
-		assert.Equal(t, Must(doc3.GetText("test").ToString()), "Hello, World!")
+		assert.Equal(t, util.Must(doc2.GetText("test").ToString()), "Hello, World!")
+		assert.Equal(t, util.Must(doc3.GetText("test").ToString()), "Hello, World!")
 	})
 
 	t.Run("Fork 文档", func(t *testing.T) {
@@ -41,12 +35,12 @@ func TestLoroDocBasic(t *testing.T) {
 		fork1 := doc.Fork()
 		fork2 := doc.ForkAt(f)
 
-		assert.Equal(t, Must(fork1.GetText("test").ToString()), "Hello World! Again!")
-		assert.Equal(t, Must(fork2.GetText("test").ToString()), "Hello World!")
+		assert.Equal(t, util.Must(fork1.GetText("test").ToString()), "Hello World! Again!")
+		assert.Equal(t, util.Must(fork2.GetText("test").ToString()), "Hello World!")
 
 		// 对 fork 的修改应该不影响原文档
 		fork1.GetText("test").InsertText("xxx", 0)
-		assert.Equal(t, Must(doc.GetText("test").ToString()), "Hello World! Again!")
+		assert.Equal(t, util.Must(doc.GetText("test").ToString()), "Hello World! Again!")
 	})
 }
 
@@ -56,9 +50,9 @@ func TestLoroText(t *testing.T) {
 		doc := loro.NewLoroDoc()
 		text := doc.GetText("test")
 		text.UpdateText("Hello, World!")
-		assert.Equal(t, "Hello, World!", Must(text.ToString()), "文本内容应该匹配")
+		assert.Equal(t, "Hello, World!", util.Must(text.ToString()), "文本内容应该匹配")
 		text.UpdateText("Hello, World! Again!")
-		assert.Equal(t, "Hello, World! Again!", Must(text.ToString()), "文本内容应该匹配")
+		assert.Equal(t, "Hello, World! Again!", util.Must(text.ToString()), "文本内容应该匹配")
 	})
 
 	t.Run("文本指定位置插入", func(t *testing.T) {
@@ -66,7 +60,7 @@ func TestLoroText(t *testing.T) {
 		text := doc.GetText("test")
 		text.InsertText("World!", 0)
 		text.InsertText("Hello, ", 0)
-		assert.Equal(t, "Hello, World!", Must(text.ToString()))
+		assert.Equal(t, "Hello, World!", util.Must(text.ToString()))
 	})
 
 	t.Run("UTF-8文本操作", func(t *testing.T) {
@@ -79,7 +73,7 @@ func TestLoroText(t *testing.T) {
 		text2 := doc.GetText("test2")
 		text2.InsertTextUtf8("你好", 0)
 		text2.InsertTextUtf8("世界", 6)
-		assert.Equal(t, "你好世界", Must(text2.ToString()))
+		assert.Equal(t, "你好世界", util.Must(text2.ToString()))
 	})
 }
 
@@ -215,6 +209,6 @@ func TestLoroInspectImport(t *testing.T) {
 	text := doc.GetText("test")
 	text.UpdateText("Hello, World!")
 	snapshot := doc.ExportSnapshot()
-	meta := Must(loro.InspectImport(snapshot, true))
+	meta := util.Must(loro.InspectImport(snapshot, true))
 	fmt.Printf("meta: %v\n", meta)
 }

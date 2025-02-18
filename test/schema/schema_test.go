@@ -22,13 +22,13 @@ func TestNewDatabaseSchemaFromJSON(t *testing.T) {
 	assert.Len(t, dbSchema.Collections, 1)
 
 	// 验证users集合
-	usersCollection, ok := dbSchema.Collections["users"].(*schema.CollectionSchema)
+	usersCollection, ok := dbSchema.Collections["users"]
 	assert.True(t, ok)
 	assert.Equal(t, schema.COLLECTION_SCHEMA, usersCollection.Type)
 	assert.Equal(t, "users", usersCollection.Name)
 
 	// 验证文档schema的字段
-	fields := usersCollection.DocSchema
+	fields := usersCollection.DocSchema.Fields
 
 	// 验证id字段
 	idField, ok := fields["id"].(*schema.StringSchema)

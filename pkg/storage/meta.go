@@ -51,3 +51,16 @@ func StorageMetaFromBinary(data []byte) (*StorageMeta, error) {
 	}
 	return &meta, nil
 }
+
+func (s *StorageMeta) GetCollectionNames(databaseName string) []string {
+	dbMeta, ok := s.DatabaseMetas[databaseName]
+	if !ok {
+		return nil
+	}
+
+	collections := make([]string, 0, len(dbMeta.Schema.Collections))
+	for collectionName := range dbMeta.Schema.Collections {
+		collections = append(collections, collectionName)
+	}
+	return collections
+}

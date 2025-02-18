@@ -66,15 +66,15 @@ type EnumSchema struct {
 }
 
 type ListSchema struct {
-	Type       SchemaType  `json:"type"`
-	Nullable   bool        `json:"nullable"`
-	ItemSchema interface{} `json:"itemSchema"`
+	Type       SchemaType `json:"type"`
+	Nullable   bool       `json:"nullable"`
+	ItemSchema any        `json:"itemSchema"`
 }
 
 type MovableListSchema struct {
-	Type       SchemaType  `json:"type"`
-	Nullable   bool        `json:"nullable"`
-	ItemSchema interface{} `json:"itemSchema"`
+	Type       SchemaType `json:"type"`
+	Nullable   bool       `json:"nullable"`
+	ItemSchema any        `json:"itemSchema"`
 }
 
 type NumberSchema struct {
@@ -85,15 +85,15 @@ type NumberSchema struct {
 }
 
 type ObjectSchema struct {
-	Type     SchemaType             `json:"type"`
-	Nullable bool                   `json:"nullable"`
-	Shape    map[string]interface{} `json:"shape"`
+	Type     SchemaType     `json:"type"`
+	Nullable bool           `json:"nullable"`
+	Shape    map[string]any `json:"shape"`
 }
 
 type RecordSchema struct {
-	Type        SchemaType  `json:"type"`
-	Nullable    bool        `json:"nullable"`
-	ValueSchema interface{} `json:"valueSchema"`
+	Type        SchemaType `json:"type"`
+	Nullable    bool       `json:"nullable"`
+	ValueSchema any        `json:"valueSchema"`
 }
 
 type StringSchema struct {
@@ -110,27 +110,27 @@ type TextSchema struct {
 }
 
 type TreeSchema struct {
-	Type           SchemaType  `json:"type"`
-	Nullable       bool        `json:"nullable"`
-	TreeNodeSchema interface{} `json:"treeNodeSchema"`
+	Type           SchemaType `json:"type"`
+	Nullable       bool       `json:"nullable"`
+	TreeNodeSchema any        `json:"treeNodeSchema"`
 }
 
 type DocSchema struct {
-	Type   SchemaType             `json:"type"`
-	Fields map[string]interface{} `json:"fields"`
+	Type   SchemaType     `json:"type"`
+	Fields map[string]any `json:"fields"`
 }
 
 type CollectionSchema struct {
-	Type      SchemaType             `json:"type"`
-	Name      string                 `json:"name"`
-	DocSchema map[string]interface{} `json:"docSchema"`
+	Type      SchemaType `json:"type"`
+	Name      string     `json:"name"`
+	DocSchema *DocSchema `json:"docSchema"`
 }
 
 type DatabaseSchema struct {
-	Type        SchemaType             `json:"type"`
-	Name        string                 `json:"name"`
-	Version     string                 `json:"version"`
-	Collections map[string]interface{} `json:"collections"`
+	Type        SchemaType                   `json:"type"`
+	Name        string                       `json:"name"`
+	Version     string                       `json:"version"`
+	Collections map[string]*CollectionSchema `json:"collections"`
 }
 
 //go:embed schema_builder.js
@@ -143,7 +143,7 @@ func NewDatabaseSchemaFromJs(js string) (*DatabaseSchema, error) {
 	js = schemaBuilderScript + "\nvar schema = " + strings.Trim(js, "\n ") + "\nschema = schema.toJSON()"
 	vm.RunString(js)
 	ret := vm.Get("schema").Export()
-	jsonSchema, ok := ret.(map[string]interface{})
+	jsonSchema, ok := ret.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid schema", ErrInvalidDatabaseSchema)
 	}
@@ -154,7 +154,7 @@ func NewDatabaseSchemaFromJs(js string) (*DatabaseSchema, error) {
 	return schema, nil
 }
 
-func NewDatabaseSchemaFromJSON(data map[string]interface{}) (*DatabaseSchema, error) {
+func NewDatabaseSchemaFromJSON(data map[string]any) (*DatabaseSchema, error) {
 	schemaType, ok := data["type"].(string)
 	if !ok || SchemaType(schemaType) != DATABASE_SCHEMA {
 		return nil, fmt.Errorf("%w: `type` of database schema must be \"%s\"", ErrInvalidDatabaseSchema, DATABASE_SCHEMA)
@@ -170,16 +170,16 @@ func NewDatabaseSchemaFromJSON(data map[string]interface{}) (*DatabaseSchema, er
 		return nil, fmt.Errorf("%w: `version` of database schema is required", ErrInvalidDatabaseSchema)
 	}
 
-	collectionsData, ok := data["collections"].(map[string]interface{})
+	collectionsData, ok := data["collections"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: `collections` of database schema is required", ErrInvalidDatabaseSchema)
 	}
 
-	collections := make(map[string]interface{})
+	collections := make(map[string]*CollectionSchema)
 	for key, val := range collectionsData {
-		collectionData, ok := val.(map[string]interface{})
+		collectionData, ok := val.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("%w: `collections` must be a object (go map[string]interface{})", ErrInvalidDatabaseSchema)
+			return nil, fmt.Errorf("%w: `collections` must be a object (go map[string]any)", ErrInvalidDatabaseSchema)
 		}
 		collection, err := parseCollectionSchema(collectionData)
 		if err != nil {
@@ -196,7 +196,7 @@ func NewDatabaseSchemaFromJSON(data map[string]interface{}) (*DatabaseSchema, er
 	}, nil
 }
 
-func parseCollectionSchema(data map[string]interface{}) (*CollectionSchema, error) {
+func parseCollectionSchema(data map[string]any) (*CollectionSchema, error) {
 	schemaType, ok := data["type"].(string)
 	if !ok || SchemaType(schemaType) != COLLECTION_SCHEMA {
 		return nil, fmt.Errorf("%w: invalid collection schema type", ErrInvalidDatabaseSchema)
@@ -207,7 +207,7 @@ func parseCollectionSchema(data map[string]interface{}) (*CollectionSchema, erro
 		return nil, fmt.Errorf("%w: collection name is required", ErrInvalidDatabaseSchema)
 	}
 
-	docSchemaData, ok := data["docSchema"].(map[string]interface{})
+	docSchemaData, ok := data["docSchema"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid doc schema", ErrInvalidDatabaseSchema)
 	}
@@ -220,24 +220,24 @@ func parseCollectionSchema(data map[string]interface{}) (*CollectionSchema, erro
 	return &CollectionSchema{
 		Type:      COLLECTION_SCHEMA,
 		Name:      name,
-		DocSchema: docSchema.Fields,
+		DocSchema: docSchema,
 	}, nil
 }
 
-func parseDocSchema(data map[string]interface{}) (*DocSchema, error) {
+func parseDocSchema(data map[string]any) (*DocSchema, error) {
 	schemaType, ok := data["type"].(string)
 	if !ok || SchemaType(schemaType) != DOC_SCHEMA {
 		return nil, fmt.Errorf("%w: invalid doc schema type", ErrInvalidDatabaseSchema)
 	}
 
-	fieldsData, ok := data["fields"].(map[string]interface{})
+	fieldsData, ok := data["fields"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid fields data", ErrInvalidDatabaseSchema)
 	}
 
-	fields := make(map[string]interface{})
+	fields := make(map[string]any)
 	for key, val := range fieldsData {
-		fieldData, ok := val.(map[string]interface{})
+		fieldData, ok := val.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("%w: invalid field data for key: %s", ErrInvalidDatabaseSchema, key)
 		}
@@ -254,7 +254,7 @@ func parseDocSchema(data map[string]interface{}) (*DocSchema, error) {
 	}, nil
 }
 
-func parseFieldSchema(data map[string]interface{}) (interface{}, error) {
+func parseFieldSchema(data map[string]any) (any, error) {
 	schemaType, ok := data["type"].(string)
 	if !ok {
 		return nil, fmt.Errorf("%w: field type is required", ErrInvalidDatabaseSchema)
@@ -291,7 +291,7 @@ func parseFieldSchema(data map[string]interface{}) (interface{}, error) {
 }
 
 // 解析基础类型的辅助函数
-func parseAnySchema(data map[string]interface{}) (*AnySchema, error) {
+func parseAnySchema(data map[string]any) (*AnySchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	return &AnySchema{
 		Type:     ANY_SCHEMA,
@@ -299,7 +299,7 @@ func parseAnySchema(data map[string]interface{}) (*AnySchema, error) {
 	}, nil
 }
 
-func parseBooleanSchema(data map[string]interface{}) (*BooleanSchema, error) {
+func parseBooleanSchema(data map[string]any) (*BooleanSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
@@ -311,7 +311,7 @@ func parseBooleanSchema(data map[string]interface{}) (*BooleanSchema, error) {
 	}, nil
 }
 
-func parseDateSchema(data map[string]interface{}) (*DateSchema, error) {
+func parseDateSchema(data map[string]any) (*DateSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
@@ -323,12 +323,12 @@ func parseDateSchema(data map[string]interface{}) (*DateSchema, error) {
 	}, nil
 }
 
-func parseEnumSchema(data map[string]interface{}) (*EnumSchema, error) {
+func parseEnumSchema(data map[string]any) (*EnumSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
 
-	valuesInterface, ok := data["values"].([]interface{})
+	valuesInterface, ok := data["values"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid enum values", ErrInvalidDatabaseSchema)
 	}
@@ -351,10 +351,10 @@ func parseEnumSchema(data map[string]interface{}) (*EnumSchema, error) {
 	}, nil
 }
 
-func parseListSchema(data map[string]interface{}) (*ListSchema, error) {
+func parseListSchema(data map[string]any) (*ListSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 
-	itemSchemaData, ok := data["itemSchema"].(map[string]interface{})
+	itemSchemaData, ok := data["itemSchema"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid item schema", ErrInvalidDatabaseSchema)
 	}
@@ -371,10 +371,10 @@ func parseListSchema(data map[string]interface{}) (*ListSchema, error) {
 	}, nil
 }
 
-func parseMovableListSchema(data map[string]interface{}) (*MovableListSchema, error) {
+func parseMovableListSchema(data map[string]any) (*MovableListSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 
-	itemSchemaData, ok := data["itemSchema"].(map[string]interface{})
+	itemSchemaData, ok := data["itemSchema"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid item schema", ErrInvalidDatabaseSchema)
 	}
@@ -391,7 +391,7 @@ func parseMovableListSchema(data map[string]interface{}) (*MovableListSchema, er
 	}, nil
 }
 
-func parseNumberSchema(data map[string]interface{}) (*NumberSchema, error) {
+func parseNumberSchema(data map[string]any) (*NumberSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
@@ -403,17 +403,17 @@ func parseNumberSchema(data map[string]interface{}) (*NumberSchema, error) {
 	}, nil
 }
 
-func parseObjectSchema(data map[string]interface{}) (*ObjectSchema, error) {
+func parseObjectSchema(data map[string]any) (*ObjectSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 
-	shapeData, ok := data["shape"].(map[string]interface{})
+	shapeData, ok := data["shape"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid shape data", ErrInvalidDatabaseSchema)
 	}
 
-	shape := make(map[string]interface{})
+	shape := make(map[string]any)
 	for key, val := range shapeData {
-		fieldData, ok := val.(map[string]interface{})
+		fieldData, ok := val.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("%w: invalid field data for key: %s", ErrInvalidDatabaseSchema, key)
 		}
@@ -431,10 +431,10 @@ func parseObjectSchema(data map[string]interface{}) (*ObjectSchema, error) {
 	}, nil
 }
 
-func parseRecordSchema(data map[string]interface{}) (*RecordSchema, error) {
+func parseRecordSchema(data map[string]any) (*RecordSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 
-	valueSchemaData, ok := data["valueSchema"].(map[string]interface{})
+	valueSchemaData, ok := data["valueSchema"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid value schema", ErrInvalidDatabaseSchema)
 	}
@@ -451,7 +451,7 @@ func parseRecordSchema(data map[string]interface{}) (*RecordSchema, error) {
 	}, nil
 }
 
-func parseStringSchema(data map[string]interface{}) (*StringSchema, error) {
+func parseStringSchema(data map[string]any) (*StringSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
@@ -463,7 +463,7 @@ func parseStringSchema(data map[string]interface{}) (*StringSchema, error) {
 	}, nil
 }
 
-func parseTextSchema(data map[string]interface{}) (*TextSchema, error) {
+func parseTextSchema(data map[string]any) (*TextSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	indexType, _ := data["indexType"].(string)
 	return &TextSchema{
@@ -473,10 +473,10 @@ func parseTextSchema(data map[string]interface{}) (*TextSchema, error) {
 	}, nil
 }
 
-func parseTreeSchema(data map[string]interface{}) (*TreeSchema, error) {
+func parseTreeSchema(data map[string]any) (*TreeSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 
-	treeNodeSchemaData, ok := data["treeNodeSchema"].(map[string]interface{})
+	treeNodeSchemaData, ok := data["treeNodeSchema"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid tree node schema", ErrInvalidDatabaseSchema)
 	}
