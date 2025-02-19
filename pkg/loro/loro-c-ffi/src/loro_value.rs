@@ -18,10 +18,10 @@ pub extern "C" fn loro_value_get_type(ptr: *mut LoroValue) -> i32 {
             LoroValue::Bool(..) => 1,
             LoroValue::Double(..) => 2,
             LoroValue::I64(..) => 3,
-            LoroValue::String(..) => 5,
-            LoroValue::Map(..) => 7,
+            LoroValue::String(..) => 4,
+            LoroValue::Map(..) => 5,
             LoroValue::List(..) => 6,
-            LoroValue::Binary(..) => 8,
+            LoroValue::Binary(..) => 7,
             LoroValue::Container(..) => 9,
         }
     }

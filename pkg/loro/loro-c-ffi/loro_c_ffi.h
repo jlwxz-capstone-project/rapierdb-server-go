@@ -69,6 +69,7 @@ extern void loro_doc_decode_import_blob_meta(
   int64_t* end_timestamp,
   uint32_t* change_num
 );
+extern void* loro_doc_get_by_path(void* doc_ptr, char* path_ptr);
 
 // Loro List Diff Item
 extern void destroy_list_diff_item(void* ptr);
@@ -134,6 +135,7 @@ extern void* loro_map_insert_movable_list(void* ptr, char* key_ptr, void* list_p
 extern void* loro_map_insert_map(void* ptr, char* key_ptr, void* map_ptr, uint8_t* err);
 extern void* loro_map_to_container(void* ptr);
 extern int loro_map_is_attached(void* ptr);
+extern void* loro_map_get_items(void* ptr);
 
 // Loro List
 extern void* loro_list_new_empty();
@@ -160,6 +162,7 @@ extern void* loro_list_get_map(void* ptr, uint32_t index, uint8_t* err);
 extern uint32_t loro_list_len(void* ptr);
 extern void* loro_list_to_container(void* ptr);
 extern int loro_list_is_attached(void* ptr);
+extern void* loro_list_get_items(void* ptr);
 
 // Loro Movable List
 extern void* loro_movable_list_new_empty();
@@ -186,6 +189,7 @@ extern void* loro_movable_list_get_movable_list(void* ptr, uint32_t index, uint8
 extern void* loro_movable_list_get_map(void* ptr, uint32_t index, uint8_t* err);
 extern void* loro_movable_list_to_container(void* ptr);
 extern int loro_movable_list_is_attached(void* ptr);
+extern void* loro_movable_list_get_items(void* ptr);
 
 // Loro Value
 extern void destroy_loro_value(void* ptr);

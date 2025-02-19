@@ -18,125 +18,167 @@ const (
 	FULLTEXT_INDEX IndexType = "fulltext"
 )
 
-type SchemaType string
-
 const (
-	ANY_SCHEMA          SchemaType = "any"
-	BOOLEAN_SCHEMA      SchemaType = "boolean"
-	DATE_SCHEMA         SchemaType = "date"
-	ENUM_SCHEMA         SchemaType = "enum"
-	LIST_SCHEMA         SchemaType = "list"
-	MOVABLE_LIST_SCHEMA SchemaType = "movableList"
-	NUMBER_SCHEMA       SchemaType = "number"
-	OBJECT_SCHEMA       SchemaType = "object"
-	RECORD_SCHEMA       SchemaType = "record"
-	STRING_SCHEMA       SchemaType = "string"
-	TEXT_SCHEMA         SchemaType = "text"
-	TREE_SCHEMA         SchemaType = "tree"
-	DOC_SCHEMA          SchemaType = "doc"
-	COLLECTION_SCHEMA   SchemaType = "collection"
-	DATABASE_SCHEMA     SchemaType = "database"
+	ANY_SCHEMA          = "any"
+	BOOLEAN_SCHEMA      = "boolean"
+	DATE_SCHEMA         = "date"
+	ENUM_SCHEMA         = "enum"
+	LIST_SCHEMA         = "list"
+	MOVABLE_LIST_SCHEMA = "movableList"
+	NUMBER_SCHEMA       = "number"
+	OBJECT_SCHEMA       = "object"
+	RECORD_SCHEMA       = "record"
+	STRING_SCHEMA       = "string"
+	TEXT_SCHEMA         = "text"
+	TREE_SCHEMA         = "tree"
+	DOC_SCHEMA          = "doc"
+	COLLECTION_SCHEMA   = "collection"
+	DATABASE_SCHEMA     = "database"
 )
 
 type AnySchema struct {
-	Type     SchemaType `json:"type"`
-	Nullable bool       `json:"nullable"`
+	Nullable bool `json:"nullable"`
 }
 
 type BooleanSchema struct {
-	Type      SchemaType `json:"type"`
-	Nullable  bool       `json:"nullable"`
-	Unique    bool       `json:"unique"`
-	IndexType IndexType  `json:"indexType"`
+	Nullable  bool      `json:"nullable"`
+	Unique    bool      `json:"unique"`
+	IndexType IndexType `json:"indexType"`
 }
 
 type DateSchema struct {
-	Type      SchemaType `json:"type"`
-	Nullable  bool       `json:"nullable"`
-	Unique    bool       `json:"unique"`
-	IndexType IndexType  `json:"indexType"`
+	Nullable  bool      `json:"nullable"`
+	Unique    bool      `json:"unique"`
+	IndexType IndexType `json:"indexType"`
 }
 
 type EnumSchema struct {
-	Type      SchemaType `json:"type"`
-	Values    []string   `json:"values"`
-	Nullable  bool       `json:"nullable"`
-	Unique    bool       `json:"unique"`
-	IndexType IndexType  `json:"indexType"`
+	Values    []string  `json:"values"`
+	Nullable  bool      `json:"nullable"`
+	Unique    bool      `json:"unique"`
+	IndexType IndexType `json:"indexType"`
 }
 
 type ListSchema struct {
-	Type       SchemaType `json:"type"`
-	Nullable   bool       `json:"nullable"`
-	ItemSchema any        `json:"itemSchema"`
+	Nullable   bool `json:"nullable"`
+	ItemSchema any  `json:"itemSchema"`
 }
 
 type MovableListSchema struct {
-	Type       SchemaType `json:"type"`
-	Nullable   bool       `json:"nullable"`
-	ItemSchema any        `json:"itemSchema"`
+	Nullable   bool `json:"nullable"`
+	ItemSchema any  `json:"itemSchema"`
 }
 
 type NumberSchema struct {
-	Type      SchemaType `json:"type"`
-	Nullable  bool       `json:"nullable"`
-	Unique    bool       `json:"unique"`
-	IndexType IndexType  `json:"indexType"`
+	Nullable  bool      `json:"nullable"`
+	Unique    bool      `json:"unique"`
+	IndexType IndexType `json:"indexType"`
 }
 
 type ObjectSchema struct {
-	Type     SchemaType     `json:"type"`
 	Nullable bool           `json:"nullable"`
 	Shape    map[string]any `json:"shape"`
 }
 
 type RecordSchema struct {
-	Type        SchemaType `json:"type"`
-	Nullable    bool       `json:"nullable"`
-	ValueSchema any        `json:"valueSchema"`
+	Nullable    bool `json:"nullable"`
+	ValueSchema any  `json:"valueSchema"`
 }
 
 type StringSchema struct {
-	Type      SchemaType `json:"type"`
-	Nullable  bool       `json:"nullable"`
-	Unique    bool       `json:"unique"`
-	IndexType IndexType  `json:"indexType"`
+	Nullable  bool      `json:"nullable"`
+	Unique    bool      `json:"unique"`
+	IndexType IndexType `json:"indexType"`
 }
 
 type TextSchema struct {
-	Type      SchemaType `json:"type"`
-	Nullable  bool       `json:"nullable"`
-	IndexType IndexType  `json:"indexType"`
+	Nullable  bool      `json:"nullable"`
+	IndexType IndexType `json:"indexType"`
 }
 
 type TreeSchema struct {
-	Type           SchemaType `json:"type"`
-	Nullable       bool       `json:"nullable"`
-	TreeNodeSchema any        `json:"treeNodeSchema"`
+	Nullable       bool `json:"nullable"`
+	TreeNodeSchema any  `json:"treeNodeSchema"`
+}
+
+type ValueSchema interface {
+	AnySchema |
+		BooleanSchema |
+		DateSchema |
+		EnumSchema |
+		ListSchema |
+		MovableListSchema |
+		NumberSchema |
+		ObjectSchema |
+		RecordSchema |
+		StringSchema |
+		TextSchema |
+		TreeSchema
 }
 
 type DocSchema struct {
-	Type   SchemaType     `json:"type"`
 	Fields map[string]any `json:"fields"`
 }
 
 type CollectionSchema struct {
-	Type      SchemaType `json:"type"`
 	Name      string     `json:"name"`
 	DocSchema *DocSchema `json:"docSchema"`
 }
 
 type DatabaseSchema struct {
-	Type        SchemaType                   `json:"type"`
 	Name        string                       `json:"name"`
 	Version     string                       `json:"version"`
 	Collections map[string]*CollectionSchema `json:"collections"`
+}
+
+type Schema interface {
+	ValueSchema |
+		DocSchema |
+		CollectionSchema |
+		DatabaseSchema
 }
 
 //go:embed schema_builder.js
 var schemaBuilderScript string
 
 var ErrInvalidDatabaseSchema = errors.New("invalid database schema")
+
+func GetType[T Schema](s *T) string {
+	switch v := any(s).(type) {
+	case *AnySchema:
+		return ANY_SCHEMA
+	case *BooleanSchema:
+		return BOOLEAN_SCHEMA
+	case *DateSchema:
+		return DATE_SCHEMA
+	case *EnumSchema:
+		return ENUM_SCHEMA
+	case *ListSchema:
+		return LIST_SCHEMA
+	case *MovableListSchema:
+		return MOVABLE_LIST_SCHEMA
+	case *NumberSchema:
+		return NUMBER_SCHEMA
+	case *ObjectSchema:
+		return OBJECT_SCHEMA
+	case *RecordSchema:
+		return RECORD_SCHEMA
+	case *StringSchema:
+		return STRING_SCHEMA
+	case *TextSchema:
+		return TEXT_SCHEMA
+	case *TreeSchema:
+		return TREE_SCHEMA
+	case *DocSchema:
+		return DOC_SCHEMA
+	case *CollectionSchema:
+		return COLLECTION_SCHEMA
+	case *DatabaseSchema:
+		return DATABASE_SCHEMA
+	default:
+		panic(fmt.Sprintf("unknown schema type: %T", v))
+	}
+}
 
 func NewDatabaseSchemaFromJs(js string) (*DatabaseSchema, error) {
 	vm := goja.New()
@@ -156,7 +198,7 @@ func NewDatabaseSchemaFromJs(js string) (*DatabaseSchema, error) {
 
 func NewDatabaseSchemaFromJSON(data map[string]any) (*DatabaseSchema, error) {
 	schemaType, ok := data["type"].(string)
-	if !ok || SchemaType(schemaType) != DATABASE_SCHEMA {
+	if !ok || schemaType != DATABASE_SCHEMA {
 		return nil, fmt.Errorf("%w: `type` of database schema must be \"%s\"", ErrInvalidDatabaseSchema, DATABASE_SCHEMA)
 	}
 
@@ -189,7 +231,6 @@ func NewDatabaseSchemaFromJSON(data map[string]any) (*DatabaseSchema, error) {
 	}
 
 	return &DatabaseSchema{
-		Type:        DATABASE_SCHEMA,
 		Name:        name,
 		Version:     version,
 		Collections: collections,
@@ -198,7 +239,7 @@ func NewDatabaseSchemaFromJSON(data map[string]any) (*DatabaseSchema, error) {
 
 func parseCollectionSchema(data map[string]any) (*CollectionSchema, error) {
 	schemaType, ok := data["type"].(string)
-	if !ok || SchemaType(schemaType) != COLLECTION_SCHEMA {
+	if !ok || schemaType != COLLECTION_SCHEMA {
 		return nil, fmt.Errorf("%w: invalid collection schema type", ErrInvalidDatabaseSchema)
 	}
 
@@ -218,7 +259,6 @@ func parseCollectionSchema(data map[string]any) (*CollectionSchema, error) {
 	}
 
 	return &CollectionSchema{
-		Type:      COLLECTION_SCHEMA,
 		Name:      name,
 		DocSchema: docSchema,
 	}, nil
@@ -226,7 +266,7 @@ func parseCollectionSchema(data map[string]any) (*CollectionSchema, error) {
 
 func parseDocSchema(data map[string]any) (*DocSchema, error) {
 	schemaType, ok := data["type"].(string)
-	if !ok || SchemaType(schemaType) != DOC_SCHEMA {
+	if !ok || schemaType != DOC_SCHEMA {
 		return nil, fmt.Errorf("%w: invalid doc schema type", ErrInvalidDatabaseSchema)
 	}
 
@@ -249,7 +289,6 @@ func parseDocSchema(data map[string]any) (*DocSchema, error) {
 	}
 
 	return &DocSchema{
-		Type:   DOC_SCHEMA,
 		Fields: fields,
 	}, nil
 }
@@ -260,7 +299,7 @@ func parseFieldSchema(data map[string]any) (any, error) {
 		return nil, fmt.Errorf("%w: field type is required", ErrInvalidDatabaseSchema)
 	}
 
-	switch SchemaType(schemaType) {
+	switch schemaType {
 	case ANY_SCHEMA:
 		return parseAnySchema(data)
 	case BOOLEAN_SCHEMA:
@@ -294,7 +333,6 @@ func parseFieldSchema(data map[string]any) (any, error) {
 func parseAnySchema(data map[string]any) (*AnySchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	return &AnySchema{
-		Type:     ANY_SCHEMA,
 		Nullable: nullable,
 	}, nil
 }
@@ -304,7 +342,6 @@ func parseBooleanSchema(data map[string]any) (*BooleanSchema, error) {
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
 	return &BooleanSchema{
-		Type:      BOOLEAN_SCHEMA,
 		Nullable:  nullable,
 		Unique:    unique,
 		IndexType: IndexType(indexType),
@@ -316,7 +353,6 @@ func parseDateSchema(data map[string]any) (*DateSchema, error) {
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
 	return &DateSchema{
-		Type:      DATE_SCHEMA,
 		Nullable:  nullable,
 		Unique:    unique,
 		IndexType: IndexType(indexType),
@@ -343,7 +379,6 @@ func parseEnumSchema(data map[string]any) (*EnumSchema, error) {
 	}
 
 	return &EnumSchema{
-		Type:      ENUM_SCHEMA,
 		Values:    values,
 		Nullable:  nullable,
 		Unique:    unique,
@@ -365,7 +400,6 @@ func parseListSchema(data map[string]any) (*ListSchema, error) {
 	}
 
 	return &ListSchema{
-		Type:       LIST_SCHEMA,
 		Nullable:   nullable,
 		ItemSchema: itemSchema,
 	}, nil
@@ -385,7 +419,6 @@ func parseMovableListSchema(data map[string]any) (*MovableListSchema, error) {
 	}
 
 	return &MovableListSchema{
-		Type:       MOVABLE_LIST_SCHEMA,
 		Nullable:   nullable,
 		ItemSchema: itemSchema,
 	}, nil
@@ -396,7 +429,6 @@ func parseNumberSchema(data map[string]any) (*NumberSchema, error) {
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
 	return &NumberSchema{
-		Type:      NUMBER_SCHEMA,
 		Nullable:  nullable,
 		Unique:    unique,
 		IndexType: IndexType(indexType),
@@ -425,7 +457,6 @@ func parseObjectSchema(data map[string]any) (*ObjectSchema, error) {
 	}
 
 	return &ObjectSchema{
-		Type:     OBJECT_SCHEMA,
 		Nullable: nullable,
 		Shape:    shape,
 	}, nil
@@ -445,7 +476,6 @@ func parseRecordSchema(data map[string]any) (*RecordSchema, error) {
 	}
 
 	return &RecordSchema{
-		Type:        RECORD_SCHEMA,
 		Nullable:    nullable,
 		ValueSchema: valueSchema,
 	}, nil
@@ -456,7 +486,6 @@ func parseStringSchema(data map[string]any) (*StringSchema, error) {
 	unique, _ := data["unique"].(bool)
 	indexType, _ := data["indexType"].(string)
 	return &StringSchema{
-		Type:      STRING_SCHEMA,
 		Nullable:  nullable,
 		Unique:    unique,
 		IndexType: IndexType(indexType),
@@ -467,7 +496,6 @@ func parseTextSchema(data map[string]any) (*TextSchema, error) {
 	nullable, _ := data["nullable"].(bool)
 	indexType, _ := data["indexType"].(string)
 	return &TextSchema{
-		Type:      TEXT_SCHEMA,
 		Nullable:  nullable,
 		IndexType: IndexType(indexType),
 	}, nil
@@ -487,7 +515,6 @@ func parseTreeSchema(data map[string]any) (*TreeSchema, error) {
 	}
 
 	return &TreeSchema{
-		Type:           TREE_SCHEMA,
 		Nullable:       nullable,
 		TreeNodeSchema: treeNodeSchema,
 	}, nil

@@ -386,3 +386,19 @@ pub extern "C" fn loro_list_get_map(
         std::ptr::null_mut()
     }
 }
+
+#[no_mangle]
+pub extern "C" fn loro_list_get_items(ptr: *mut LoroList) -> *mut Vec<*mut ValueOrContainer> {
+    unsafe {
+        let list = &mut *ptr;
+        let mut items = Vec::new();
+        list.for_each(|item| {
+            let boxed = Box::new(item);
+            let ptr = Box::into_raw(boxed);
+            items.push(ptr);
+        });
+        let boxed = Box::new(items);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}

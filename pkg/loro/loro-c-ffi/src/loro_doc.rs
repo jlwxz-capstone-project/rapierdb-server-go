@@ -1,4 +1,6 @@
-use loro::{EncodedBlobMode, Frontiers, LoroDoc, VersionVector};
+use std::ffi::{c_schar, CStr};
+
+use loro::{EncodedBlobMode, Frontiers, LoroDoc, ValueOrContainer, VersionVector};
 
 #[no_mangle]
 pub extern "C" fn loro_doc_decode_import_blob_meta(
@@ -37,5 +39,39 @@ pub extern "C" fn loro_doc_decode_import_blob_meta(
                 *err = 1;
             }
         }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_doc_get_by_path(
+    doc: *mut LoroDoc,
+    path_ptr: *const c_schar,
+) -> *mut ValueOrContainer {
+    unsafe {
+        let doc = &mut *doc;
+        let path = CStr::from_ptr(path_ptr).to_string_lossy();
+        let result = doc.get_by_str_path(&path);
+        match result {
+            Some(value) => {
+                let value = Box::into_raw(Box::new(value));
+                value
+            }
+            None => std::ptr::null_mut(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_by_path() {
+        let doc = LoroDoc::new();
+        let m = doc.get_map("root");
+        let t = doc.get_text("textField");
+        m.insert_container("textField", t).unwrap();
+        let result = doc.get_by_str_path("root/textField");
+        assert!(result.is_some());
     }
 }

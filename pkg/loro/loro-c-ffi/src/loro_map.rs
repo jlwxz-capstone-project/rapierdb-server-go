@@ -431,3 +431,18 @@ pub extern "C" fn loro_map_insert_map(
         }
     }
 }
+
+#[no_mangle]
+pub extern "C" fn loro_map_get_items(ptr: *mut LoroMap) -> *mut Vec<*mut u8> {
+    unsafe {
+        let map = &mut *ptr;
+        let mut items = Vec::new();
+        map.for_each(|key, value| {
+            items.push(CString::new(key.to_string()).unwrap().into_raw() as *mut u8);
+            items.push(Box::into_raw(Box::new(value)) as *mut u8);
+        });
+        let boxed = Box::new(items);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}

@@ -212,3 +212,81 @@ func TestLoroInspectImport(t *testing.T) {
 	meta := util.Must(loro.InspectImport(snapshot, true))
 	fmt.Printf("meta: %v\n", meta)
 }
+
+func TestLoroValueToGoObject(t *testing.T) {
+	nullVal := loro.NewLoroValueNull()
+	boolVal := loro.NewLoroValueBool(true)
+	i64Val := loro.NewLoroValueI64(123)
+	doubleVal := loro.NewLoroValueDouble(3.14)
+	strVal := loro.NewLoroValueString("hello")
+	binVal := loro.NewLoroValueBinary([]byte{0x01, 0x02})
+	assert.Equal(t, nil, util.Must(nullVal.ToGoObject()))
+	assert.Equal(t, true, util.Must(boolVal.ToGoObject()))
+	assert.Equal(t, int64(123), util.Must(i64Val.ToGoObject()))
+	assert.Equal(t, 3.14, util.Must(doubleVal.ToGoObject()))
+	assert.Equal(t, "hello", util.Must(strVal.ToGoObject()))
+	assert.Equal(t, []byte{0x01, 0x02}, util.Must(binVal.ToGoObject()))
+
+	mapVal := loro.NewLoroValueMap(map[string]*loro.LoroValue{
+		"key1": loro.NewLoroValueI64(123),
+		"key2": loro.NewLoroValueString("value"),
+		"key3": loro.NewLoroValueList([]*loro.LoroValue{
+			loro.NewLoroValueI64(123),
+			loro.NewLoroValueString("value"),
+		}),
+		"key4": loro.NewLoroValueMap(map[string]*loro.LoroValue{
+			"key5": loro.NewLoroValueI64(123),
+			"key6": loro.NewLoroValueString("value"),
+		}),
+	})
+	mapValStr := fmt.Sprintf("%v", util.Must(mapVal.ToGoObject()))
+	assert.Equal(t, mapValStr, "map[key1:123 key2:value key3:[123 value] key4:map[key5:123 key6:value]]")
+}
+
+func TestLoroContainerToGoObject(t *testing.T) {
+	doc := loro.NewLoroDoc()
+	{
+		text := doc.GetText("test0")
+		text.UpdateText("Hello, World!")
+		goValue := util.Must(text.ToContainer().ToGoObject())
+		assert.Equal(t, "Hello, World!", goValue)
+	}
+	{
+		l := doc.GetList("test1")
+		l.PushString("Hello, World!")
+		l.PushString("Congratulations!")
+		l.PushDouble(1.23)
+		l.PushI64(100)
+		l.PushBool(true)
+		text := loro.NewLoroText()
+		text.UpdateText("Hello, World!")
+		l.PushText(text)
+		goValue := util.Must(l.ToContainer().ToGoObject())
+		assert.Equal(t, []any{"Hello, World!", "Congratulations!", 1.23, int64(100), true, "Hello, World!"}, goValue)
+	}
+	{
+		l := doc.GetMovableList("test2")
+		l.PushString("Hello, World!")
+		l.PushString("Congratulations!")
+		l.PushDouble(1.23)
+		l.PushI64(100)
+		l.PushBool(true)
+		text := loro.NewLoroText()
+		text.UpdateText("Hello, World!")
+		l.PushText(text)
+		goValue := util.Must(l.ToContainer().ToGoObject())
+		assert.Equal(t, []any{"Hello, World!", "Congratulations!", 1.23, int64(100), true, "Hello, World!"}, goValue)
+	}
+	{
+		m := doc.GetMap("test3")
+		m.InsertBool("key1", true)
+		m.InsertDouble("key2", 1.23)
+		m.InsertI64("key3", 100)
+		m.InsertString("key4", "Hello, World!")
+		text := loro.NewLoroText()
+		text.UpdateText("Hello, World!")
+		m.InsertText("key5", text)
+		goValue := util.Must(m.ToContainer().ToGoObject())
+		assert.Equal(t, map[string]any{"key1": true, "key2": 1.23, "key3": int64(100), "key4": "Hello, World!", "key5": "Hello, World!"}, goValue)
+	}
+}

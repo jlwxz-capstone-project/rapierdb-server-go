@@ -62,6 +62,23 @@ const (
 	STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED = "storage_engine_event_transaction_rollbacked"
 )
 
+type TransactionCancelledEvent struct {
+	Committer   string
+	Reason      error
+	Transaction *Transaction
+}
+
+type TransactionCommittedEvent struct {
+	Committer   string
+	Transaction *Transaction
+}
+
+type TransactionRollbackedEvent struct {
+	Committer   string
+	Reason      error
+	Transaction *Transaction
+}
+
 // StorageEngine 是存储引擎的主要结构体
 type StorageEngine struct {
 	mu        sync.RWMutex        // 用于保护并发访问
@@ -232,7 +249,12 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 	if e.hooks.BeforeTransaction != nil {
 		err := (*e.hooks.BeforeTransaction)(tr)
 		if err != nil {
-			e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, tr)
+			event := &TransactionCancelledEvent{
+				Committer:   tr.Committer,
+				Reason:      err,
+				Transaction: tr,
+			}
+			e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, event)
 			return fmt.Errorf("%w: %v", ErrTransactionCancelled, err)
 		}
 	}
@@ -354,12 +376,20 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 		return ErrStorageEngineClosed
 	}
 
+	if err := EnsureTransactionValid(tr); err != nil {
+		return err
+	}
+
 	rb := &rollbackInfo{}
 	err := e.commitInner(tr, rb)
 
 	if err == nil {
 		// 提交成功，发布事件
-		e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, tr)
+		event := &TransactionCommittedEvent{
+			Committer:   tr.Committer,
+			Transaction: tr,
+		}
+		e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, event)
 		return nil
 	} else if !errors.Is(err, ErrTransactionCancelled) {
 		// 提交失败，执行回滚
@@ -372,7 +402,12 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 			doc := action[2].(*loro.LoroDoc)
 			e.docsCache.Set(key, docID, doc)
 		}
-		e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, tr)
+		event := &TransactionRollbackedEvent{
+			Committer:   tr.Committer,
+			Reason:      err,
+			Transaction: tr,
+		}
+		e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, event)
 	}
 	return err
 }

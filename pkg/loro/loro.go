@@ -360,6 +360,22 @@ func (doc *LoroDoc) Diff(v1, v2 *Frontiers) *DiffBatch {
 	return diffBatch
 }
 
+func (doc *LoroDoc) GetByPath(path string) *LoroContainerOrValue {
+	pathPtr := C.CString(path)
+	defer C.free(unsafe.Pointer(pathPtr))
+	ptr := C.loro_doc_get_by_path(doc.Ptr, pathPtr)
+	if ptr == nil {
+		return nil
+	}
+	containerOrValue := &LoroContainerOrValue{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(containerOrValue, func(c *LoroContainerOrValue) {
+		c.Destroy()
+	})
+	return containerOrValue
+}
+
 // ----------- Version Vector -----------
 
 type VersionVector struct {
@@ -582,6 +598,28 @@ func (m *LoroMap) ToContainer() *LoroContainer {
 		container.Destroy()
 	})
 	return container
+}
+
+func (m *LoroMap) ToGoObject() (map[string]any, error) {
+	vecPtr := C.loro_map_get_items(m.ptr)
+	vec := &RustPtrVec{ptr: unsafe.Pointer(vecPtr)}
+	defer vec.Destroy()
+	items := vec.GetData()
+	result := make(map[string]any, len(items))
+	vecLen := vec.GetLen()
+	for i := uint32(0); i < vecLen; i += 2 {
+		keyPtr := items[i]
+		valPtr := items[i+1]
+		key := C.GoString((*C.char)(keyPtr))
+		val := &LoroContainerOrValue{ptr: valPtr}
+		defer val.Destroy()
+		valGo, err := val.ToGoObject()
+		if valGo == nil {
+			return nil, err
+		}
+		result[key] = valGo
+	}
+	return result, nil
 }
 
 func (m *LoroMap) GetLen() uint32 {
@@ -1089,6 +1127,24 @@ func (list *LoroList) IsAttached() bool {
 	return C.loro_list_is_attached(list.ptr) != 0
 }
 
+func (list *LoroList) ToGoObject() (any, error) {
+	vecPtr := C.loro_list_get_items(list.ptr)
+	vec := &RustPtrVec{ptr: unsafe.Pointer(vecPtr)}
+	defer vec.Destroy()
+	items := vec.GetData()
+	result := make([]any, len(items))
+	for i, ptr := range items {
+		item := &LoroContainerOrValue{ptr: unsafe.Pointer(ptr)}
+		defer item.Destroy()
+		itemGo, err := item.ToGoObject()
+		if err != nil {
+			return nil, err
+		}
+		result[i] = itemGo
+	}
+	return result, nil
+}
+
 // ----------- Loro Movable List -----------
 type LoroMovableList struct {
 	ptr unsafe.Pointer
@@ -1123,7 +1179,7 @@ func (list *LoroMovableList) GetLen() uint32 {
 	return uint32(C.loro_movable_list_len(list.ptr))
 }
 
-func (list *LoroMovableList) PushNull() (interface{}, error) {
+func (list *LoroMovableList) PushNull() (any, error) {
 	var err C.uint8_t
 	C.loro_movable_list_push_null(list.ptr, &err)
 	if err != 0 {
@@ -1335,6 +1391,24 @@ func (list *LoroMovableList) GetMap(index uint32) (*LoroMap, error) {
 
 func (list *LoroMovableList) IsAttached() bool {
 	return C.loro_movable_list_is_attached(list.ptr) != 0
+}
+
+func (list *LoroMovableList) ToGoObject() (any, error) {
+	vecPtr := C.loro_movable_list_get_items(list.ptr)
+	vec := &RustPtrVec{ptr: unsafe.Pointer(vecPtr)}
+	defer vec.Destroy()
+	items := vec.GetData()
+	result := make([]any, len(items))
+	for i, ptr := range items {
+		item := &LoroContainerOrValue{ptr: unsafe.Pointer(ptr)}
+		defer item.Destroy()
+		itemGo, err := item.ToGoObject()
+		if err != nil {
+			return nil, err
+		}
+		result[i] = itemGo
+	}
+	return result, nil
 }
 
 // -------------- Loro Tree --------------
@@ -1659,19 +1733,19 @@ func (td *TreeDiff) Destroy() {
 
 // ------------ LoroValue -----------
 
-type LoroValueOrContainerType int32
+type LoroValueType int32
 
 const (
-	LORO_NULL_VALUE      LoroValueOrContainerType = 0
-	LORO_BOOL_VALUE      LoroValueOrContainerType = 1
-	LORO_DOUBLE_VALUE    LoroValueOrContainerType = 2
-	LORO_I64_VALUE       LoroValueOrContainerType = 3
-	LORO_STRING_VALUE    LoroValueOrContainerType = 4
-	LORO_MAP_VALUE       LoroValueOrContainerType = 5
-	LORO_LIST_VALUE      LoroValueOrContainerType = 6
-	LORO_BINARY_VALUE    LoroValueOrContainerType = 7
-	LORO_CONTAINER_VALUE LoroValueOrContainerType = 8
-	LORO_CONTAINER_ID    LoroValueOrContainerType = 9
+	LORO_NULL_VALUE      LoroValueType = 0
+	LORO_BOOL_VALUE      LoroValueType = 1
+	LORO_DOUBLE_VALUE    LoroValueType = 2
+	LORO_I64_VALUE       LoroValueType = 3
+	LORO_STRING_VALUE    LoroValueType = 4
+	LORO_MAP_VALUE       LoroValueType = 5
+	LORO_LIST_VALUE      LoroValueType = 6
+	LORO_BINARY_VALUE    LoroValueType = 7
+	LORO_CONTAINER_VALUE LoroValueType = 8
+	LORO_CONTAINER_ID    LoroValueType = 9
 )
 
 type LoroValue struct {
@@ -1690,7 +1764,7 @@ func NewLoroValueFromJson(json string) (*LoroValue, error) {
 	return lv, nil
 }
 
-func NewLoroValue(value interface{}) (*LoroValue, error) {
+func NewLoroValue(value any) (*LoroValue, error) {
 	switch v := value.(type) {
 	case *LoroValue:
 		return v, nil
@@ -1706,7 +1780,7 @@ func NewLoroValue(value interface{}) (*LoroValue, error) {
 		return NewLoroValueString(v), nil
 	case []byte:
 		return NewLoroValueBinary(v), nil
-	case []interface{}:
+	case []any:
 		l := make([]*LoroValue, len(v))
 		for i, v := range v {
 			lv, err := NewLoroValue(v)
@@ -1716,7 +1790,7 @@ func NewLoroValue(value interface{}) (*LoroValue, error) {
 			l[i] = lv
 		}
 		return NewLoroValueList(l), nil
-	case map[string]interface{}:
+	case map[string]any:
 		m := make(map[string]*LoroValue)
 		for k, v := range v {
 			lv, err := NewLoroValue(v)
@@ -1839,9 +1913,9 @@ func (lv *LoroValue) Destroy() {
 	C.destroy_loro_value(lv.ptr)
 }
 
-func (lv *LoroValue) GetType() LoroValueOrContainerType {
+func (lv *LoroValue) GetType() LoroValueType {
 	t := C.loro_value_get_type(lv.ptr)
-	return LoroValueOrContainerType(t)
+	return LoroValueType(t)
 }
 
 func (lv *LoroValue) GetBool() (bool, error) {
@@ -1904,22 +1978,6 @@ func (lv *LoroValue) GetMap() (map[string]*LoroValue, error) {
 	return items, nil
 }
 
-func (lv *LoroValue) GetMapDeep() (map[string]interface{}, error) {
-	mapValue, err := lv.GetMap()
-	if err != nil {
-		return nil, err
-	}
-	newMapValue := make(map[string]interface{})
-	for k, v := range mapValue {
-		lv, err := NewLoroValue(v)
-		if err != nil {
-			return nil, err
-		}
-		newMapValue[k] = lv
-	}
-	return newMapValue, nil
-}
-
 func (lv *LoroValue) GetList() ([]*LoroValue, error) {
 	var err C.uint8_t
 	ptr := C.loro_value_get_list(lv.ptr, &err)
@@ -1937,22 +1995,6 @@ func (lv *LoroValue) GetList() ([]*LoroValue, error) {
 	}
 	ptrVec.Destroy()
 	return items, nil
-}
-
-func (lv *LoroValue) GetListDeep() ([]interface{}, error) {
-	listValue, err := lv.GetList()
-	if err != nil {
-		return nil, err
-	}
-	newListValue := make([]interface{}, len(listValue))
-	for i, v := range listValue {
-		lv, err := NewLoroValue(v)
-		if err != nil {
-			return nil, err
-		}
-		newListValue[i] = lv
-	}
-	return newListValue, nil
 }
 
 func (lv *LoroValue) GetBinary() (*RustBytesVec, error) {
@@ -1987,6 +2029,68 @@ func (lv *LoroValue) ToJson() (string, error) {
 		return "", fmt.Errorf("%w: dump json from loro value", ErrLoroEncodeFailed)
 	}
 	return C.GoString(ptr), nil
+}
+
+// ToGoObject 将 loro 值转换为 go 对象
+// 支持的类型:
+//
+//   - LORO_NULL_VALUE => nil
+//   - LORO_BOOL_VALUE => bool
+//   - LORO_I64_VALUE => int64
+//   - LORO_DOUBLE_VALUE => float64
+//   - LORO_STRING_VALUE => string
+//   - LORO_BINARY_VALUE => []byte
+//   - LORO_MAP_VALUE => map[string]any
+//   - LORO_LIST_VALUE => []any
+func (lv *LoroValue) ToGoObject() (any, error) {
+	t := lv.GetType()
+	switch t {
+	case LORO_NULL_VALUE:
+		return nil, nil
+	case LORO_BOOL_VALUE:
+		return lv.GetBool()
+	case LORO_I64_VALUE:
+		return lv.GetI64()
+	case LORO_DOUBLE_VALUE:
+		return lv.GetDouble()
+	case LORO_STRING_VALUE:
+		return lv.GetString()
+	case LORO_BINARY_VALUE:
+		b, err := lv.GetBinary()
+		if err != nil {
+			return nil, err
+		}
+		return b.Bytes(), nil
+	case LORO_MAP_VALUE:
+		m, err := lv.GetMap()
+		if err != nil {
+			return nil, err
+		}
+		m2 := make(map[string]any)
+		for k, v := range m {
+			goV, err := v.ToGoObject()
+			if err != nil {
+				return nil, err
+			}
+			m2[k] = goV
+		}
+		return m2, nil
+	case LORO_LIST_VALUE:
+		l, err := lv.GetList()
+		if err != nil {
+			return nil, err
+		}
+		l2 := make([]any, len(l))
+		for i, v := range l {
+			goV, err := v.ToGoObject()
+			if err != nil {
+				return nil, err
+			}
+			l2[i] = goV
+		}
+		return l2, nil
+	}
+	return nil, fmt.Errorf("unknown loro value type: %d", t)
 }
 
 // -------------- Loro Container --------------
@@ -2076,6 +2180,43 @@ func (c *LoroContainer) GetTree() (*LoroTree, error) {
 	return tree, nil
 }
 
+func (c *LoroContainer) ToGoObject() (any, error) {
+	t := c.GetType()
+	switch t {
+	case LORO_CONTAINER_LIST:
+		l, err := c.GetList()
+		if err != nil {
+			return nil, err
+		}
+		return l.ToGoObject()
+	case LORO_CONTAINER_MOVABLE_LIST:
+		l, err := c.GetMovableList()
+		if err != nil {
+			return nil, err
+		}
+		return l.ToGoObject()
+	case LORO_CONTAINER_COUNTER:
+		return nil, fmt.Errorf("counter container is not supported")
+	case LORO_CONTAINER_UNKNOWN:
+		return nil, fmt.Errorf("unknown container type")
+	case LORO_CONTAINER_MAP:
+		m, err := c.GetMap()
+		if err != nil {
+			return nil, err
+		}
+		return m.ToGoObject()
+	case LORO_CONTAINER_TEXT:
+		text, err := c.GetText()
+		if err != nil {
+			return nil, err
+		}
+		return text.ToString()
+	case LORO_CONTAINER_TREE:
+		return nil, fmt.Errorf("tree container is not supported")
+	}
+	return nil, fmt.Errorf("unknown container type")
+}
+
 // -------------- Loro Container Value --------------
 
 const (
@@ -2120,6 +2261,25 @@ func (lv *LoroContainerOrValue) GetValue() (*LoroValue, error) {
 		value.Destroy()
 	})
 	return value, nil
+}
+
+func (lv *LoroContainerOrValue) ToGoObject() (any, error) {
+	t := lv.GetType()
+	switch t {
+	case LORO_VALUE_TYPE:
+		value, err := lv.GetValue()
+		if err != nil {
+			return nil, err
+		}
+		return value.ToGoObject()
+	case LORO_CONTAINER_TYPE:
+		container, err := lv.GetContainer()
+		if err != nil {
+			return nil, err
+		}
+		return container.ToGoObject()
+	}
+	return nil, fmt.Errorf("unknown loro container or value type: %d", t)
 }
 
 // ----------- Import Blob Meta --------------
