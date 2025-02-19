@@ -71,15 +71,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 		doc.GetText("name").InsertText("Alice", 0)
 
 		tr := storage.Transaction{
-			Operations: []storage.TransactionOp{
-				{
-					Type: storage.OpInsert,
-					InsertOp: storage.InsertOp{
-						Database:   "testdb",
-						Collection: "users",
-						DocID:      "user1",
-						Snapshot:   doc.ExportSnapshot().Bytes(),
-					},
+			TxID:      "11111111-1111-1111-1111-111111111111",
+			Committer: "test-client",
+			Operations: []any{
+				storage.InsertOp{
+					Database:   "testdb",
+					Collection: "users",
+					DocID:      "user1",
+					Snapshot:   doc.ExportSnapshot().Bytes(),
 				},
 			},
 		}
@@ -102,15 +101,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 
 		snapshot := loadedDoc.ExportSnapshot().Bytes()
 		tr := storage.Transaction{
-			Operations: []storage.TransactionOp{
-				{
-					Type: storage.OpInsert,
-					InsertOp: storage.InsertOp{
-						Database:   "testdb",
-						Collection: "users",
-						DocID:      "user1",
-						Snapshot:   snapshot,
-					},
+			TxID:      "22222222-2222-2222-2222-222222222222",
+			Committer: "test-client",
+			Operations: []any{
+				storage.InsertOp{
+					Database:   "testdb",
+					Collection: "users",
+					DocID:      "user1",
+					Snapshot:   snapshot,
 				},
 			},
 		}
@@ -127,15 +125,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 
 		update := loadedDoc.ExportUpdatesFrom(vv).Bytes()
 		tr := storage.Transaction{
-			Operations: []storage.TransactionOp{
-				{
-					Type: storage.OpUpdate,
-					UpdateOp: storage.UpdateOp{
-						Database:   "testdb",
-						Collection: "users",
-						DocID:      "user1",
-						Update:     update,
-					},
+			TxID:      "33333333-3333-3333-3333-333333333333",
+			Committer: "test-client",
+			Operations: []any{
+				storage.UpdateOp{
+					Database:   "testdb",
+					Collection: "users",
+					DocID:      "user1",
+					Update:     update,
 				},
 			},
 		}
@@ -147,15 +144,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 		update := doc.ExportAllUpdates().Bytes()
 		{
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpUpdate,
-						UpdateOp: storage.UpdateOp{
-							Database:   "testdb",
-							Collection: "users",
-							DocID:      "user2",
-							Update:     update,
-						},
+				TxID:      "44444444-4444-4444-4444-444444444444",
+				Committer: "test-client",
+				Operations: []any{
+					storage.UpdateOp{
+						Database:   "testdb",
+						Collection: "users",
+						DocID:      "user2",
+						Update:     update,
 					},
 				},
 			}
@@ -163,15 +159,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 		}
 		{
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpUpdate,
-						UpdateOp: storage.UpdateOp{
-							Database:   "testdb",
-							Collection: "missingCollection",
-							DocID:      "user1",
-							Update:     update,
-						},
+				TxID:      "55555555-5555-5555-5555-555555555555",
+				Committer: "test-client",
+				Operations: []any{
+					storage.UpdateOp{
+						Database:   "testdb",
+						Collection: "missingCollection",
+						DocID:      "user1",
+						Update:     update,
 					},
 				},
 			}
@@ -179,15 +174,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 		}
 		{
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpUpdate,
-						UpdateOp: storage.UpdateOp{
-							Database:   "missingDatabase",
-							Collection: "users",
-							DocID:      "user1",
-							Update:     update,
-						},
+				TxID:      "66666666-6666-6666-6666-666666666666",
+				Committer: "test-client",
+				Operations: []any{
+					storage.UpdateOp{
+						Database:   "missingDatabase",
+						Collection: "users",
+						DocID:      "user1",
+						Update:     update,
 					},
 				},
 			}
@@ -201,15 +195,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 			doc.GetText("test").InsertText("Hello, World!", 0)
 			snapshot := doc.ExportSnapshot().Bytes()
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpInsert,
-						InsertOp: storage.InsertOp{
-							Database:   "testdb",
-							Collection: "users",
-							DocID:      "user2",
-							Snapshot:   snapshot,
-						},
+				TxID:      "77777777-7777-7777-7777-777777777777",
+				Committer: "test-client",
+				Operations: []any{
+					storage.InsertOp{
+						Database:   "testdb",
+						Collection: "users",
+						DocID:      "user2",
+						Snapshot:   snapshot,
 					},
 				},
 			}
@@ -222,14 +215,13 @@ func TestStorageEngineCRUD(t *testing.T) {
 		}
 
 		tr := storage.Transaction{
-			Operations: []storage.TransactionOp{
-				{
-					Type: storage.OpDelete,
-					DeleteOp: storage.DeleteOp{
-						Database:   "testdb",
-						Collection: "users",
-						DocID:      "user2",
-					},
+			TxID:      "88888888-8888-8888-8888-888888888888",
+			Committer: "test-client",
+			Operations: []any{
+				storage.DeleteOp{
+					Database:   "testdb",
+					Collection: "users",
+					DocID:      "user2",
 				},
 			},
 		}
@@ -265,15 +257,14 @@ func TestStorageEngineCRUD(t *testing.T) {
 			doc.GetText("age").UpdateText(fmt.Sprintf("%d", user.age))
 
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpInsert,
-						InsertOp: storage.InsertOp{
-							Database:   "testdb",
-							Collection: "test_users",
-							DocID:      user.id,
-							Snapshot:   doc.ExportSnapshot().Bytes(),
-						},
+				TxID:      "99999999-9999-9999-9999-99999999999" + user.id[len(user.id)-1:],
+				Committer: "test-client",
+				Operations: []any{
+					storage.InsertOp{
+						Database:   "testdb",
+						Collection: "test_users",
+						DocID:      user.id,
+						Snapshot:   doc.ExportSnapshot().Bytes(),
 					},
 				},
 			}
@@ -316,7 +307,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 		hook := func(tr *storage.Transaction) error {
 			hookCalled = true
 			// 检查事务中是否包含特定的文档ID
-			if tr.Operations[0].InsertOp.DocID == "blocked_doc" {
+			if tr.Operations[0].(storage.InsertOp).DocID == "blocked_doc" {
 				return fmt.Errorf("document blocked")
 			}
 			return nil
@@ -327,15 +318,14 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 		doc := loro.NewLoroDoc()
 		doc.GetText("name").InsertText("Blocked", 0)
 		tr := storage.Transaction{
-			Operations: []storage.TransactionOp{
-				{
-					Type: storage.OpInsert,
-					InsertOp: storage.InsertOp{
-						Database:   "testdb",
-						Collection: "users",
-						DocID:      "blocked_doc",
-						Snapshot:   doc.ExportSnapshot().Bytes(),
-					},
+			TxID:      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+			Committer: "test-client",
+			Operations: []any{
+				storage.InsertOp{
+					Database:   "testdb",
+					Collection: "users",
+					DocID:      "blocked_doc",
+					Snapshot:   doc.ExportSnapshot().Bytes(),
 				},
 			},
 		}
@@ -350,7 +340,6 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 		_, err = engine.LoadDoc("testdb", "users", "blocked_doc")
 		assert.Error(t, err)
 	})
-
 	t.Run("事务事件应该被正确触发", func(t *testing.T) {
 		// 订阅事件
 		committedCh := engine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
@@ -362,38 +351,46 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 
 		// 测试事务取消事件
 		{
+			// 创建一个新的 loro doc 用于测试
+			doc := loro.NewLoroDoc()
+			snapshot := doc.ExportSnapshot()
+
+			tr := &storage.Transaction{
+				TxID:      "00000000-0000-0000-0000-000000000001",
+				Committer: "test-client",
+				Operations: []any{
+					storage.InsertOp{
+						Database:   "testdb",
+						Collection: "users",
+						DocID:      "canceled_doc",
+						Snapshot:   snapshot.Bytes(),
+					},
+				},
+			}
+
 			// 设置一个会导致事务取消的 hook
 			hook := func(tr *storage.Transaction) error {
-				if tr.Operations[0].InsertOp.DocID == "canceled_doc" {
-					return fmt.Errorf("transaction canceled")
+				if tr != nil && len(tr.Operations) > 0 {
+					if op, ok := tr.Operations[0].(storage.InsertOp); ok && op.DocID == "canceled_doc" {
+						return fmt.Errorf("transaction canceled")
+					}
 				}
 				return nil
 			}
 			engine.SetBeforeTransactionHook(&hook)
 
-			doc := loro.NewLoroDoc()
-			doc.GetText("name").InsertText("Canceled", 0)
-			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpInsert,
-						InsertOp: storage.InsertOp{
-							Database:   "testdb",
-							Collection: "users",
-							DocID:      "canceled_doc",
-							Snapshot:   doc.ExportSnapshot().Bytes(),
-						},
-					},
-				},
-			}
-			engine.Commit(&tr)
+			// 提交事务
+			err := engine.Commit(tr)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "transaction canceled")
 
 			// 验证收到取消事件
 			select {
 			case event := <-canceledCh:
-				tr, ok := event.(*storage.Transaction)
+				canceledEvent, ok := event.(*storage.TransactionCancelledEvent)
 				assert.True(t, ok)
-				assert.Equal(t, "canceled_doc", tr.Operations[0].InsertOp.DocID)
+				assert.Equal(t, "test-client", canceledEvent.Committer)
+				assert.Equal(t, "canceled_doc", canceledEvent.Transaction.Operations[0].(storage.InsertOp).DocID)
 			case <-time.After(time.Second):
 				t.Fatal("未收到事务取消事件")
 			}
@@ -407,15 +404,14 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			doc := loro.NewLoroDoc()
 			doc.GetText("name").InsertText("Success", 0)
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpInsert,
-						InsertOp: storage.InsertOp{
-							Database:   "testdb",
-							Collection: "users",
-							DocID:      "success_doc",
-							Snapshot:   doc.ExportSnapshot().Bytes(),
-						},
+				TxID:      "cccccccc-cccc-cccc-cccc-cccccccccccc",
+				Committer: "test-client",
+				Operations: []any{
+					storage.InsertOp{
+						Database:   "testdb",
+						Collection: "users",
+						DocID:      "success_doc",
+						Snapshot:   doc.ExportSnapshot().Bytes(),
 					},
 				},
 			}
@@ -424,9 +420,11 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到提交事件
 			select {
 			case event := <-committedCh:
-				tr, ok := event.(*storage.Transaction)
+				tr, ok := event.(*storage.TransactionCommittedEvent)
 				assert.True(t, ok)
-				assert.Equal(t, "success_doc", tr.Operations[0].InsertOp.DocID)
+				op, ok := tr.Transaction.Operations[0].(storage.InsertOp)
+				assert.True(t, ok)
+				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
 				t.Fatal("未收到事务提交事件")
 			}
@@ -437,15 +435,14 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			doc := loro.NewLoroDoc()
 			doc.GetText("name").InsertText("Duplicate", 0)
 			tr := storage.Transaction{
-				Operations: []storage.TransactionOp{
-					{
-						Type: storage.OpInsert,
-						InsertOp: storage.InsertOp{
-							Database:   "testdb",
-							Collection: "users",
-							DocID:      "success_doc", // 使用已存在的文档ID
-							Snapshot:   doc.ExportSnapshot().Bytes(),
-						},
+				TxID:      "dddddddd-dddd-dddd-dddd-dddddddddddd",
+				Committer: "test-client",
+				Operations: []any{
+					storage.InsertOp{
+						Database:   "testdb",
+						Collection: "users",
+						DocID:      "success_doc", // 使用已存在的文档ID
+						Snapshot:   doc.ExportSnapshot().Bytes(),
 					},
 				},
 			}
@@ -454,9 +451,11 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到回滚事件
 			select {
 			case event := <-rollbackedCh:
-				tr, ok := event.(*storage.Transaction)
+				tr, ok := event.(*storage.TransactionRollbackedEvent)
 				assert.True(t, ok)
-				assert.Equal(t, "success_doc", tr.Operations[0].InsertOp.DocID)
+				op, ok := tr.Transaction.Operations[0].(storage.InsertOp)
+				assert.True(t, ok)
+				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
 				t.Fatal("未收到事务回滚事件")
 			}

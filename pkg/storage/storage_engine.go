@@ -263,12 +263,12 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 
 	// 处理事务中的每个操作
 	for _, op := range tr.Operations {
-		switch op.Type {
-		case OpInsert:
+		switch op := op.(type) {
+		case InsertOp:
 			{
-				database := op.InsertOp.Database
-				collection := op.InsertOp.Collection
-				docID := op.InsertOp.DocID
+				database := op.Database
+				collection := op.Collection
+				docID := op.DocID
 				key, err := CalcDocKey(database, collection, docID)
 				if err != nil {
 					return err
@@ -282,20 +282,20 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 
 				// 更新缓存
 				doc := loro.NewLoroDoc()
-				doc.Import(op.InsertOp.Snapshot)
+				doc.Import(op.Snapshot)
 				e.docsCache.Set(key, docID, doc)
 
 				// 记录回滚信息
 				rb.toDelete = append(rb.toDelete, key)
 
 				// 添加到批处理
-				batch.Set(key, op.InsertOp.Snapshot, pebble.Sync)
+				batch.Set(key, op.Snapshot, pebble.Sync)
 			}
-		case OpUpdate:
+		case UpdateOp:
 			{
-				database := op.UpdateOp.Database
-				collection := op.UpdateOp.Collection
-				docID := op.UpdateOp.DocID
+				database := op.Database
+				collection := op.Collection
+				docID := op.DocID
 				key, err := CalcDocKey(database, collection, docID)
 				if err != nil {
 					return err
@@ -309,7 +309,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 
 				// 更新缓存
 				forkedDoc := doc.Fork()
-				doc.Import(op.UpdateOp.Update)
+				doc.Import(op.Update)
 				snapshot := doc.ExportSnapshot()
 
 				// 记录回滚信息
@@ -323,11 +323,11 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// 添加到批处理
 				batch.Set(key, snapshot.Bytes(), pebble.Sync)
 			}
-		case OpDelete:
+		case DeleteOp:
 			{
-				database := op.DeleteOp.Database
-				collection := op.DeleteOp.Collection
-				docID := op.DeleteOp.DocID
+				database := op.Database
+				collection := op.Collection
+				docID := op.DocID
 				key, err := CalcDocKey(database, collection, docID)
 				if err != nil {
 					return err

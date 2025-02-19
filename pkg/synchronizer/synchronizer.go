@@ -2,9 +2,11 @@ package synchronizer
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/synchronizer/message"
 )
 
 // EventMessage 定义了同步事件的消息格式
@@ -69,14 +71,35 @@ func (s *Synchronizer) Start() error {
 		}
 	}()
 
+	msgHandler := func(clientId string, msg []byte) {
+		// handle message
+	}
+	s.channel.SetMsgHandler(msgHandler)
+
 	return nil
 }
 
+// handleTransactionCommitted 处理事务提交事件
+// 注意，这个方法会捕获所有错误，保证不会因为错误而中断
 func (s *Synchronizer) handleTransactionCommitted(event any) {
+	// 哪个节点提交的事务，就向这个节点发送 AckTransactionMessage
 	committedEvent, ok := event.(*storage.TransactionCommittedEvent)
 	if !ok {
-		return // TODO 处理错误
+		log.Println("handleTransactionCommitted: event is not a *storage.TransactionCommittedEvent")
+		return
 	}
+	ackMsg := message.AckTransactionMessageV1{
+		TxID: committedEvent.Transaction.TxID,
+	}
+	ackMsgBytes, err := ackMsg.Encode()
+	if err != nil {
+		log.Println("handleTransactionCommitted: failed to encode ack message", err)
+	}
+	err = s.channel.Send(committedEvent.Committer, ackMsgBytes)
+	if err != nil {
+		log.Println("handleTransactionCommitted: failed to send ack message", err)
+	}
+	// 遍历所有节点，将新的文档通过 PostUpdateMessage 节点
 }
 
 func (s *Synchronizer) handleTransactionCanceled(event any) {
@@ -102,4 +125,10 @@ func (s *Synchronizer) Stop() {
 		}
 	}
 	s.subscriptions = nil
+
+	// 卸载消息处理器
+	s.channel.SetMsgHandler(nil)
+
+	// 关闭所有连接
+	s.channel.CloseAll()
 }
