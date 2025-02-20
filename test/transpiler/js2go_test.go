@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
@@ -32,19 +31,19 @@ func TestExecuteCode(t *testing.T) {
 		},
 	}
 
-	// 为 console 对象添加特殊的属性访问规则
-	consoleType := reflect.TypeOf(ctx.Vars["console"])
-	ctx.AddPropAccessRule(consoleType, func(obj interface{}, prop string) (interface{}, error) {
-		// 将 log 转换为 Log
-		if prop == "log" {
-			val := reflect.ValueOf(obj)
-			method := val.FieldByName("Log")
-			if method.IsValid() {
-				return method.Interface(), nil
+	// 为 console 对象设置自定义属性访问转换器
+	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+		// 如果是 console 对象，处理 log -> Log 的转换
+		if console, ok := obj.(struct {
+			Log func(...interface{}) (int, error)
+		}); ok {
+			if len(chain) == 1 && chain[0].Prop == "log" {
+				return console.Log, nil
 			}
 		}
-		return nil, fmt.Errorf("属性不存在: %s", prop)
-	})
+		// 其他情况使用默认转换器
+		return transpiler.DefaultPropAccessTransformer(chain, obj)
+	}
 
 	tests := []struct {
 		name    string
@@ -155,22 +154,25 @@ func TestCustomPropertyAccess(t *testing.T) {
 	// 添加测试对象到上下文
 	ctx.Vars["obj"] = testObj
 
-	// 添加自定义属性访问规则
-	ctx.AddPropAccessRule(reflect.TypeOf(TestStruct{}), func(obj interface{}, prop string) (interface{}, error) {
-		ts := obj.(*TestStruct)
-		if val, ok := ts.data[prop]; ok {
-			return val, nil
-		}
-		// 转换为 Get 方法调用
-		method := reflect.ValueOf(ts).MethodByName("Get" + strings.Title(prop))
-		if method.IsValid() {
-			results := method.Call(nil)
-			if len(results) > 0 {
-				return results[0].Interface(), nil
+	// 设置自定义属性访问转换器
+	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+		if ts, ok := obj.(*TestStruct); ok {
+			result := ts
+			for _, access := range chain {
+				if val, ok := result.data[access.Prop]; ok {
+					if next, ok := val.(*TestStruct); ok {
+						result = next
+					} else {
+						return val, nil
+					}
+				} else {
+					return nil, fmt.Errorf("属性不存在: %s", access.Prop)
+				}
 			}
+			return result, nil
 		}
-		return nil, fmt.Errorf("属性不存在: %s", prop)
-	})
+		return transpiler.DefaultPropAccessTransformer(chain, obj)
+	}
 
 	tests := []struct {
 		name    string
@@ -186,6 +188,96 @@ func TestCustomPropertyAccess(t *testing.T) {
 		{
 			name:    "无效属性访问",
 			js:      "obj.x.y.z;",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Execute() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChainPropertyAccess(t *testing.T) {
+	ctx := transpiler.NewContext()
+
+	type Person struct {
+		name    string
+		age     int
+		friends map[string]*Person
+	}
+
+	alice := &Person{
+		name: "Alice",
+		age:  20,
+		friends: map[string]*Person{
+			"bob": {name: "Bob", age: 22},
+		},
+	}
+
+	ctx.Vars["person"] = alice
+
+	// 设置自定义属性访问转换器
+	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+		p, ok := obj.(*Person)
+		if !ok {
+			return nil, fmt.Errorf("不是 Person 对象")
+		}
+
+		result := p
+		for _, access := range chain {
+			switch {
+			case access.Prop == "friend" && access.IsCall:
+				// friend('name') 转换为 map 访问
+				if len(access.Args) != 1 {
+					return nil, fmt.Errorf("friend 方法需要一个参数")
+				}
+				name, ok := access.Args[0].(string)
+				if !ok {
+					return nil, fmt.Errorf("friend 方法参数必须是字符串")
+				}
+				result = result.friends[name]
+				if result == nil {
+					return nil, fmt.Errorf("friend not found: %s", name)
+				}
+			case access.Prop == "name" || access.Prop == "age":
+				// 属性访问转换为字符串
+				return fmt.Sprintf("%s: %v", access.Prop, reflect.ValueOf(result).Elem().FieldByName(access.Prop)), nil
+			default:
+				return nil, fmt.Errorf("不支持的属性访问: %s", access.Prop)
+			}
+		}
+		return result, nil
+	}
+
+	tests := []struct {
+		name    string
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name: "访问直接属性",
+			js:   "person.name;",
+			want: "name: Alice",
+		},
+		{
+			name: "访问朋友属性",
+			js:   "person.friend('bob').name;",
+			want: "name: Bob",
+		},
+		{
+			name:    "访问不存在的朋友",
+			js:      "person.friend('david').name;",
+			want:    nil,
 			wantErr: true,
 		},
 	}
