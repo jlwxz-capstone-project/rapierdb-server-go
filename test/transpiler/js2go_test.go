@@ -467,3 +467,258 @@ func TestExecuteIfStatement(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteBlockStatement(t *testing.T) {
+	ctx := transpiler.NewContext()
+
+	// 添加一些测试用的函数和变量
+	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
+	ctx.Vars["console"] = struct {
+		Log func(a ...interface{}) (n int, err error)
+	}{
+		Log: fmt.Println,
+	}
+	ctx.Vars["req"] = &struct {
+		Path      string
+		Headers   map[string]string
+		GetHeader func(string) string
+	}{
+		Path:    "/api/test",
+		Headers: map[string]string{"Content-Type": "application/json"},
+		GetHeader: func(name string) string {
+			return "test-header"
+		},
+	}
+
+	// 为 console 对象设置自定义属性访问转换器
+	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+		// 如果是 console 对象，处理 log -> Log 的转换
+		if console, ok := obj.(struct {
+			Log func(...interface{}) (int, error)
+		}); ok {
+			if len(chain) == 1 && chain[0].Prop == "log" {
+				return console.Log, nil
+			}
+		}
+		// 其他情况使用默认转换器
+		return transpiler.DefaultPropAccessTransformer(chain, obj)
+	}
+
+	tests := []struct {
+		name    string
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name: "简单代码块",
+			js:   "if (true) { 1; 2; 3; } else { 4; 5; 6; }",
+			want: float64(3),
+		},
+		{
+			name: "嵌套代码块",
+			js:   "if (true) { if (true) { 1; 2; } else { 3; } } else { 4; }",
+			want: float64(2),
+		},
+		{
+			name: "空代码块",
+			js:   "if (true) {} else { 1; }",
+			want: nil,
+		},
+		{
+			name: "代码块中的变量访问",
+			js:   "if (true) { req.Path; req.Headers['Content-Type']; }",
+			want: "application/json",
+		},
+		{
+			name: "代码块中的函数调用",
+			js:   "if (true) { add(1, 2); add(3, 4); }",
+			want: float64(7),
+		},
+		{
+			name: "代码块中的复杂表达式",
+			js:   "if (true) { 1 + 2; 3 * 4; 5 - 6; }",
+			want: float64(-1),
+		},
+		{
+			name: "代码块中的条件语句",
+			js:   "if (true) { if (1 < 2) { 'yes'; } else { 'no'; } }",
+			want: "yes",
+		},
+		{
+			name: "代码块中的console.log",
+			js:   "if (true) { console.log('test1'); console.log('test2'); console.log('test3'); }",
+			want: 6,
+		},
+		{
+			name: "多层嵌套代码块",
+			js:   "if (true) { if (true) { if (true) { 1; } else { 2; } } else { 3; } } else { 4; }",
+			want: float64(1),
+		},
+		{
+			name: "代码块中的混合运算",
+			js:   "if (true) { 1 + 2; 'hello' + ' world'; add(3, 4); }",
+			want: float64(7),
+		},
+		{
+			name: "代码块中的对象访问链",
+			js:   "if (true) { req.Headers['Content-Type']; req.GetHeader('test'); }",
+			want: "test-header",
+		},
+		{
+			name: "代码块中的布尔运算",
+			js:   "if (true) { true && false; false || true; !false; !true; }",
+			want: false,
+		},
+		{
+			name: "代码块中的比较运算",
+			js:   "if (true) { 1 < 2; 3 > 4; 5 <= 5; 6 >= 7; }",
+			want: false,
+		},
+		{
+			name: "代码块中的字符串操作",
+			js:   "if (true) { 'hello'.length; 'world'.length; }",
+			want: 5,
+		},
+		{
+			name: "代码块中的对象字面量",
+			js:   "if (true) { var empty = {}; var obj = {a: 1}; obj; }",
+			want: map[string]any{"a": float64(1)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Execute() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestObjectLiteralRelated(t *testing.T) {
+	ctx := transpiler.NewContext()
+
+	// 添加一些变量到上下文
+	ctx.Vars["x"] = float64(1)
+	ctx.Vars["y"] = "test"
+	ctx.Vars["obj"] = map[string]any{
+		"a": float64(1),
+		"b": "hello",
+	}
+
+	tests := []struct {
+		name    string
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name: "空对象",
+			js:   "({})",
+			want: map[string]any{},
+		},
+		{
+			name: "简单对象",
+			js:   "({a: 1, b: 2})",
+			want: map[string]any{"a": float64(1), "b": float64(2)},
+		},
+		{
+			name: "字符串键",
+			js:   "({'a': 1, 'b': 2})",
+			want: map[string]any{"a": float64(1), "b": float64(2)},
+		},
+		{
+			name: "表达式作为值",
+			js:   "({a: 1 + 2, b: 'hello' + ' world'})",
+			want: map[string]any{"a": float64(3), "b": "hello world"},
+		},
+		{
+			name: "变量作为值",
+			js:   "({a: x, b: y})",
+			want: map[string]any{"a": float64(1), "b": "test"},
+		},
+		{
+			name: "嵌套对象",
+			js:   "({a: {b: {c: 1}}})",
+			want: map[string]any{"a": map[string]any{"b": map[string]any{"c": float64(1)}}},
+		},
+		{
+			name: "对象作为变量值",
+			js:   "var o = {a: 1}; o;",
+			want: map[string]any{"a": float64(1)},
+		},
+		{
+			name: "对象属性访问",
+			js:   "var o = {a: 1, b: 2}; o.a;",
+			want: float64(1),
+		},
+		{
+			name: "计算属性名",
+			js:   "({['a' + 'b']: 1})",
+			want: map[string]any{"ab": float64(1)},
+		},
+		{
+			name: "对象展开",
+			js:   "var base = {a: 1}; ({...base, b: 2})",
+			want: map[string]any{"a": float64(1), "b": float64(2)},
+		},
+		{
+			name: "多层对象展开",
+			js:   "var a = {x: 1}; var b = {y: 2}; ({...a, ...b, z: 3})",
+			want: map[string]any{"x": float64(1), "y": float64(2), "z": float64(3)},
+		},
+		{
+			name: "对象属性覆盖",
+			js:   "({a: 1, a: 2})",
+			want: map[string]any{"a": float64(2)},
+		},
+		{
+			name: "展开覆盖",
+			js:   "var base = {a: 1, b: 1}; ({...base, b: 2})",
+			want: map[string]any{"a": float64(1), "b": float64(2)},
+		},
+		{
+			name: "表达式作为键",
+			js:   "({[1 + 2]: 'three'})",
+			want: map[string]any{"3": "three"},
+		},
+		{
+			name:    "无效的键",
+			js:      "({[{x: 1}]: 1})",
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("Execute() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
+
+					// 打印详细的值比较
+					// if m1, ok1 := got.(map[string]any); ok1 {
+					// 	if m2, ok2 := tt.want.(map[string]any); ok2 {
+					// 		for k, v1 := range m1 {
+					// 			if v2, exists := m2[k]; exists {
+					// 				t.Logf("Key %s: got %v (%T), want %v (%T)", k, v1, v1, v2, v2)
+					// 			}
+					// 		}
+					// 	}
+					// }
+				}
+			}
+		})
+	}
+}

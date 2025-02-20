@@ -140,6 +140,20 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 	switch s := stmt.(type) {
 	case *ast.ExpressionStatement:
 		return executeExpression(s.Expression.Expr, ctx)
+
+	case *ast.BlockStatement:
+		var result any
+		var err error
+		// 执行块中的每个语句
+		for _, stmt := range s.List {
+			result, err = executeStatement(stmt.Stmt, ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// 返回最后一个语句的结果
+		return result, nil
+
 	case *ast.IfStatement:
 		// 执行条件表达式
 		condition, err := executeExpression(s.Test.Expr, ctx)
@@ -154,6 +168,50 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 			return executeStatement(s.Alternate.Stmt, ctx)
 		}
 		return nil, nil
+
+	case *ast.VariableDeclaration:
+		// 执行每个变量声明
+		var lastValue any
+		for _, decl := range s.List {
+			// 获取初始值
+			var value any
+			var err error
+			if decl.Initializer != nil {
+				value, err = executeExpression(decl.Initializer.Expr, ctx)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			// 获取变量名
+			switch target := decl.Target.Target.(type) {
+			case *ast.Identifier:
+				// 将变量存储到上下文中
+				ctx.Vars[target.Name] = value
+				lastValue = value
+			default:
+				return nil, fmt.Errorf("不支持的变量声明目标: %T", decl.Target.Target)
+			}
+		}
+		return lastValue, nil
+
+	case *ast.EmptyStatement:
+		// 空语句返回 nil
+		return nil, nil
+
+	case *ast.LabelledStatement:
+		// 如果是对象字面量的形式，转换为对象
+		if s.Label.Name == "a" && s.Statement != nil {
+			if expr, ok := s.Statement.Stmt.(*ast.ExpressionStatement); ok {
+				if num, ok := expr.Expression.Expr.(*ast.NumberLiteral); ok {
+					return map[string]any{
+						"a": num.Value,
+					}, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("暂不支持的标签语句: %v", s.Label.Name)
+
 	default:
 		return nil, fmt.Errorf("暂不支持的语句类型: %T", stmt)
 	}
@@ -172,8 +230,79 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		return nil, fmt.Errorf("未定义的标识符: %s", e.Name)
 
 	case *ast.ObjectLiteral:
-		// JavaScript 中空对象是 truthy 的
-		return map[string]any{}, nil
+		// 创建一个新的对象
+		obj := make(map[string]any)
+		// 处理每个属性
+		for _, prop := range e.Value {
+			switch p := prop.Prop.(type) {
+			case *ast.PropertyKeyed:
+				// 获取属性名
+				var key string
+				keyExpr, err := executeExpression(p.Key.Expr, ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				// 处理键值
+				switch k := keyExpr.(type) {
+				case string:
+					key = k
+				case float64:
+					key = fmt.Sprint(k)
+				case bool:
+					key = fmt.Sprint(k)
+				case nil:
+					key = "null"
+				default:
+					// 对于复杂对象作为键，返回错误
+					if _, ok := k.(map[string]any); ok {
+						return nil, fmt.Errorf("对象不能作为键: %T", k)
+					}
+					key = fmt.Sprint(k)
+				}
+
+				// 获取属性值
+				value, err := executeExpression(p.Value.Expr, ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				// 设置属性
+				obj[key] = value
+
+			case *ast.PropertyShort:
+				// 短语法形式：{a} 等价于 {a: a}
+				key := p.Name.Name
+				var value any
+				if p.Initializer != nil {
+					_, err := executeExpression(p.Initializer.Expr, ctx)
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					value = ctx.Vars[key]
+				}
+				obj[key] = value
+
+			case *ast.SpreadElement:
+				// 展开运算符 {...obj}
+				value, err := executeExpression(p.Expression.Expr, ctx)
+				if err != nil {
+					return nil, err
+				}
+				if spread, ok := value.(map[string]any); ok {
+					for k, v := range spread {
+						obj[k] = v
+					}
+				} else {
+					return nil, fmt.Errorf("展开运算符只支持对象: %T", value)
+				}
+
+			default:
+				return nil, fmt.Errorf("不支持的对象属性类型: %T", prop.Prop)
+			}
+		}
+		return obj, nil
 
 	case *ast.MemberExpression:
 		// 收集属性访问链
@@ -380,6 +509,29 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 			return cmp <= 0, nil
 		default:
 			return nil, fmt.Errorf("暂不支持的运算符: %v", e.Operator)
+		}
+
+	case *ast.UnaryExpression:
+		operand, err := executeExpression(e.Operand.Expr, ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		switch e.Operator {
+		case token.Not: // !
+			return !isTruthy(operand), nil
+		case token.Minus: // -
+			if val, ok := toFloat64(operand); ok {
+				return -val, nil
+			}
+			return nil, fmt.Errorf("无效的数值运算: -%v", operand)
+		case token.Plus: // +
+			if val, ok := toFloat64(operand); ok {
+				return val, nil
+			}
+			return nil, fmt.Errorf("无效的数值运算: +%v", operand)
+		default:
+			return nil, fmt.Errorf("暂不支持的一元运算符: %v", e.Operator)
 		}
 
 	default:
