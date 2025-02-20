@@ -20,9 +20,6 @@ type CollectionPermissionRule[CTX any] struct {
 	CanDelete func(doc storage.LoadedDoc, ctx CTX) bool
 }
 
-type LoroDocWrapper struct {
-}
-
 //go:embed permission_builder.js
 var permissionBuilderScript string
 

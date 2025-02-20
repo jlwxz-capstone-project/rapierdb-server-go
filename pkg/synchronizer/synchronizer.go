@@ -21,11 +21,17 @@ type SynchronizerConfig struct {
 }
 
 type Synchronizer struct {
-	storageEngine *storage.StorageEngine
-	channel       Channel
-	cancel        context.CancelFunc
-	config        SynchronizerConfig
-	subscriptions []<-chan any
+	storageEngine       *storage.StorageEngine
+	storageEngineEvents *StorageEngineEvents
+	channel             Channel
+	cancel              context.CancelFunc
+	config              SynchronizerConfig
+}
+
+type StorageEngineEvents struct {
+	CommittedCh  <-chan any
+	CanceledCh   <-chan any
+	RollbackedCh <-chan any
 }
 
 func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, config *SynchronizerConfig) *Synchronizer {
@@ -35,11 +41,11 @@ func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, conf
 	}
 
 	synchronizer := &Synchronizer{
-		storageEngine: storageEngine,
-		channel:       channel,
-		cancel:        nil,
-		config:        *config,
-		subscriptions: []<-chan any{},
+		storageEngine:       storageEngine,
+		storageEngineEvents: &StorageEngineEvents{},
+		channel:             channel,
+		cancel:              nil,
+		config:              *config,
 	}
 	return synchronizer
 }
@@ -54,7 +60,11 @@ func (s *Synchronizer) Start() error {
 	s.cancel = cancel
 
 	// 保存订阅通道以便后续清理
-	s.subscriptions = []<-chan any{committedCh, canceledCh, rollbackedCh}
+	s.storageEngineEvents = &StorageEngineEvents{
+		CommittedCh:  committedCh,
+		CanceledCh:   canceledCh,
+		RollbackedCh: rollbackedCh,
+	}
 
 	go func() {
 		for {

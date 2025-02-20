@@ -387,7 +387,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到取消事件
 			select {
 			case event := <-canceledCh:
-				canceledEvent, ok := event.(*storage.TransactionCancelledEvent)
+				canceledEvent, ok := event.(*storage.TransactionCanceledEvent)
 				assert.True(t, ok)
 				assert.Equal(t, "test-client", canceledEvent.Committer)
 				assert.Equal(t, "canceled_doc", canceledEvent.Transaction.Operations[0].(storage.InsertOp).DocID)

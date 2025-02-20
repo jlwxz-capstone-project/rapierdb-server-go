@@ -62,7 +62,7 @@ const (
 	STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED = "storage_engine_event_transaction_rollbacked"
 )
 
-type TransactionCancelledEvent struct {
+type TransactionCanceledEvent struct {
 	Committer   string
 	Reason      error
 	Transaction *Transaction
@@ -249,7 +249,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 	if e.hooks.BeforeTransaction != nil {
 		err := (*e.hooks.BeforeTransaction)(tr)
 		if err != nil {
-			event := &TransactionCancelledEvent{
+			event := &TransactionCanceledEvent{
 				Committer:   tr.Committer,
 				Reason:      err,
 				Transaction: tr,
