@@ -7,6 +7,7 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/parser"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/token"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // Context 定义转译上下文
@@ -61,6 +62,17 @@ func NewContext() *Context {
 func DefaultPropAccessTransformer(chain []PropAccessor, obj any) (any, error) {
 	result := obj
 	for _, access := range chain {
+		// 处理字符串的内置属性和方法
+		if str, ok := result.(string); ok {
+			switch access.Prop {
+			case "length":
+				result = len(str)
+				continue
+			default:
+				return nil, fmt.Errorf("字符串不支持的属性或方法: %s", access.Prop)
+			}
+		}
+
 		val := reflect.ValueOf(result)
 		if val.Kind() == reflect.Ptr {
 			val = val.Elem()
@@ -159,6 +171,10 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		}
 		return nil, fmt.Errorf("未定义的标识符: %s", e.Name)
 
+	case *ast.ObjectLiteral:
+		// JavaScript 中空对象是 truthy 的
+		return map[string]any{}, nil
+
 	case *ast.MemberExpression:
 		// 收集属性访问链
 		chain := []PropAccessor{}
@@ -254,29 +270,26 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		// 处理逻辑运算符的短路特性
 		switch e.Operator {
 		case token.LogicalAnd: // &&
-			// 如果左边为假，直接返回左边的值
 			if !isTruthy(left) {
-				return left, nil
+				return false, nil
 			}
 			right, err := executeExpression(e.Right.Expr, ctx)
 			if err != nil {
-				return nil, err
+				return false, nil
 			}
 			return isTruthy(right), nil
 
 		case token.LogicalOr: // ||
-			// 如果左边为真，直接返回左边的值
 			if isTruthy(left) {
-				return left, nil
+				return true, nil
 			}
 			right, err := executeExpression(e.Right.Expr, ctx)
 			if err != nil {
-				return nil, err
+				return false, nil
 			}
 			return isTruthy(right), nil
 		}
 
-		// 对于其他运算符，先计算右边的值
 		right, err := executeExpression(e.Right.Expr, ctx)
 		if err != nil {
 			return nil, err
@@ -342,13 +355,29 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		case token.NotEqual:
 			return !reflect.DeepEqual(left, right), nil
 		case token.Greater:
-			return compare(left, right) > 0, nil
-		case token.LessOrEqual:
-			return compare(left, right) <= 0, nil
+			cmp, err := util.CompareValues(left, right)
+			if err != nil {
+				return nil, err
+			}
+			return cmp > 0, nil
 		case token.Less:
-			return compare(left, right) < 0, nil
+			cmp, err := util.CompareValues(left, right)
+			if err != nil {
+				return nil, err
+			}
+			return cmp < 0, nil
 		case token.GreaterOrEqual:
-			return compare(left, right) >= 0, nil
+			cmp, err := util.CompareValues(left, right)
+			if err != nil {
+				return nil, err
+			}
+			return cmp >= 0, nil
+		case token.LessOrEqual:
+			cmp, err := util.CompareValues(left, right)
+			if err != nil {
+				return nil, err
+			}
+			return cmp <= 0, nil
 		default:
 			return nil, fmt.Errorf("暂不支持的运算符: %v", e.Operator)
 		}
@@ -356,35 +385,6 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 	default:
 		return nil, fmt.Errorf("暂不支持的表达式类型: %T", expr)
 	}
-}
-
-// compare 比较两个值
-func compare(a, b any) int {
-	switch x := a.(type) {
-	case string:
-		if y, ok := b.(string); ok {
-			switch {
-			case x < y:
-				return -1
-			case x > y:
-				return 1
-			default:
-				return 0
-			}
-		}
-	case float64:
-		if y, ok := toFloat64(b); ok {
-			switch {
-			case x < y:
-				return -1
-			case x > y:
-				return 1
-			default:
-				return 0
-			}
-		}
-	}
-	return 0
 }
 
 // toFloat64 将值转换为 float64，并返回是否转换成功
@@ -399,6 +399,12 @@ func toFloat64(v any) (float64, bool) {
 	case int64:
 		return float64(val), true
 	case int32:
+		return float64(val), true
+	case uint:
+		return float64(val), true
+	case uint64:
+		return float64(val), true
+	case uint32:
 		return float64(val), true
 	default:
 		return 0, false

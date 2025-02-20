@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // NinExpr 不包含比较
@@ -23,7 +24,7 @@ func (e *NinExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: evaluating element of NIN: %v", ErrEvalError, err)
 		}
-		cmp, err := CompareValues(o1.Value, elemValue.Value)
+		cmp, err := util.CompareValues(o1.Value, elemValue.Value)
 		if err != nil {
 			return nil, err
 		}

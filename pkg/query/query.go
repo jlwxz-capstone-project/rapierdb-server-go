@@ -6,6 +6,7 @@ import (
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // SortOrder 表示排序顺序
@@ -110,7 +111,7 @@ func (q *Query) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 		}
 
 		// 比较字段值
-		cmp, err := qfe.CompareValues(value1, value2)
+		cmp, err := util.CompareValues(value1, value2)
 		if err != nil {
 			return 0, fmt.Errorf("comparing field '%s': %v", sort.Field, err)
 		}

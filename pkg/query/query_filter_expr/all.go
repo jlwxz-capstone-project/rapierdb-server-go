@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // AllExpr 检查数组是否包含所有指定元素
@@ -41,7 +42,7 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 
 		found := false
 		for _, arrItem := range arr {
-			cmp, err := CompareValues(arrItem, itemValue.Value)
+			cmp, err := util.CompareValues(arrItem, itemValue.Value)
 			if err != nil {
 				if errors.Is(err, ErrTypeError) {
 					continue // 类型不匹配，继续检查下一个元素

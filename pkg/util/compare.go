@@ -1,10 +1,14 @@
-package query_filter_expr
+package util
 
 import (
 	"errors"
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+)
+
+var (
+	ErrTypeError = errors.New("type error")
 )
 
 // CompareValues 比较两个值的大小

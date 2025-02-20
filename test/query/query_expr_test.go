@@ -5,6 +5,7 @@ import (
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -616,7 +617,7 @@ func TestCompareValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := qfe.CompareValues(tt.v1, tt.v2)
+			result, err := util.CompareValues(tt.v1, tt.v2)
 
 			if tt.expectError {
 				assert.Error(t, err)
