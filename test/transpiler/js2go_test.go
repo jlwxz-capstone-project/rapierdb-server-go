@@ -51,6 +51,7 @@ func TestExecuteCode(t *testing.T) {
 		want    interface{}
 		wantErr bool
 	}{
+		// 基本运算测试
 		{
 			name: "数字运算",
 			js:   "1 + 2 * 3;",
@@ -66,6 +67,8 @@ func TestExecuteCode(t *testing.T) {
 			js:   "add(1, 2);",
 			want: float64(3),
 		},
+
+		// 对象访问测试
 		{
 			name: "对象属性访问",
 			js:   "req.Path;",
@@ -81,6 +84,8 @@ func TestExecuteCode(t *testing.T) {
 			js:   "req.Headers['Content-Type'];",
 			want: "application/json",
 		},
+
+		// 错误处理测试
 		{
 			name:    "未定义变量",
 			js:      "notExist;",
@@ -99,20 +104,62 @@ func TestExecuteCode(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
-	}
 
-	// 添加 console.log 测试用例
-	tests = append(tests, struct {
-		name    string
-		js      string
-		want    interface{}
-		wantErr bool
-	}{
-		name:    "console.log调用",
-		js:      "console.log('test');",
-		want:    5,
-		wantErr: false,
-	})
+		// console.log 测试
+		{
+			name:    "console.log调用",
+			js:      "console.log('test');",
+			want:    5,
+			wantErr: false,
+		},
+
+		// if-else 语句测试
+		{
+			name: "简单if条件",
+			js:   "if (true) 1; else 2;",
+			want: float64(1),
+		},
+		{
+			name: "if-else条件",
+			js:   "if (false) 1; else 2;",
+			want: float64(2),
+		},
+		{
+			name: "比较运算",
+			js:   "if (1 < 2) 'yes'; else 'no';",
+			want: "yes",
+		},
+		{
+			name: "相等比较",
+			js:   "if ('hello' == 'hello') true; else false;",
+			want: true,
+		},
+		{
+			name: "不相等比较",
+			js:   "if (1 != 2) 'different'; else 'same';",
+			want: "different",
+		},
+		{
+			name: "数字条件",
+			js:   "if (1) 'truthy'; else 'falsy';",
+			want: "truthy",
+		},
+		{
+			name: "零值条件",
+			js:   "if (0) 'truthy'; else 'falsy';",
+			want: "falsy",
+		},
+		{
+			name: "空字符串条件",
+			js:   "if ('') 'truthy'; else 'falsy';",
+			want: "falsy",
+		},
+		{
+			name: "null条件",
+			js:   "if (null) 'truthy'; else 'falsy';",
+			want: "falsy",
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -279,6 +326,131 @@ func TestChainPropertyAccess(t *testing.T) {
 			js:      "person.friend('david').name;",
 			want:    nil,
 			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Execute() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteIfStatement(t *testing.T) {
+	ctx := transpiler.NewContext()
+
+	tests := []struct {
+		name    string
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name: "简单if条件",
+			js:   "if (true) 1; else 2;",
+			want: float64(1),
+		},
+		{
+			name: "if-else条件",
+			js:   "if (false) 1; else 2;",
+			want: float64(2),
+		},
+		{
+			name: "比较运算",
+			js:   "if (1 < 2) 'yes'; else 'no';",
+			want: "yes",
+		},
+		{
+			name: "相等比较",
+			js:   "if ('hello' == 'hello') true; else false;",
+			want: true,
+		},
+		{
+			name: "不相等比较",
+			js:   "if (1 != 2) 'different'; else 'same';",
+			want: "different",
+		},
+		{
+			name: "数字条件",
+			js:   "if (1) 'truthy'; else 'falsy';",
+			want: "truthy",
+		},
+		{
+			name: "零值条件",
+			js:   "if (0) 'truthy'; else 'falsy';",
+			want: "falsy",
+		},
+		{
+			name: "空字符串条件",
+			js:   "if ('') 'truthy'; else 'falsy';",
+			want: "falsy",
+		},
+		{
+			name: "null条件",
+			js:   "if (null) 'truthy'; else 'falsy';",
+			want: "falsy",
+		},
+		{
+			name: "复杂条件",
+			js:   "if (1 < 2 && 'hello' == 'hello') 'both true'; else 'not both true';",
+			want: "both true",
+		},
+		{
+			name: "带括号的条件",
+			js:   "if ((1 + 2) * 3 > 8) 'greater'; else 'less';",
+			want: "greater",
+		},
+		{
+			name: "多重比较",
+			js:   "if (1 < 2 && 3 > 2 || false) 'true'; else 'false';",
+			want: "true",
+		},
+		{
+			name: "带括号的逻辑运算",
+			js:   "if ((true && false) || (true && true)) 'yes'; else 'no';",
+			want: "yes",
+		},
+		{
+			name: "混合运算优先级",
+			js:   "if (2 + 3 * 4 > 10 + 2) 'yes'; else 'no';",
+			want: "yes",
+		},
+		{
+			name: "复杂嵌套条件",
+			js:   "if ((1 + 2 > 2) && (3 * 4 <= 12 || true)) 'complex'; else 'simple';",
+			want: "complex",
+		},
+		{
+			name: "字符串比较和数字运算",
+			js:   "if ('hello'.length > 2 + 1) 'long'; else 'short';",
+			want: "long",
+		},
+		{
+			name: "多重括号和运算符",
+			js:   "if (((1 + 2) * 3 == 9) && (4 + 5 >= 8 || 2 * 3 < 5)) 'pass'; else 'fail';",
+			want: "pass",
+		},
+		{
+			name: "逻辑运算短路",
+			js:   "if (false && someUndefinedVar) 'bug'; else 'ok';",
+			want: "ok",
+		},
+		{
+			name: "数字和布尔混合运算",
+			js:   "if (1 + 1 == 2 && true || false && 5 < 3) 'correct'; else 'wrong';",
+			want: "correct",
+		},
+		{
+			name: "复杂的真值判断",
+			js:   "if (1 && 'hello' && (2 * 3) && {}) 'truthy'; else 'falsy';",
+			want: "truthy",
 		},
 	}
 

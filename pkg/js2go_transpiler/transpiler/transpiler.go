@@ -128,6 +128,20 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 	switch s := stmt.(type) {
 	case *ast.ExpressionStatement:
 		return executeExpression(s.Expression.Expr, ctx)
+	case *ast.IfStatement:
+		// 执行条件表达式
+		condition, err := executeExpression(s.Test.Expr, ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// 使用 isTruthy 统一处理条件判断
+		if isTruthy(condition) {
+			return executeStatement(s.Consequent.Stmt, ctx)
+		} else if s.Alternate != nil {
+			return executeStatement(s.Alternate.Stmt, ctx)
+		}
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("暂不支持的语句类型: %T", stmt)
 	}
@@ -225,11 +239,44 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		// 对于多返回值的函数，只返回第一个值
 		return results[0].Interface(), nil
 
+	case *ast.BooleanLiteral:
+		return e.Value, nil
+
+	case *ast.NullLiteral:
+		return nil, nil
+
 	case *ast.BinaryExpression:
 		left, err := executeExpression(e.Left.Expr, ctx)
 		if err != nil {
 			return nil, err
 		}
+
+		// 处理逻辑运算符的短路特性
+		switch e.Operator {
+		case token.LogicalAnd: // &&
+			// 如果左边为假，直接返回左边的值
+			if !isTruthy(left) {
+				return left, nil
+			}
+			right, err := executeExpression(e.Right.Expr, ctx)
+			if err != nil {
+				return nil, err
+			}
+			return isTruthy(right), nil
+
+		case token.LogicalOr: // ||
+			// 如果左边为真，直接返回左边的值
+			if isTruthy(left) {
+				return left, nil
+			}
+			right, err := executeExpression(e.Right.Expr, ctx)
+			if err != nil {
+				return nil, err
+			}
+			return isTruthy(right), nil
+		}
+
+		// 对于其他运算符，先计算右边的值
 		right, err := executeExpression(e.Right.Expr, ctx)
 		if err != nil {
 			return nil, err
@@ -245,15 +292,63 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 				}
 			}
 			// 数字相加
-			return toFloat64(left) + toFloat64(right), nil
+			lv, lok := toFloat64(left)
+			rv, rok := toFloat64(right)
+			if !lok || !rok {
+				return nil, fmt.Errorf("无效的数值运算: %v + %v", left, right)
+			}
+			return lv + rv, nil
+
 		case token.Minus:
-			return toFloat64(left) - toFloat64(right), nil
+			lv, lok := toFloat64(left)
+			rv, rok := toFloat64(right)
+			if !lok || !rok {
+				return nil, fmt.Errorf("无效的数值运算: %v - %v", left, right)
+			}
+			return lv - rv, nil
+
 		case token.Multiply:
-			return toFloat64(left) * toFloat64(right), nil
+			lv, lok := toFloat64(left)
+			rv, rok := toFloat64(right)
+			if !lok || !rok {
+				return nil, fmt.Errorf("无效的数值运算: %v * %v", left, right)
+			}
+			return lv * rv, nil
+
 		case token.Slash:
-			return toFloat64(left) / toFloat64(right), nil
+			lv, lok := toFloat64(left)
+			rv, rok := toFloat64(right)
+			if !lok || !rok {
+				return nil, fmt.Errorf("无效的数值运算: %v / %v", left, right)
+			}
+			if rv == 0 {
+				return nil, fmt.Errorf("除数不能为零")
+			}
+			return lv / rv, nil
+
 		case token.Remainder:
-			return float64(int64(toFloat64(left)) % int64(toFloat64(right))), nil
+			lv, lok := toFloat64(left)
+			rv, rok := toFloat64(right)
+			if !lok || !rok {
+				return nil, fmt.Errorf("无效的数值运算: %v %% %v", left, right)
+			}
+			if rv == 0 {
+				return nil, fmt.Errorf("除数不能为零")
+			}
+			return float64(int64(lv) % int64(rv)), nil
+
+		case token.Equal:
+			return reflect.DeepEqual(left, right), nil
+		case token.NotEqual:
+			return !reflect.DeepEqual(left, right), nil
+		case token.Greater:
+			return compare(left, right) > 0, nil
+		case token.LessOrEqual:
+			return compare(left, right) <= 0, nil
+		case token.Less:
+			return compare(left, right) < 0, nil
+		case token.GreaterOrEqual:
+			return compare(left, right) >= 0, nil
 		default:
 			return nil, fmt.Errorf("暂不支持的运算符: %v", e.Operator)
 		}
@@ -263,21 +358,50 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 	}
 }
 
-// toFloat64 将值转换为float64
-func toFloat64(v any) float64 {
+// compare 比较两个值
+func compare(a, b any) int {
+	switch x := a.(type) {
+	case string:
+		if y, ok := b.(string); ok {
+			switch {
+			case x < y:
+				return -1
+			case x > y:
+				return 1
+			default:
+				return 0
+			}
+		}
+	case float64:
+		if y, ok := toFloat64(b); ok {
+			switch {
+			case x < y:
+				return -1
+			case x > y:
+				return 1
+			default:
+				return 0
+			}
+		}
+	}
+	return 0
+}
+
+// toFloat64 将值转换为 float64，并返回是否转换成功
+func toFloat64(v any) (float64, bool) {
 	switch val := v.(type) {
 	case float64:
-		return val
+		return val, true
 	case float32:
-		return float64(val)
+		return float64(val), true
 	case int:
-		return float64(val)
+		return float64(val), true
 	case int64:
-		return float64(val)
+		return float64(val), true
 	case int32:
-		return float64(val)
+		return float64(val), true
 	default:
-		return 0
+		return 0, false
 	}
 }
 
@@ -318,4 +442,28 @@ func defaultAccess(obj any, prop string) (any, error) {
 	}
 
 	return nil, fmt.Errorf("属性不存在: %s", prop)
+}
+
+// isTruthy 判断一个值是否为真值（JavaScript 风格）
+func isTruthy(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return x
+	case string:
+		return x != ""
+	case int:
+		return x != 0
+	case int32:
+		return x != 0
+	case int64:
+		return x != 0
+	case float32:
+		return x != 0
+	case float64:
+		return x != 0
+	default:
+		return true
+	}
 }
