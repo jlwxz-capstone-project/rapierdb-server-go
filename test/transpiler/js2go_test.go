@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 func TestExecuteCode(t *testing.T) {
@@ -32,7 +33,7 @@ func TestExecuteCode(t *testing.T) {
 	}
 
 	// 为 console 对象设置自定义属性访问转换器
-	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
 		// 如果是 console 对象，处理 log -> Log 的转换
 		if console, ok := obj.(struct {
 			Log func(...interface{}) (int, error)
@@ -42,7 +43,7 @@ func TestExecuteCode(t *testing.T) {
 			}
 		}
 		// 其他情况使用默认转换器
-		return transpiler.DefaultPropAccessTransformer(chain, obj)
+		return transpiler.DefaultPropGetter(chain, obj)
 	}
 
 	tests := []struct {
@@ -202,7 +203,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 	ctx.Vars["obj"] = testObj
 
 	// 设置自定义属性访问转换器
-	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
 		if ts, ok := obj.(*TestStruct); ok {
 			result := ts
 			for _, access := range chain {
@@ -218,7 +219,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 			}
 			return result, nil
 		}
-		return transpiler.DefaultPropAccessTransformer(chain, obj)
+		return transpiler.DefaultPropGetter(chain, obj)
 	}
 
 	tests := []struct {
@@ -273,7 +274,7 @@ func TestChainPropertyAccess(t *testing.T) {
 	ctx.Vars["person"] = alice
 
 	// 设置自定义属性访问转换器
-	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
 		p, ok := obj.(*Person)
 		if !ok {
 			return nil, fmt.Errorf("不是 Person 对象")
@@ -491,7 +492,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 	}
 
 	// 为 console 对象设置自定义属性访问转换器
-	ctx.PropAccessTransformer = func(chain []transpiler.PropAccessor, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
 		// 如果是 console 对象，处理 log -> Log 的转换
 		if console, ok := obj.(struct {
 			Log func(...interface{}) (int, error)
@@ -501,7 +502,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 			}
 		}
 		// 其他情况使用默认转换器
-		return transpiler.DefaultPropAccessTransformer(chain, obj)
+		return transpiler.DefaultPropGetter(chain, obj)
 	}
 
 	tests := []struct {
@@ -706,17 +707,221 @@ func TestObjectLiteralRelated(t *testing.T) {
 			if !tt.wantErr {
 				if !reflect.DeepEqual(got, tt.want) {
 					t.Errorf("Execute() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
+				}
+			}
+		})
+	}
+}
 
-					// 打印详细的值比较
-					// if m1, ok1 := got.(map[string]any); ok1 {
-					// 	if m2, ok2 := tt.want.(map[string]any); ok2 {
-					// 		for k, v1 := range m1 {
-					// 			if v2, exists := m2[k]; exists {
-					// 				t.Logf("Key %s: got %v (%T), want %v (%T)", k, v1, v1, v2, v2)
-					// 			}
-					// 		}
-					// 	}
-					// }
+func TestArrayMethods(t *testing.T) {
+	ctx := transpiler.NewContext()
+
+	// 在每个测试前重置数组，确保测试相互独立
+	setupArrays := func() {
+		ctx.Vars["arr"] = []interface{}{1, 2, 3, 4, 5}
+		ctx.Vars["strArr"] = []string{"hello", "world", "test"}
+	}
+
+	tests := []struct {
+		name    string
+		setup   func() // 可选的测试前设置
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		// 数组长度测试
+		{
+			name:  "数组长度",
+			setup: setupArrays,
+			js:    "arr.length;",
+			want:  5,
+		},
+
+		// slice 方法测试
+		{
+			name:  "slice方法-单参数",
+			setup: setupArrays,
+			js:    "arr.slice(2);",
+			want:  []interface{}{3, 4, 5},
+		},
+		{
+			name:  "slice方法-双参数",
+			setup: setupArrays,
+			js:    "arr.slice(1, 3);",
+			want:  []interface{}{2, 3},
+		},
+		{
+			name:  "slice方法-负索引",
+			setup: setupArrays,
+			js:    "arr.slice(-2);",
+			want:  []interface{}{4, 5},
+		},
+
+		// indexOf 方法测试
+		{
+			name:  "indexOf方法-存在的元素",
+			setup: setupArrays,
+			js:    "arr.indexOf(3);",
+			want:  2,
+		},
+		{
+			name:  "indexOf方法-不存在的元素",
+			setup: setupArrays,
+			js:    "arr.indexOf(6);",
+			want:  -1,
+		},
+		{
+			name:  "indexOf方法-字符串数组",
+			setup: setupArrays,
+			js:    "strArr.indexOf('world');",
+			want:  1,
+		},
+
+		// join 方法测试
+		{
+			name:  "join方法-默认分隔符",
+			setup: setupArrays,
+			js:    "arr.join();",
+			want:  "1,2,3,4,5",
+		},
+		{
+			name:  "join方法-自定义分隔符",
+			setup: setupArrays,
+			js:    "arr.join('-');",
+			want:  "1-2-3-4-5",
+		},
+		{
+			name:  "join方法-字符串数组",
+			setup: setupArrays,
+			js:    "strArr.join(' ');",
+			want:  "hello world test",
+		},
+
+		// splice 方法测试
+		{
+			name:  "splice方法-删除元素",
+			setup: setupArrays,
+			js:    "arr.splice(2, 1);",
+			want:  []interface{}{1, 2, 4, 5},
+		},
+		{
+			name:  "splice方法-替换元素",
+			setup: setupArrays,
+			js:    "arr.splice(1, 2, 6, 7);",
+			want:  []interface{}{1, 6, 7, 4, 5},
+		},
+		{
+			name:  "splice方法-插入元素",
+			setup: setupArrays,
+			js:    "arr.splice(2, 0, 8);",
+			want:  []interface{}{1, 2, 8, 3, 4, 5},
+		},
+		{
+			name:  "splice方法-负索引",
+			setup: setupArrays,
+			js:    "arr.splice(-2, 1);",
+			want:  []interface{}{1, 2, 3, 5},
+		},
+
+		// 错误处理测试
+		{
+			name:    "slice方法-参数类型错误",
+			setup:   setupArrays,
+			js:      "arr.slice('invalid');",
+			wantErr: true,
+		},
+		{
+			name:    "indexOf方法-无参数",
+			setup:   setupArrays,
+			js:      "arr.indexOf();",
+			wantErr: true,
+		},
+		{
+			name:    "splice方法-无参数",
+			setup:   setupArrays,
+			js:      "arr.splice();",
+			wantErr: true,
+		},
+		{
+			name:    "splice方法-参数类型错误",
+			setup:   setupArrays,
+			js:      "arr.splice('invalid');",
+			wantErr: true,
+		},
+
+		// 链式调用测试
+		{
+			name:  "方法链-slice后join",
+			setup: setupArrays,
+			js:    "arr.slice(1, 4).join('-');",
+			want:  "2-3-4",
+		},
+		{
+			name:  "方法链-splice后length",
+			setup: setupArrays,
+			js:    "arr.splice(1, 2).length;",
+			want:  3,
+		},
+
+		// 边界情况测试
+		{
+			name:  "空数组-length",
+			setup: func() { ctx.Vars["arr"] = []interface{}{} },
+			js:    "arr.length;",
+			want:  0,
+		},
+		{
+			name:  "空数组-join",
+			setup: func() { ctx.Vars["arr"] = []interface{}{} },
+			js:    "arr.join(',');",
+			want:  "",
+		},
+		{
+			name:  "单元素数组-splice",
+			setup: func() { ctx.Vars["arr"] = []interface{}{1} },
+			js:    "arr.splice(0, 1);",
+			want:  []interface{}{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			got, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				// 对于切片类型，使用 CompareValues 进行比较
+				if gotSlice, ok := got.([]interface{}); ok {
+					if wantSlice, ok := tt.want.([]interface{}); ok {
+						if len(gotSlice) != len(wantSlice) {
+							t.Errorf("Execute() slice length = %v, want %v", len(gotSlice), len(wantSlice))
+							return
+						}
+						for i := range gotSlice {
+							cmp, err := util.CompareValues(gotSlice[i], wantSlice[i])
+							if err != nil {
+								t.Errorf("Compare error at index %d: %v", i, err)
+								return
+							}
+							if cmp != 0 {
+								t.Errorf("Execute() at index %d = %v, want %v", i, gotSlice[i], wantSlice[i])
+								return
+							}
+						}
+					} else {
+						t.Errorf("Execute() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
+					}
+				} else {
+					// 非切片类型使用 reflect.DeepEqual
+					if !reflect.DeepEqual(got, tt.want) {
+						t.Errorf("Execute() = %v, want %v", got, tt.want)
+					}
 				}
 			}
 		})
