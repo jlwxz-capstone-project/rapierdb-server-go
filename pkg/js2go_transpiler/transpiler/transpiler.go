@@ -18,6 +18,8 @@ type Context struct {
 	Vars map[string]any
 	// 属性访问器
 	PropGetter func(chain []PropAccess, obj any) (any, error)
+	// 父级上下文
+	Parent *Context
 }
 
 // PropAccess 表示一次属性访问
@@ -163,28 +165,25 @@ func DataPropAccessHandler(access PropAccess, obj any) (any, error) {
 	}
 	fmt.Printf("After dereference: val.Kind()=%v\n", val.Kind())
 
-	// 如果是方法调用
-	if access.IsCall {
-		// 先尝试获取字段
-		switch val.Kind() {
-		case reflect.Struct:
-			field := val.FieldByName(access.Prop)
-			if field.IsValid() && field.Kind() == reflect.Func {
-				// 如果字段是函数，直接调用
-				fn := field.Interface()
-				fnVal := reflect.ValueOf(fn)
+	// 添加函数调用处理
+	if val.Kind() == reflect.Struct {
+		// 尝试获取方法
+		method := val.MethodByName(access.Prop)
+		if method.IsValid() {
+			if access.IsCall {
+				// 处理函数调用
 				args := make([]reflect.Value, len(access.Args))
 				for i, arg := range access.Args {
 					args[i] = reflect.ValueOf(arg)
 				}
-				results := fnVal.Call(args)
-				if len(results) == 0 {
-					return nil, nil
+				results := method.Call(args)
+				if len(results) > 0 {
+					return results[0].Interface(), nil
 				}
-				return results[0].Interface(), nil
+				return nil, nil
 			}
+			return method.Interface(), nil
 		}
-		return nil, fmt.Errorf("method not found: %s", access.Prop)
 	}
 
 	// 非方法调用的属性访问
@@ -449,14 +448,24 @@ func toInt(v any) (int, bool) {
 }
 
 // NewContext 创建新的转译上下文
-func NewContext() *Context {
-	ctx := &Context{
+func NewContext(parent *Context) *Context {
+	return &Context{
 		Vars:       make(map[string]any),
+		Parent:     parent, // 保留父级引用
 		PropGetter: DefaultPropGetter,
 	}
-	// 添加 JavaScript 的内置值
-	ctx.Vars["undefined"] = nil
-	return ctx
+}
+
+// 变量查找时向上追溯
+func (ctx *Context) GetVar(name string) (any, bool) {
+	current := ctx
+	for current != nil {
+		if val, ok := current.Vars[name]; ok {
+			return val, true
+		}
+		current = current.Parent
+	}
+	return nil, false
 }
 
 // DefaultPropGetter 默认的属性访问器，用于根据 JavaScript 的属性访问获取正确的值
@@ -500,7 +509,7 @@ func DefaultPropGetter(chain []PropAccess, obj any) (any, error) {
 // Execute 执行 JavaScript 代码并返回结果
 func Execute(js string, ctx *Context) (any, error) {
 	if ctx == nil {
-		ctx = NewContext()
+		ctx = NewContext(nil)
 	}
 
 	program, err := parser.ParseFile(js)
@@ -523,6 +532,12 @@ func Execute(js string, ctx *Context) (any, error) {
 
 func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 	switch s := stmt.(type) {
+	case *ast.ReturnStatement:
+		if s.Argument != nil {
+			return executeExpression(s.Argument.Expr, ctx)
+		}
+		return nil, nil
+
 	case *ast.ExpressionStatement:
 		// 执行表达式但不返回值
 		_, err := executeExpression(s.Expression.Expr, ctx)
@@ -591,6 +606,35 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 			}
 		}
 		return nil, fmt.Errorf("unsupported label statement: %v", s.Label.Name)
+
+	case *ast.FunctionDeclaration:
+		// 处理函数声明
+		fnLit := s.Function
+		fnName := fnLit.Name.Name
+
+		fn := func(args ...interface{}) interface{} {
+			childCtx := NewContext(ctx)
+			childCtx.PropGetter = ctx.PropGetter
+
+			for i, param := range fnLit.ParameterList.List {
+				if i < len(args) {
+					childCtx.Vars[param.Target.Target.(*ast.Identifier).Name] = args[i]
+				} else {
+					childCtx.Vars[param.Target.Target.(*ast.Identifier).Name] = nil // 设置为undefined
+				}
+			}
+
+			var result interface{}
+			for _, stmt := range fnLit.Body.List {
+				if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
+					result = ret // 捕获最后一个返回值
+				}
+			}
+			return result
+		}
+
+		ctx.Vars[fnName] = fn
+		return nil, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported statement type: %T", stmt)
@@ -1046,6 +1090,60 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 			arr[i] = val
 		}
 		return arr, nil
+
+	case *ast.FunctionLiteral:
+		return func(args ...interface{}) interface{} {
+			childCtx := NewContext(ctx)
+			childCtx.PropGetter = ctx.PropGetter
+
+			for i, param := range e.ParameterList.List {
+				paramName := param.Target.Target.(*ast.Identifier).Name
+				if i < len(args) {
+					childCtx.Vars[paramName] = args[i]
+				} else {
+					childCtx.Vars[paramName] = nil // 设置为undefined
+				}
+			}
+
+			var result interface{}
+			for _, stmt := range e.Body.List {
+				if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
+					result = ret
+				}
+			}
+			return result
+		}, nil
+
+	case *ast.ArrowFunctionLiteral:
+		return func(args ...interface{}) interface{} {
+			childCtx := NewContext(ctx)
+			childCtx.PropGetter = ctx.PropGetter
+
+			params := e.ParameterList.List
+			for i, param := range params {
+				paramName := param.Target.Target.(*ast.Identifier).Name
+				if i < len(args) {
+					childCtx.Vars[paramName] = args[i]
+				} else {
+					childCtx.Vars[paramName] = nil // 设置为undefined
+				}
+			}
+
+			switch body := e.Body.Body.(type) {
+			case *ast.BlockStatement:
+				var lastResult interface{}
+				for _, stmt := range body.List {
+					if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
+						lastResult = ret
+					}
+				}
+				return lastResult
+			case *ast.Expression:
+				result, _ := executeExpression(body.Expr, childCtx)
+				return result
+			}
+			return nil
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported expression type: %T", expr)

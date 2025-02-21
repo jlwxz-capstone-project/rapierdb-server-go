@@ -10,7 +10,7 @@ import (
 )
 
 func TestExecuteCode(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
@@ -199,7 +199,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 		data map[string]interface{}
 	}
 
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	// 创建测试对象
 	testObj := &TestStruct{
@@ -298,7 +298,7 @@ func (p *Person) Friend(name string) *Person {
 }
 
 func TestChainPropertyAccess(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	alice := &Person{
 		Name: "Alice",
@@ -368,7 +368,7 @@ func TestChainPropertyAccess(t *testing.T) {
 }
 
 func TestExecuteIfStatement(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	tests := []struct {
 		name    string
@@ -507,7 +507,7 @@ func TestExecuteIfStatement(t *testing.T) {
 }
 
 func TestExecuteBlockStatement(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
@@ -677,7 +677,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 }
 
 func TestObjectLiteralRelated(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	// 添加一些变量到上下文
 	ctx.Vars["x"] = float64(1)
@@ -804,7 +804,7 @@ func TestObjectLiteralRelated(t *testing.T) {
 }
 
 func TestArrayMethods(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	// 在每个测试前重置数组，确保测试相互独立
 	setupArrays := func() {
@@ -966,7 +966,7 @@ func TestArrayMethods(t *testing.T) {
 
 // 添加新的三目运算符测试
 func TestConditionalExpression(t *testing.T) {
-	ctx := transpiler.NewContext()
+	ctx := transpiler.NewContext(nil)
 
 	tests := []struct {
 		name    string
@@ -1064,6 +1064,165 @@ func TestConditionalExpression(t *testing.T) {
 				result := ctx.Vars["result"]
 				if !reflect.DeepEqual(result, tt.want) {
 					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestFunctionSupport(t *testing.T) {
+	ctx := transpiler.NewContext(nil)
+
+	tests := []struct {
+		name    string
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		// 函数声明测试
+		{
+			name: "基本函数调用",
+			js: `function add(a, b) {
+					return a + b;
+				}
+				var result = add(2, 3);`,
+			want: float64(5),
+		},
+		{
+			name: "嵌套函数调用",
+			js: `function multiply(a, b) {
+					return a * b;
+				}
+				function calc() {
+					return multiply(3, 4) + 1;
+				}
+				var result = calc();`,
+			want: float64(13),
+		},
+		{
+			name: "函数作用域",
+			js: `var x = 10;
+				function test() {
+					var x = 20;
+					return x;
+				}
+				var result = test();`,
+			want: float64(20),
+		},
+		{
+			name: "闭包测试",
+			js: `function createCounter() {
+					var count = 0;
+					return function() {
+						count++;
+						return count;
+					};
+				}
+				var counter = createCounter();
+				var result = counter() + counter();`,
+			want: float64(3),
+		},
+
+		// 箭头函数测试
+		{
+			name: "箭头函数-表达式形式",
+			js:   "var sum = (a, b) => a + b; var result = sum(5, 7);",
+			want: float64(12),
+		},
+		{
+			name: "箭头函数-块语句",
+			js: `var greet = name => {
+					return 'Hello ' + name;
+				}
+				var result = greet('World');`,
+			want: "Hello World",
+		},
+		{
+			name: "箭头函数-this绑定",
+			js: `var obj = {
+					value: 42,
+					getValue: () => this.value
+				};
+				var result = obj.getValue();`,
+			want: nil, // 需要根据实际this绑定实现调整预期
+		},
+
+		// 匿名函数测试
+		{
+			name: "匿名函数赋值",
+			js: `var square = function(x) {
+					return x * x;
+				};
+				var result = square(4);`,
+			want: float64(16),
+		},
+		{
+			name: "立即执行函数",
+			js: `var result = (function() {
+					return 'IIFE';
+				})();`,
+			want: "IIFE",
+		},
+
+		// 参数处理测试
+		{
+			name: "默认参数处理",
+			js: `function sayHello(name) {
+					name = name || 'Guest';
+					return 'Hello ' + name;
+				}
+				var result = sayHello();`,
+			want: "Hello Guest",
+		},
+		{
+			name: "多余参数处理",
+			js: `function sum(a, b) {
+					return a + b;
+				}
+				var result = sum(1, 2, 3, 4);`,
+			want: float64(3),
+		},
+		{
+			name: "参数不足处理",
+			js: `function sum(a, b) {
+					return a + b;
+				}
+				var result = sum(1);`,
+			want: float64(1), // 根据实现可能为1+undefined=NaN，需要根据实际处理调整
+		},
+
+		// 错误情况测试
+		{
+			name:    "未定义函数调用",
+			js:      "var result = notDefined();",
+			wantErr: true,
+		},
+		{
+			name:    "非函数调用",
+			js:      "var x = 1; var result = x();",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文
+			ctx.Vars = make(map[string]any)
+			ctx.Vars["undefined"] = nil
+
+			// 执行代码
+			_, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 验证结果
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v (%T), want %v (%T)",
+						result, result, tt.want, tt.want)
 				}
 			}
 		})

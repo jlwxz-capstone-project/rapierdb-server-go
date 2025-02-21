@@ -113,7 +113,54 @@ func printNode(node ast.Node, depth int, prefix string) {
 	case *ast.EmptyStatement:
 		fmt.Printf("%s%s EmptyStatement\n", indent, prefix)
 
+	case *ast.FunctionDeclaration:
+		fmt.Printf("%s%s FunctionDeclaration: %s\n", indent, prefix, n.Function.Name.Name)
+		fmt.Printf("%s  Parameters: %s\n", indent, formatParams(n.Function.ParameterList))
+		fmt.Printf("%s  Body:\n", indent)
+		printNode(n.Function.Body, depth+2, "Body")
+
+	case *ast.ArrowFunctionLiteral:
+		fmt.Printf("%s%s ArrowFunction:\n", indent, prefix)
+		fmt.Printf("%s  Parameters: %s\n", indent, formatParams(n.ParameterList))
+		fmt.Printf("%s  Body:\n", indent)
+		switch body := n.Body.Body.(type) {
+		case *ast.BlockStatement:
+			printNode(body, depth+2, "Block")
+		case *ast.Expression:
+			printNode(body.Expr, depth+2, "Expression")
+		}
+
+	case *ast.FunctionLiteral:
+		name := "anonymous"
+		if n.Name != nil {
+			name = n.Name.Name
+		}
+		fmt.Printf("%s%s FunctionLiteral: %s\n", indent, prefix, name)
+		fmt.Printf("%s  Parameters: %s\n", indent, formatParams(n.ParameterList))
+		fmt.Printf("%s  Body:\n", indent)
+		printNode(n.Body, depth+2, "Block")
+
+	case *ast.ReturnStatement:
+		fmt.Printf("%s%s ReturnStatement:\n", indent, prefix)
+		if n.Argument != nil {
+			printNode(n.Argument.Expr, depth+1, "Argument")
+		} else {
+			fmt.Printf("%s  (no argument)\n", indent)
+		}
+
 	default:
 		fmt.Printf("%s%s Unknown node type: %T\n", indent, prefix, n)
 	}
+}
+
+func formatParams(pl ast.ParameterList) string {
+	params := make([]string, len(pl.List))
+	for i, p := range pl.List {
+		if id, ok := p.Target.Target.(*ast.Identifier); ok {
+			params[i] = id.Name
+		} else {
+			params[i] = "complex_param"
+		}
+	}
+	return strings.Join(params, ", ")
 }
