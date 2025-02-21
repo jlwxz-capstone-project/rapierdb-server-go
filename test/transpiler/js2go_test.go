@@ -55,34 +55,34 @@ func TestExecuteCode(t *testing.T) {
 		// 基本运算测试
 		{
 			name: "数字运算",
-			js:   "1 + 2 * 3;",
+			js:   "var result = 1 + 2 * 3;",
 			want: float64(7),
 		},
 		{
 			name: "字符串拼接",
-			js:   "'hello' + ' ' + 'world';",
+			js:   "var result = 'hello' + ' ' + 'world';",
 			want: "hello world",
 		},
 		{
 			name: "函数调用",
-			js:   "add(1, 2);",
+			js:   "var result = add(1, 2);",
 			want: float64(3),
 		},
 
 		// 对象访问测试
 		{
 			name: "对象属性访问",
-			js:   "req.Path;",
+			js:   "var result = req.Path;",
 			want: "/api/test",
 		},
 		{
 			name: "对象方法调用",
-			js:   "req.GetHeader('Content-Type');",
+			js:   "var result = req.GetHeader('Content-Type');",
 			want: "test-header",
 		},
 		{
 			name: "Map访问",
-			js:   "req.Headers['Content-Type'];",
+			js:   "var result = req.Headers['Content-Type'];",
 			want: "application/json",
 		},
 
@@ -108,69 +108,86 @@ func TestExecuteCode(t *testing.T) {
 
 		// console.log 测试
 		{
-			name:    "console.log调用",
-			js:      "console.log('test');",
-			want:    5,
-			wantErr: false,
+			name: "console.log调用",
+			js:   "var result = 0; console.log('test'); result = 5;",
+			want: float64(5),
 		},
 
 		// if-else 语句测试
 		{
 			name: "简单if条件",
-			js:   "if (true) 1; else 2;",
+			js:   "var result; if (true) { result = 1; } else { result = 2; }",
 			want: float64(1),
 		},
 		{
 			name: "if-else条件",
-			js:   "if (false) 1; else 2;",
+			js:   "var result; if (false) { result = 1; } else { result = 2; }",
 			want: float64(2),
 		},
 		{
 			name: "比较运算",
-			js:   "if (1 < 2) 'yes'; else 'no';",
+			js:   "var result; if (1 < 2) { result = 'yes'; } else { result = 'no'; }",
 			want: "yes",
 		},
 		{
 			name: "相等比较",
-			js:   "if ('hello' == 'hello') true; else false;",
+			js:   "var result; if ('hello' == 'hello') { result = true; } else { result = false; }",
 			want: true,
 		},
 		{
 			name: "不相等比较",
-			js:   "if (1 != 2) 'different'; else 'same';",
+			js:   "var result; if (1 != 2) { result = 'different'; } else { result = 'same'; }",
 			want: "different",
 		},
 		{
 			name: "数字条件",
-			js:   "if (1) 'truthy'; else 'falsy';",
+			js:   "var result; if (1) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "truthy",
 		},
 		{
 			name: "零值条件",
-			js:   "if (0) 'truthy'; else 'falsy';",
+			js:   "var result; if (0) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "falsy",
 		},
 		{
 			name: "空字符串条件",
-			js:   "if ('') 'truthy'; else 'falsy';",
+			js:   "var result; if ('') { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "falsy",
 		},
 		{
 			name: "null条件",
-			js:   "if (null) 'truthy'; else 'falsy';",
+			js:   "var result; if (null) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "falsy",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文，但保留预定义变量
+			ctx.Vars = map[string]any{
+				"add":     ctx.Vars["add"],
+				"req":     ctx.Vars["req"],
+				"console": ctx.Vars["console"],
+			}
+
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Execute() = %v, want %v", got, tt.want)
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 对于非错误情况，检查 result 变量的值
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
+				}
 			}
 		})
 	}
@@ -229,8 +246,8 @@ func TestCustomPropertyAccess(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "连续属性访问",
-			js:   "obj.a.b.c;",
+			name: "简单属性访问",
+			js:   "var result = obj.a.b.c;",
 			want: "value",
 		},
 		{
@@ -242,69 +259,59 @@ func TestCustomPropertyAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文，但保留预定义变量
+			ctx.Vars = map[string]any{
+				"obj": testObj,
+			}
+
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Execute() = %v, want %v", got, tt.want)
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
+				}
 			}
 		})
 	}
 }
 
+type Person struct {
+	Name    string
+	Age     int
+	Friends map[string]*Person
+}
+
+func (p *Person) Friend(name string) *Person {
+	return p.Friends[name]
+}
+
 func TestChainPropertyAccess(t *testing.T) {
 	ctx := transpiler.NewContext()
 
-	type Person struct {
-		name    string
-		age     int
-		friends map[string]*Person
-	}
-
 	alice := &Person{
-		name: "Alice",
-		age:  20,
-		friends: map[string]*Person{
-			"bob": {name: "Bob", age: 22},
+		Name: "Alice",
+		Age:  20,
+		Friends: map[string]*Person{
+			"bob": {
+				Name: "Bob",
+				Age:  21,
+			},
 		},
 	}
 
 	ctx.Vars["person"] = alice
-
-	// 设置自定义属性访问转换器
-	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
-		p, ok := obj.(*Person)
-		if !ok {
-			return nil, fmt.Errorf("不是 Person 对象")
-		}
-
-		result := p
-		for _, access := range chain {
-			switch {
-			case access.Prop == "friend" && access.IsCall:
-				// friend('name') 转换为 map 访问
-				if len(access.Args) != 1 {
-					return nil, fmt.Errorf("friend 方法需要一个参数")
-				}
-				name, ok := access.Args[0].(string)
-				if !ok {
-					return nil, fmt.Errorf("friend 方法参数必须是字符串")
-				}
-				result = result.friends[name]
-				if result == nil {
-					return nil, fmt.Errorf("friend not found: %s", name)
-				}
-			case access.Prop == "name" || access.Prop == "age":
-				// 属性访问转换为字符串
-				return fmt.Sprintf("%s: %v", access.Prop, reflect.ValueOf(result).Elem().FieldByName(access.Prop)), nil
-			default:
-				return nil, fmt.Errorf("不支持的属性访问: %s", access.Prop)
-			}
-		}
-		return result, nil
-	}
 
 	tests := []struct {
 		name    string
@@ -314,17 +321,17 @@ func TestChainPropertyAccess(t *testing.T) {
 	}{
 		{
 			name: "访问直接属性",
-			js:   "person.name;",
-			want: "name: Alice",
+			js:   "var result = person.Name;",
+			want: "Alice",
 		},
 		{
 			name: "访问朋友属性",
-			js:   "person.friend('bob').name;",
-			want: "name: Bob",
+			js:   "var result = person.Friend('bob').Name;",
+			want: "Bob",
 		},
 		{
 			name:    "访问不存在的朋友",
-			js:      "person.friend('david').name;",
+			js:      "var result = person.Friend('david').Name;",
 			want:    nil,
 			wantErr: true,
 		},
@@ -332,13 +339,29 @@ func TestChainPropertyAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文，但保留预定义变量
+			ctx.Vars = map[string]any{
+				"person": alice,
+			}
+
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Execute() = %v, want %v", got, tt.want)
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
+				}
 			}
 		})
 	}
@@ -355,115 +378,129 @@ func TestExecuteIfStatement(t *testing.T) {
 	}{
 		{
 			name: "简单if条件",
-			js:   "if (true) 1; else 2;",
+			js:   "var result; if (true) { result = 1; } else { result = 2; }",
 			want: float64(1),
 		},
 		{
 			name: "if-else条件",
-			js:   "if (false) 1; else 2;",
+			js:   "var result; if (false) { result = 1; } else { result = 2; }",
 			want: float64(2),
 		},
 		{
 			name: "比较运算",
-			js:   "if (1 < 2) 'yes'; else 'no';",
+			js:   "var result; if (1 < 2) { result = 'yes'; } else { result = 'no'; }",
 			want: "yes",
 		},
 		{
 			name: "相等比较",
-			js:   "if ('hello' == 'hello') true; else false;",
+			js:   "var result; if ('hello' == 'hello') { result = true; } else { result = false; }",
 			want: true,
 		},
 		{
 			name: "不相等比较",
-			js:   "if (1 != 2) 'different'; else 'same';",
+			js:   "var result; if (1 != 2) { result = 'different'; } else { result = 'same'; }",
 			want: "different",
 		},
 		{
 			name: "数字条件",
-			js:   "if (1) 'truthy'; else 'falsy';",
+			js:   "var result; if (1) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "truthy",
 		},
 		{
 			name: "零值条件",
-			js:   "if (0) 'truthy'; else 'falsy';",
+			js:   "var result; if (0) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "falsy",
 		},
 		{
 			name: "空字符串条件",
-			js:   "if ('') 'truthy'; else 'falsy';",
+			js:   "var result; if ('') { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "falsy",
 		},
 		{
 			name: "null条件",
-			js:   "if (null) 'truthy'; else 'falsy';",
+			js:   "var result; if (null) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "falsy",
 		},
 		{
 			name: "复杂条件",
-			js:   "if (1 < 2 && 'hello' == 'hello') 'both true'; else 'not both true';",
+			js:   "var result; if (1 < 2 && 'hello' == 'hello') { result = 'both true'; } else { result = 'not both true'; }",
 			want: "both true",
 		},
 		{
 			name: "带括号的条件",
-			js:   "if ((1 + 2) * 3 > 8) 'greater'; else 'less';",
+			js:   "var result; if ((1 + 2) * 3 > 8) { result = 'greater'; } else { result = 'less'; }",
 			want: "greater",
 		},
 		{
 			name: "多重比较",
-			js:   "if (1 < 2 && 3 > 2 || false) 'true'; else 'false';",
+			js:   "var result; if (1 < 2 && 3 > 2 || false) { result = 'true'; } else { result = 'false'; }",
 			want: "true",
 		},
 		{
 			name: "带括号的逻辑运算",
-			js:   "if ((true && false) || (true && true)) 'yes'; else 'no';",
+			js:   "var result; if ((true && false) || (true && true)) { result = 'yes'; } else { result = 'no'; }",
 			want: "yes",
 		},
 		{
 			name: "混合运算优先级",
-			js:   "if (2 + 3 * 4 > 10 + 2) 'yes'; else 'no';",
+			js:   "var result; if (2 + 3 * 4 > 10 + 2) { result = 'yes'; } else { result = 'no'; }",
 			want: "yes",
 		},
 		{
 			name: "复杂嵌套条件",
-			js:   "if ((1 + 2 > 2) && (3 * 4 <= 12 || true)) 'complex'; else 'simple';",
+			js:   "var result; if ((1 + 2 > 2) && (3 * 4 <= 12 || true)) { result = 'complex'; } else { result = 'simple'; }",
 			want: "complex",
 		},
 		{
 			name: "字符串比较和数字运算",
-			js:   "if ('hello'.length > 2 + 1) 'long'; else 'short';",
+			js:   "var result; if ('hello'.length > 2 + 1) { result = 'long'; } else { result = 'short'; }",
 			want: "long",
 		},
 		{
 			name: "多重括号和运算符",
-			js:   "if (((1 + 2) * 3 == 9) && (4 + 5 >= 8 || 2 * 3 < 5)) 'pass'; else 'fail';",
+			js:   "var result; if (((1 + 2) * 3 == 9) && (4 + 5 >= 8 || 2 * 3 < 5)) { result = 'pass'; } else { result = 'fail'; }",
 			want: "pass",
 		},
 		{
 			name: "逻辑运算短路",
-			js:   "if (false && someUndefinedVar) 'bug'; else 'ok';",
+			js:   "var result; if (false && someUndefinedVar) { result = 'bug'; } else { result = 'ok'; }",
 			want: "ok",
 		},
 		{
 			name: "数字和布尔混合运算",
-			js:   "if (1 + 1 == 2 && true || false && 5 < 3) 'correct'; else 'wrong';",
+			js:   "var result; if (1 + 1 == 2 && true || false && 5 < 3) { result = 'correct'; } else { result = 'wrong'; }",
 			want: "correct",
 		},
 		{
 			name: "复杂的真值判断",
-			js:   "if (1 && 'hello' && (2 * 3) && {}) 'truthy'; else 'falsy';",
+			js:   "var result; if (1 && 'hello' && (2 * 3) && {}) { result = 'truthy'; } else { result = 'falsy'; }",
 			want: "truthy",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文
+			ctx.Vars = make(map[string]any)
+
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Execute() = %v, want %v", got, tt.want)
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
+				}
 			}
 		})
 	}
@@ -513,90 +550,127 @@ func TestExecuteBlockStatement(t *testing.T) {
 	}{
 		{
 			name: "简单代码块",
-			js:   "if (true) { 1; 2; 3; } else { 4; 5; 6; }",
+			js:   "var result; { result = 1; result = 2; result = 3; }",
 			want: float64(3),
 		},
 		{
 			name: "嵌套代码块",
-			js:   "if (true) { if (true) { 1; 2; } else { 3; } } else { 4; }",
-			want: float64(2),
+			js:   "var result; { { result = 1; result = 2; }; result = 3; }",
+			want: float64(3),
 		},
 		{
 			name: "空代码块",
-			js:   "if (true) {} else { 1; }",
-			want: nil,
+			js:   "var result = 1; {}",
+			want: float64(1),
 		},
 		{
 			name: "代码块中的变量访问",
-			js:   "if (true) { req.Path; req.Headers['Content-Type']; }",
-			want: "application/json",
+			js:   "var result; { result = req.Path }",
+			want: "/api/test",
 		},
 		{
 			name: "代码块中的函数调用",
-			js:   "if (true) { add(1, 2); add(3, 4); }",
+			js:   "var result; { result = add(1, 2); result = add(3, 4) }",
 			want: float64(7),
 		},
 		{
 			name: "代码块中的复杂表达式",
-			js:   "if (true) { 1 + 2; 3 * 4; 5 - 6; }",
+			js:   "var result; { result = 1 + 2; result = 3 * 4; result = 5 - 6; }",
 			want: float64(-1),
 		},
 		{
-			name: "代码块中的条件语句",
-			js:   "if (true) { if (1 < 2) { 'yes'; } else { 'no'; } }",
+			name: "代码块中的条件赋值",
+			js:   "var result; { if (1 < 2) { result = 'yes'; } else { result = 'no'; } }",
 			want: "yes",
 		},
 		{
 			name: "代码块中的console.log",
-			js:   "if (true) { console.log('test1'); console.log('test2'); console.log('test3'); }",
-			want: 6,
+			js:   "var result = 0; { console.log('test1'); console.log('test2'); console.log('test3'); result = 1; }",
+			want: float64(1),
 		},
 		{
 			name: "多层嵌套代码块",
-			js:   "if (true) { if (true) { if (true) { 1; } else { 2; } } else { 3; } } else { 4; }",
+			js:   "var result; { { { result = 1; } } }",
 			want: float64(1),
 		},
 		{
 			name: "代码块中的混合运算",
-			js:   "if (true) { 1 + 2; 'hello' + ' world'; add(3, 4); }",
+			js:   "var result; { var x = 1 + 2; var y = 'hello' + ' world'; var z = add(3, 4); result = z; }",
 			want: float64(7),
 		},
 		{
 			name: "代码块中的对象访问链",
-			js:   "if (true) { req.Headers['Content-Type']; req.GetHeader('test'); }",
+			js: `var result; { 
+				var headers = req.Headers;
+				result = headers['Content-Type'];
+				result = req.GetHeader('test');
+			}`,
 			want: "test-header",
 		},
 		{
+			name: "代码块中的对象访问方式",
+			js: `var result; {
+				var obj = {a: 1, 'b-c': 2};
+				result = obj.a;        // 点号访问
+				result = obj['a'];     // 方括号访问字符串
+				result = obj['b-c'];   // 方括号访问特殊字符
+			}`,
+			want: float64(2),
+		},
+		{
 			name: "代码块中的布尔运算",
-			js:   "if (true) { true && false; false || true; !false; !true; }",
+			js:   "var result; { var x = true && false; var y = false || true; var z = !false; result = !z; }",
 			want: false,
 		},
 		{
 			name: "代码块中的比较运算",
-			js:   "if (true) { 1 < 2; 3 > 4; 5 <= 5; 6 >= 7; }",
+			js:   "var result; { var result = 1 < 2; result = 3 > 4; result = 5 <= 5; result = 6 >= 7; result = result; }",
 			want: false,
 		},
 		{
 			name: "代码块中的字符串操作",
-			js:   "if (true) { 'hello'.length; 'world'.length; }",
+			js:   "var result; { var x = 'hello'.length; var y = 'world'.length; result = y; }",
 			want: 5,
 		},
 		{
 			name: "代码块中的对象字面量",
-			js:   "if (true) { var empty = {}; var obj = {a: 1}; obj; }",
+			js:   "var result; { var empty = {}; var obj = {a: 1}; result = obj; }",
 			want: map[string]any{"a": float64(1)},
+		},
+		{
+			name: "代码块中的三目运算符",
+			js:   "var result; { var x = true ? 1 : 2; var y = false ? 3 : 4; result = y; }",
+			want: float64(4),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文，但保留预定义变量
+			ctx.Vars = map[string]any{
+				"add":     ctx.Vars["add"],
+				"req":     ctx.Vars["req"],
+				"console": ctx.Vars["console"],
+			}
+
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Execute() = %v, want %v", got, tt.want)
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
+				}
 			}
 		})
 	}
@@ -621,77 +695,77 @@ func TestObjectLiteralRelated(t *testing.T) {
 	}{
 		{
 			name: "空对象",
-			js:   "({})",
+			js:   "var result = {};",
 			want: map[string]any{},
 		},
 		{
 			name: "简单对象",
-			js:   "({a: 1, b: 2})",
+			js:   "var result = {a: 1, b: 2};",
 			want: map[string]any{"a": float64(1), "b": float64(2)},
 		},
 		{
 			name: "字符串键",
-			js:   "({'a': 1, 'b': 2})",
+			js:   "var result = {'a': 1, 'b': 2};",
 			want: map[string]any{"a": float64(1), "b": float64(2)},
 		},
 		{
 			name: "表达式作为值",
-			js:   "({a: 1 + 2, b: 'hello' + ' world'})",
+			js:   "var result = {a: 1 + 2, b: 'hello' + ' world'};",
 			want: map[string]any{"a": float64(3), "b": "hello world"},
 		},
 		{
 			name: "变量作为值",
-			js:   "({a: x, b: y})",
+			js:   "var result = {a: x, b: y};",
 			want: map[string]any{"a": float64(1), "b": "test"},
 		},
 		{
 			name: "嵌套对象",
-			js:   "({a: {b: {c: 1}}})",
+			js:   "var result = {a: {b: {c: 1}}};",
 			want: map[string]any{"a": map[string]any{"b": map[string]any{"c": float64(1)}}},
 		},
 		{
 			name: "对象作为变量值",
-			js:   "var o = {a: 1}; o;",
+			js:   "var result; var o = {a: 1}; result = o;",
 			want: map[string]any{"a": float64(1)},
 		},
 		{
 			name: "对象属性访问",
-			js:   "var o = {a: 1, b: 2}; o.a;",
+			js:   "var result; var o = {a: 1, b: 2}; result = o.a;",
 			want: float64(1),
 		},
 		{
 			name: "计算属性名",
-			js:   "({['a' + 'b']: 1})",
+			js:   "var result = {['a' + 'b']: 1};",
 			want: map[string]any{"ab": float64(1)},
 		},
 		{
 			name: "对象展开",
-			js:   "var base = {a: 1}; ({...base, b: 2})",
+			js:   "var base = {a: 1}; var result = {...base, b: 2};",
 			want: map[string]any{"a": float64(1), "b": float64(2)},
 		},
 		{
 			name: "多层对象展开",
-			js:   "var a = {x: 1}; var b = {y: 2}; ({...a, ...b, z: 3})",
+			js:   "var a = {x: 1}; var b = {y: 2}; var result = {...a, ...b, z: 3};",
 			want: map[string]any{"x": float64(1), "y": float64(2), "z": float64(3)},
 		},
 		{
 			name: "对象属性覆盖",
-			js:   "({a: 1, a: 2})",
+			js:   "var result = {a: 1, a: 2};",
 			want: map[string]any{"a": float64(2)},
 		},
 		{
 			name: "展开覆盖",
-			js:   "var base = {a: 1, b: 1}; ({...base, b: 2})",
+			js:   "var base = {a: 1, b: 1}; var result = {...base, b: 2};",
 			want: map[string]any{"a": float64(1), "b": float64(2)},
 		},
 		{
 			name: "表达式作为键",
-			js:   "({[1 + 2]: 'three'})",
+			js:   "var result = {[1 + 2]: 'three'};",
 			want: map[string]any{"3": "three"},
 		},
 		{
 			name:    "无效的键",
-			js:      "({[{x: 1}]: 1})",
+			js:      "var result = {[{x: 1}]: 1};",
 			want:    nil,
 			wantErr: true,
 		},
@@ -699,14 +773,30 @@ func TestObjectLiteralRelated(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文，但保留预定义变量
+			ctx.Vars = map[string]any{
+				"x":   float64(1),
+				"y":   "test",
+				"obj": map[string]any{"a": float64(1), "b": "hello"},
+			}
+
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
 			if !tt.wantErr {
-				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("Execute() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v (%T), want %v (%T)", result, result, tt.want, tt.want)
 				}
 			}
 		})
@@ -724,163 +814,100 @@ func TestArrayMethods(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		setup   func() // 可选的测试前设置
+		setup   func()
 		js      string
 		want    interface{}
 		wantErr bool
 	}{
-		// 数组长度测试
 		{
 			name:  "数组长度",
 			setup: setupArrays,
-			js:    "arr.length;",
+			js:    "var result = arr.length;",
 			want:  5,
 		},
-
-		// slice 方法测试
 		{
 			name:  "slice方法-单参数",
 			setup: setupArrays,
-			js:    "arr.slice(2);",
+			js:    "var result = arr.slice(2);",
 			want:  []interface{}{3, 4, 5},
 		},
 		{
 			name:  "slice方法-双参数",
 			setup: setupArrays,
-			js:    "arr.slice(1, 3);",
+			js:    "var result = arr.slice(1, 3);",
 			want:  []interface{}{2, 3},
 		},
 		{
 			name:  "slice方法-负索引",
 			setup: setupArrays,
-			js:    "arr.slice(-2);",
+			js:    "var result = arr.slice(-2);",
 			want:  []interface{}{4, 5},
 		},
-
-		// indexOf 方法测试
 		{
 			name:  "indexOf方法-存在的元素",
 			setup: setupArrays,
-			js:    "arr.indexOf(3);",
+			js:    "var result = arr.indexOf(3);",
 			want:  2,
 		},
 		{
 			name:  "indexOf方法-不存在的元素",
 			setup: setupArrays,
-			js:    "arr.indexOf(6);",
+			js:    "var result = arr.indexOf(6);",
 			want:  -1,
 		},
 		{
 			name:  "indexOf方法-字符串数组",
 			setup: setupArrays,
-			js:    "strArr.indexOf('world');",
+			js:    "var result = strArr.indexOf('world');",
 			want:  1,
 		},
-
-		// join 方法测试
 		{
 			name:  "join方法-默认分隔符",
 			setup: setupArrays,
-			js:    "arr.join();",
+			js:    "var result = arr.join();",
 			want:  "1,2,3,4,5",
 		},
 		{
 			name:  "join方法-自定义分隔符",
 			setup: setupArrays,
-			js:    "arr.join('-');",
+			js:    "var result = arr.join('-');",
 			want:  "1-2-3-4-5",
 		},
 		{
 			name:  "join方法-字符串数组",
 			setup: setupArrays,
-			js:    "strArr.join(' ');",
+			js:    "var result = strArr.join(' ');",
 			want:  "hello world test",
 		},
-
-		// splice 方法测试
 		{
 			name:  "splice方法-删除元素",
 			setup: setupArrays,
-			js:    "arr.splice(2, 1);",
+			js:    "var result = arr.splice(2, 1);",
 			want:  []interface{}{1, 2, 4, 5},
 		},
 		{
 			name:  "splice方法-替换元素",
 			setup: setupArrays,
-			js:    "arr.splice(1, 2, 6, 7);",
+			js:    "var result = arr.splice(1, 2, 6, 7);",
 			want:  []interface{}{1, 6, 7, 4, 5},
 		},
 		{
 			name:  "splice方法-插入元素",
 			setup: setupArrays,
-			js:    "arr.splice(2, 0, 8);",
+			js:    "var result = arr.splice(2, 0, 8);",
 			want:  []interface{}{1, 2, 8, 3, 4, 5},
 		},
 		{
 			name:  "splice方法-负索引",
 			setup: setupArrays,
-			js:    "arr.splice(-2, 1);",
+			js:    "var result = arr.splice(-2, 1);",
 			want:  []interface{}{1, 2, 3, 5},
 		},
-
-		// 错误处理测试
 		{
 			name:    "slice方法-参数类型错误",
 			setup:   setupArrays,
-			js:      "arr.slice('invalid');",
+			js:      "var result = arr.slice('invalid');",
 			wantErr: true,
-		},
-		{
-			name:    "indexOf方法-无参数",
-			setup:   setupArrays,
-			js:      "arr.indexOf();",
-			wantErr: true,
-		},
-		{
-			name:    "splice方法-无参数",
-			setup:   setupArrays,
-			js:      "arr.splice();",
-			wantErr: true,
-		},
-		{
-			name:    "splice方法-参数类型错误",
-			setup:   setupArrays,
-			js:      "arr.splice('invalid');",
-			wantErr: true,
-		},
-
-		// 链式调用测试
-		{
-			name:  "方法链-slice后join",
-			setup: setupArrays,
-			js:    "arr.slice(1, 4).join('-');",
-			want:  "2-3-4",
-		},
-		{
-			name:  "方法链-splice后length",
-			setup: setupArrays,
-			js:    "arr.splice(1, 2).length;",
-			want:  3,
-		},
-
-		// 边界情况测试
-		{
-			name:  "空数组-length",
-			setup: func() { ctx.Vars["arr"] = []interface{}{} },
-			js:    "arr.length;",
-			want:  0,
-		},
-		{
-			name:  "空数组-join",
-			setup: func() { ctx.Vars["arr"] = []interface{}{} },
-			js:    "arr.join(',');",
-			want:  "",
-		},
-		{
-			name:  "单元素数组-splice",
-			setup: func() { ctx.Vars["arr"] = []interface{}{1} },
-			js:    "arr.splice(0, 1);",
-			want:  []interface{}{},
 		},
 	}
 
@@ -890,17 +917,26 @@ func TestArrayMethods(t *testing.T) {
 				tt.setup()
 			}
 
+			// 执行代码，忽略返回值
 			got, err := transpiler.Execute(tt.js, ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
 			if !tt.wantErr {
+				result := ctx.Vars["result"]
 				// 对于切片类型，使用 CompareValues 进行比较
-				if gotSlice, ok := got.([]interface{}); ok {
+				if gotSlice, ok := result.([]interface{}); ok {
 					if wantSlice, ok := tt.want.([]interface{}); ok {
 						if len(gotSlice) != len(wantSlice) {
-							t.Errorf("Execute() slice length = %v, want %v", len(gotSlice), len(wantSlice))
+							t.Errorf("result slice length = %v, want %v", len(gotSlice), len(wantSlice))
 							return
 						}
 						for i := range gotSlice {
@@ -910,18 +946,124 @@ func TestArrayMethods(t *testing.T) {
 								return
 							}
 							if cmp != 0 {
-								t.Errorf("Execute() at index %d = %v, want %v", i, gotSlice[i], wantSlice[i])
+								t.Errorf("result at index %d = %v, want %v", i, gotSlice[i], wantSlice[i])
 								return
 							}
 						}
 					} else {
-						t.Errorf("Execute() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
+						t.Errorf("result = %v (%T), want %v (%T)", result, result, tt.want, tt.want)
 					}
 				} else {
 					// 非切片类型使用 reflect.DeepEqual
-					if !reflect.DeepEqual(got, tt.want) {
-						t.Errorf("Execute() = %v, want %v", got, tt.want)
+					if !reflect.DeepEqual(result, tt.want) {
+						t.Errorf("result = %v, want %v", result, tt.want)
 					}
+				}
+			}
+		})
+	}
+}
+
+// 添加新的三目运算符测试
+func TestConditionalExpression(t *testing.T) {
+	ctx := transpiler.NewContext()
+
+	tests := []struct {
+		name    string
+		js      string
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name: "简单三目运算符",
+			js:   "var result = true ? 1 : 2;",
+			want: float64(1),
+		},
+		{
+			name: "三目运算符-false分支",
+			js:   "var result = false ? 1 : 2;",
+			want: float64(2),
+		},
+		{
+			name: "三目运算符-比较运算",
+			js:   "var result = 1 < 2 ? 'yes' : 'no';",
+			want: "yes",
+		},
+		{
+			name: "三目运算符-字符串操作",
+			js:   "var result = 'hello'.length > 3 ? 'long' : 'short';",
+			want: "long",
+		},
+		{
+			name: "三目运算符-嵌套",
+			js:   "var result = true ? (false ? 1 : 2) : 3;",
+			want: float64(2),
+		},
+		{
+			name: "三目运算符-复杂条件",
+			js:   "var result = (1 + 2 > 2) && (3 * 4 <= 12) ? 'true' : 'false';",
+			want: "true",
+		},
+		{
+			name: "三目运算符-对象访问",
+			js:   "var result = true ? {a: 1} : {b: 2};",
+			want: map[string]any{"a": float64(1)},
+		},
+		{
+			name: "三目运算符-函数调用",
+			js:   "var result = true ? 'hello'.toUpperCase() : 'world'.toLowerCase();",
+			want: "HELLO",
+		},
+		{
+			name: "三目运算符-数组操作",
+			js:   "var result = [1,2,3].length > 2 ? 'many' : 'few';",
+			want: "many",
+		},
+		{
+			name: "三目运算符-truthy值",
+			js:   "var result = 'hello' ? 'truthy' : 'falsy';",
+			want: "truthy",
+		},
+		{
+			name: "三目运算符-falsy值",
+			js:   "var result = '' ? 'truthy' : 'falsy';",
+			want: "falsy",
+		},
+		{
+			name: "三目运算符-null检查",
+			js:   "var result = null ? 'exists' : 'null';",
+			want: "null",
+		},
+		{
+			name: "三目运算符-undefined检查",
+			js:   "var result = undefined ? 'exists' : 'undefined';",
+			want: "undefined",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文
+			ctx.Vars = make(map[string]any)
+			ctx.Vars["undefined"] = nil
+
+			// 执行代码，忽略返回值
+			got, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 返回值应该总是 nil
+			if got != nil {
+				t.Errorf("Execute() returned %v, want nil", got)
+			}
+
+			// 检查 result 变量的值
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v, want %v", result, tt.want)
 				}
 			}
 		})

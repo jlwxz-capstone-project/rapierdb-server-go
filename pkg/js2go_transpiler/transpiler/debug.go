@@ -67,6 +67,52 @@ func printNode(node ast.Node, depth int, prefix string) {
 		printNode(n.Key.Expr, depth+1, "Key")
 		printNode(n.Value.Expr, depth+1, "Value")
 
+	case *ast.BlockStatement:
+		fmt.Printf("%s%s BlockStatement:\n", indent, prefix)
+		for i, stmt := range n.List {
+			printNode(stmt.Stmt, depth+1, fmt.Sprintf("Stmt[%d]", i))
+		}
+
+	case *ast.VariableDeclaration:
+		fmt.Printf("%s%s VariableDeclaration:\n", indent, prefix)
+		for i, decl := range n.List {
+			printNode(decl.Target.Target, depth+1, fmt.Sprintf("Target[%d]", i))
+			if decl.Initializer != nil {
+				printNode(decl.Initializer.Expr, depth+1, fmt.Sprintf("Init[%d]", i))
+			}
+		}
+
+	case *ast.AssignExpression:
+		fmt.Printf("%s%s AssignExpression:\n", indent, prefix)
+		printNode(n.Left.Expr, depth+1, "Left")
+		printNode(n.Right.Expr, depth+1, "Right")
+
+	case *ast.IfStatement:
+		fmt.Printf("%s%s IfStatement:\n", indent, prefix)
+		printNode(n.Test.Expr, depth+1, "Test")
+		printNode(n.Consequent.Stmt, depth+1, "Consequent")
+		if n.Alternate != nil {
+			printNode(n.Alternate.Stmt, depth+1, "Alternate")
+		}
+
+	case *ast.ConditionalExpression:
+		fmt.Printf("%s%s ConditionalExpression:\n", indent, prefix)
+		printNode(n.Test.Expr, depth+1, "Test")
+		printNode(n.Consequent.Expr, depth+1, "Consequent")
+		printNode(n.Alternate.Expr, depth+1, "Alternate")
+
+	case *ast.BinaryExpression:
+		fmt.Printf("%s%s BinaryExpression: %s\n", indent, prefix, n.Operator)
+		printNode(n.Left.Expr, depth+1, "Left")
+		printNode(n.Right.Expr, depth+1, "Right")
+
+	case *ast.UnaryExpression:
+		fmt.Printf("%s%s UnaryExpression: %s\n", indent, prefix, n.Operator)
+		printNode(n.Operand.Expr, depth+1, "Operand")
+
+	case *ast.EmptyStatement:
+		fmt.Printf("%s%s EmptyStatement\n", indent, prefix)
+
 	default:
 		fmt.Printf("%s%s Unknown node type: %T\n", indent, prefix, n)
 	}

@@ -55,9 +55,7 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 	if str, ok := obj.(string); ok {
 		switch access.Prop {
 		case "length":
-			if !access.IsCall {
-				return len(str), nil
-			}
+			return len(str), nil
 
 		case "toLowerCase":
 			if access.IsCall {
@@ -139,9 +137,6 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 func MethodPropAccessHandler(access PropAccess, obj any) (any, error) {
 	if access.IsCall {
 		val := reflect.ValueOf(obj)
-		if val.Kind() == reflect.Ptr {
-			val = val.Elem()
-		}
 		method := val.MethodByName(access.Prop)
 		if !method.IsValid() {
 			return nil, fmt.Errorf("method not found: %s", access.Prop)
@@ -160,27 +155,86 @@ func MethodPropAccessHandler(access PropAccess, obj any) (any, error) {
 }
 
 func DataPropAccessHandler(access PropAccess, obj any) (any, error) {
-	if !access.IsCall {
-		val := reflect.ValueOf(obj)
-		if val.Kind() == reflect.Ptr {
-			val = val.Elem()
-		}
-		if val.Kind() == reflect.Struct {
+	fmt.Printf("DataPropAccessHandler: obj=%T, prop=%s, isCall=%v\n", obj, access.Prop, access.IsCall)
+
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	fmt.Printf("After dereference: val.Kind()=%v\n", val.Kind())
+
+	// 如果是方法调用
+	if access.IsCall {
+		// 先尝试获取字段
+		switch val.Kind() {
+		case reflect.Struct:
 			field := val.FieldByName(access.Prop)
-			if !field.IsValid() {
-				return nil, fmt.Errorf("property not found: %s", access.Prop)
+			if field.IsValid() && field.Kind() == reflect.Func {
+				// 如果字段是函数，直接调用
+				fn := field.Interface()
+				fnVal := reflect.ValueOf(fn)
+				args := make([]reflect.Value, len(access.Args))
+				for i, arg := range access.Args {
+					args[i] = reflect.ValueOf(arg)
+				}
+				results := fnVal.Call(args)
+				if len(results) == 0 {
+					return nil, nil
+				}
+				return results[0].Interface(), nil
 			}
-			return field.Interface(), nil
-		} else if val.Kind() == reflect.Map {
-			mapVal := val.MapIndex(reflect.ValueOf(access.Prop))
-			if !mapVal.IsValid() {
-				return nil, fmt.Errorf("property not found: %s", access.Prop)
-			}
-			return mapVal.Interface(), nil
 		}
+		return nil, fmt.Errorf("method not found: %s", access.Prop)
+	}
+
+	// 非方法调用的属性访问
+	switch val.Kind() {
+	case reflect.Map:
+		fmt.Printf("Handling map access: obj=%v, prop=%s\n", obj, access.Prop)
+		// 对于 map，先尝试直接访问
+		if m, ok := obj.(map[string]any); ok {
+			fmt.Printf("Direct map access: m=%v\n", m)
+			if val, ok := m[access.Prop]; ok {
+				fmt.Printf("Found value in map: %v\n", val)
+				return val, nil
+			}
+		}
+		// 如果直接访问失败，尝试使用反射
+		mapVal := val.MapIndex(reflect.ValueOf(access.Prop))
+		if !mapVal.IsValid() {
+			fmt.Printf("Map value not found: %s\n", access.Prop)
+			// 尝试查找方法
+			method := val.MethodByName(access.Prop)
+			if method.IsValid() {
+				return method.Interface(), nil
+			}
+			return nil, fmt.Errorf("property not found: %s", access.Prop)
+		}
+		return mapVal.Interface(), nil
+
+	case reflect.Struct:
+		fmt.Printf("Handling struct access: obj=%+v, prop=%s\n", obj, access.Prop)
+		field := val.FieldByName(access.Prop)
+		if !field.IsValid() {
+			// 尝试查找方法
+			method := val.MethodByName(access.Prop)
+			if method.IsValid() {
+				return method.Interface(), nil
+			}
+			return nil, fmt.Errorf("property not found: %s", access.Prop)
+		}
+		return field.Interface(), nil
+
+	case reflect.Slice, reflect.Array:
+		// 对于切片和数组，只支持 length 属性
+		if access.Prop == "length" {
+			return val.Len(), nil
+		}
+		return nil, fmt.Errorf("unsupported slice property: %s", access.Prop)
+
+	default:
 		return nil, fmt.Errorf("unsupported object type: %v", val.Kind())
 	}
-	return nil, ErrPropNotSupport
 }
 
 func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
@@ -396,10 +450,13 @@ func toInt(v any) (int, bool) {
 
 // NewContext 创建新的转译上下文
 func NewContext() *Context {
-	return &Context{
+	ctx := &Context{
 		Vars:       make(map[string]any),
 		PropGetter: DefaultPropGetter,
 	}
+	// 添加 JavaScript 的内置值
+	ctx.Vars["undefined"] = nil
+	return ctx
 }
 
 // DefaultPropGetter 默认的属性访问器，用于根据 JavaScript 的属性访问获取正确的值
@@ -412,6 +469,7 @@ func NewContext() *Context {
 //		{Prop: "toUpperCase", IsCall: true},
 //	}
 func DefaultPropGetter(chain []PropAccess, obj any) (any, error) {
+	fmt.Printf("\nDefaultPropGetter: obj=%T, chain=%+v\n", obj, chain)
 	result := obj
 	propHandlers := []PropAccessHandler{
 		StringPropAccessHandler,
@@ -421,14 +479,16 @@ func DefaultPropGetter(chain []PropAccess, obj any) (any, error) {
 	}
 	for _, access := range chain {
 		success := false
-		fmt.Println(access.Prop, access.IsCall)
+		fmt.Printf("Trying to access: prop=%s, isCall=%v\n", access.Prop, access.IsCall)
 		for _, handler := range propHandlers {
 			resultNew, err := handler(access, result)
 			if err == nil {
 				success = true
 				result = resultNew
+				fmt.Printf("Handler succeeded: result=%v\n", result)
 				break
 			}
+			fmt.Printf("Handler failed: err=%v\n", err)
 		}
 		if !success {
 			return nil, ErrPropNotSupport
@@ -449,33 +509,34 @@ func Execute(js string, ctx *Context) (any, error) {
 		return nil, fmt.Errorf("parse error: %v", err)
 	}
 
-	var result any
+	// 执行所有语句，但不返回值
 	for _, stmt := range program.Body {
-		result, err = executeStatement(stmt.Stmt, ctx)
+		_, err = executeStatement(stmt.Stmt, ctx)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return result, nil
+
+	// 总是返回 nil
+	return nil, nil
 }
 
 func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 	switch s := stmt.(type) {
 	case *ast.ExpressionStatement:
-		return executeExpression(s.Expression.Expr, ctx)
+		// 执行表达式但不返回值
+		_, err := executeExpression(s.Expression.Expr, ctx)
+		return nil, err
 
 	case *ast.BlockStatement:
-		var result any
-		var err error
-		// 执行块中的每个语句
+		// 执行块中的每个语句，但不返回值
 		for _, stmt := range s.List {
-			result, err = executeStatement(stmt.Stmt, ctx)
+			_, err := executeStatement(stmt.Stmt, ctx)
 			if err != nil {
 				return nil, err
 			}
 		}
-		// 返回最后一个语句的结果
-		return result, nil
+		return nil, nil
 
 	case *ast.IfStatement:
 		// 执行条件表达式
@@ -484,17 +545,16 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 			return nil, err
 		}
 
-		// 使用 isTruthy 统一处理条件判断
+		// 根据条件执行相应分支，但不返回值
 		if isTruthy(condition) {
-			return executeStatement(s.Consequent.Stmt, ctx)
+			_, err = executeStatement(s.Consequent.Stmt, ctx)
 		} else if s.Alternate != nil {
-			return executeStatement(s.Alternate.Stmt, ctx)
+			_, err = executeStatement(s.Alternate.Stmt, ctx)
 		}
-		return nil, nil
+		return nil, err
 
 	case *ast.VariableDeclaration:
 		// 执行每个变量声明
-		var lastValue any
 		for _, decl := range s.List {
 			// 获取初始值
 			var value any
@@ -506,20 +566,17 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 				}
 			}
 
-			// 获取变量名
+			// 获取变量名并存储到上下文中
 			switch target := decl.Target.Target.(type) {
 			case *ast.Identifier:
-				// 将变量存储到上下文中
 				ctx.Vars[target.Name] = value
-				lastValue = value
 			default:
 				return nil, fmt.Errorf("unsupported variable declaration target: %T", decl.Target.Target)
 			}
 		}
-		return lastValue, nil
+		return nil, nil
 
 	case *ast.EmptyStatement:
-		// 空语句返回 nil
 		return nil, nil
 
 	case *ast.LabelledStatement:
@@ -757,6 +814,13 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		if len(results) == 0 {
 			return nil, nil
 		}
+
+		// 特殊处理 fmt.Println 类函数
+		if len(results) == 2 && fn.Type().Out(0).Kind() == reflect.Int {
+			n, _ := results[0].Interface().(int)
+			return n, nil
+		}
+
 		return results[0].Interface(), nil
 
 	case *ast.BooleanLiteral:
@@ -909,6 +973,80 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 			return nil, fmt.Errorf("unsupported unary operator: %v", e.Operator)
 		}
 
+	case *ast.ConditionalExpression:
+		// 执行条件表达式
+		test, err := executeExpression(e.Test.Expr, ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// 根据条件执行相应分支
+		if isTruthy(test) {
+			return executeExpression(e.Consequent.Expr, ctx)
+		}
+		return executeExpression(e.Alternate.Expr, ctx)
+
+	case *ast.AssignExpression:
+		// 获取右值
+		right, err := executeExpression(e.Right.Expr, ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// 处理左值
+		switch target := e.Left.Expr.(type) {
+		case *ast.Identifier:
+			// 变量赋值
+			ctx.Vars[target.Name] = right
+			return right, nil
+
+		case *ast.MemberExpression:
+			// 对象属性赋值
+			obj, err := executeExpression(target.Object.Expr, ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			// 获取属性名
+			var propName string
+			switch prop := target.Property.Prop.(type) {
+			case *ast.Identifier:
+				propName = prop.Name
+			case *ast.ComputedProperty:
+				val, err := executeExpression(prop.Expr.Expr, ctx)
+				if err != nil {
+					return nil, err
+				}
+				propName = fmt.Sprint(val)
+			default:
+				return nil, fmt.Errorf("unsupported property type: %T", prop)
+			}
+
+			// 设置属性值
+			if m, ok := obj.(map[string]any); ok {
+				m[propName] = right
+				return right, nil
+			}
+
+			return nil, fmt.Errorf("cannot assign to %T", obj)
+
+		default:
+			return nil, fmt.Errorf("invalid assignment target: %T", target)
+		}
+
+	case *ast.ArrayLiteral:
+		// 创建新的切片
+		arr := make([]interface{}, len(e.Value))
+		// 执行每个元素的表达式
+		for i, elem := range e.Value {
+			val, err := executeExpression(elem.Expr, ctx)
+			if err != nil {
+				return nil, err
+			}
+			arr[i] = val
+		}
+		return arr, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported expression type: %T", expr)
 	}
@@ -936,45 +1074,6 @@ func toFloat64(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// callMethod 通过反射调用方法
-func callMethod(obj any, methodName string) (any, error) {
-	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-	method := val.MethodByName(methodName)
-	if !method.IsValid() {
-		return nil, fmt.Errorf("method not found: %s", methodName)
-	}
-	results := method.Call(nil)
-	if len(results) == 0 {
-		return nil, nil
-	}
-	return results[0].Interface(), nil
-}
-
-// defaultAccess 默认的属性访问逻辑
-func defaultAccess(obj any, prop string) (any, error) {
-	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	if val.Kind() == reflect.Struct {
-		field := val.FieldByName(prop)
-		if field.IsValid() {
-			return field.Interface(), nil
-		}
-	} else if val.Kind() == reflect.Map {
-		mapVal := val.MapIndex(reflect.ValueOf(prop))
-		if mapVal.IsValid() {
-			return mapVal.Interface(), nil
-		}
-	}
-
-	return nil, fmt.Errorf("property not found: %s", prop)
 }
 
 // isTruthy 判断一个值是否为真值（JavaScript 风格）
