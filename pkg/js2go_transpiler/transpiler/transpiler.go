@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/parser"
@@ -12,422 +11,20 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
-// Context 定义转译上下文
-type Context struct {
+// Scope 定义转译上下文
+type Scope struct {
 	// 变量和函数映射表，让 js 代码可以访问这些变量和函数
 	Vars map[string]any
 	// 属性访问器
 	PropGetter func(chain []PropAccess, obj any) (any, error)
 	// 父级上下文
-	Parent *Context
+	Parent *Scope
 }
-
-// PropAccess 表示一次属性访问
-//
-// 例如：obj.method(arg1, arg2) 对应的 PropAccess 为：
-//
-//	PropAccess{
-//		Prop: "method",
-//		Args: []any{"arg1", "arg2"},
-//		IsCall: true,
-//	}
-//
-// obj.name 对应的 PropAccess 为：
-//
-//	PropAccess{
-//		Prop: "name",
-//	}
-type PropAccess struct {
-	// 属性名
-	Prop string
-	// 如果是函数调用，这里是参数
-	Args []any
-	// 是否是函数调用
-	IsCall bool
-}
-
-type PropAccessHandler func(access PropAccess, obj any) (any, error)
 
 var (
 	ErrPropNotSupport = errors.New("property not supported")
 	ErrInCall         = errors.New("error in function call")
 )
-
-func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
-	if str, ok := obj.(string); ok {
-		switch access.Prop {
-		case "length":
-			return len(str), nil
-
-		case "toLowerCase":
-			if access.IsCall {
-				return strings.ToLower(str), nil
-			}
-			return strings.ToLower, nil
-
-		case "toUpperCase":
-			if access.IsCall {
-				return strings.ToUpper(str), nil
-			}
-			return strings.ToUpper, nil
-
-		case "trim":
-			if access.IsCall {
-				return strings.TrimSpace(str), nil
-			}
-			return strings.TrimSpace, nil
-
-		case "substring":
-			if access.IsCall {
-				if len(access.Args) < 1 {
-					return nil, fmt.Errorf("%w: substring method requires 1 argument", ErrInCall)
-				}
-				start, ok := access.Args[0].(int)
-				if !ok {
-					return nil, fmt.Errorf("%w: first argument of substring must be a number", ErrInCall)
-				}
-				if start < 0 {
-					start = 0
-				}
-
-				if len(access.Args) > 1 {
-					end, ok := access.Args[1].(int)
-					if !ok {
-						return nil, fmt.Errorf("%w: second argument of substring must be a number", ErrInCall)
-					}
-					if end > len(str) {
-						end = len(str)
-					}
-					obj = str[start:end]
-				} else {
-					obj = str[start:]
-				}
-				return obj, nil
-			}
-
-		case "indexOf":
-			// 查找子串位置
-			if access.IsCall {
-				if len(access.Args) < 1 {
-					return nil, fmt.Errorf("%w: indexOf method requires 1 argument", ErrInCall)
-				}
-				substr, ok := access.Args[0].(string)
-				if !ok {
-					return nil, fmt.Errorf("%w: argument of indexOf must be a string", ErrInCall)
-				}
-				return strings.Index(str, substr), nil
-			}
-
-		case "replace":
-			// 替换字符串
-			if access.IsCall {
-				if len(access.Args) < 2 {
-					return nil, fmt.Errorf("%w: replace method requires 2 arguments", ErrInCall)
-				}
-				old, ok1 := access.Args[0].(string)
-				new, ok2 := access.Args[1].(string)
-				if !ok1 || !ok2 {
-					return nil, fmt.Errorf("%w: arguments of replace must be strings", ErrInCall)
-				}
-				return strings.Replace(str, old, new, 1), nil
-			}
-		}
-	}
-	return nil, ErrPropNotSupport
-}
-
-func MethodPropAccessHandler(access PropAccess, obj any) (any, error) {
-	if access.IsCall {
-		val := reflect.ValueOf(obj)
-		method := val.MethodByName(access.Prop)
-		if !method.IsValid() {
-			return nil, fmt.Errorf("method not found: %s", access.Prop)
-		}
-		args := make([]reflect.Value, len(access.Args))
-		for i, arg := range access.Args {
-			args[i] = reflect.ValueOf(arg)
-		}
-		results := method.Call(args)
-		if len(results) == 0 {
-			return nil, nil
-		}
-		return results[0].Interface(), nil
-	}
-	return nil, ErrPropNotSupport
-}
-
-func DataPropAccessHandler(access PropAccess, obj any) (any, error) {
-	fmt.Printf("DataPropAccessHandler: obj=%T, prop=%s, isCall=%v\n", obj, access.Prop, access.IsCall)
-
-	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-	fmt.Printf("After dereference: val.Kind()=%v\n", val.Kind())
-
-	// 添加函数调用处理
-	if val.Kind() == reflect.Struct {
-		// 尝试获取方法
-		method := val.MethodByName(access.Prop)
-		if method.IsValid() {
-			if access.IsCall {
-				// 处理函数调用
-				args := make([]reflect.Value, len(access.Args))
-				for i, arg := range access.Args {
-					args[i] = reflect.ValueOf(arg)
-				}
-				results := method.Call(args)
-				if len(results) > 0 {
-					return results[0].Interface(), nil
-				}
-				return nil, nil
-			}
-			return method.Interface(), nil
-		}
-	}
-
-	// 非方法调用的属性访问
-	switch val.Kind() {
-	case reflect.Map:
-		fmt.Printf("Handling map access: obj=%v, prop=%s\n", obj, access.Prop)
-		// 对于 map，先尝试直接访问
-		if m, ok := obj.(map[string]any); ok {
-			fmt.Printf("Direct map access: m=%v\n", m)
-			if val, ok := m[access.Prop]; ok {
-				fmt.Printf("Found value in map: %v\n", val)
-				return val, nil
-			}
-		}
-		// 如果直接访问失败，尝试使用反射
-		mapVal := val.MapIndex(reflect.ValueOf(access.Prop))
-		if !mapVal.IsValid() {
-			fmt.Printf("Map value not found: %s\n", access.Prop)
-			// 尝试查找方法
-			method := val.MethodByName(access.Prop)
-			if method.IsValid() {
-				return method.Interface(), nil
-			}
-			return nil, fmt.Errorf("property not found: %s", access.Prop)
-		}
-		return mapVal.Interface(), nil
-
-	case reflect.Struct:
-		fmt.Printf("Handling struct access: obj=%+v, prop=%s\n", obj, access.Prop)
-		field := val.FieldByName(access.Prop)
-		if !field.IsValid() {
-			// 尝试查找方法
-			method := val.MethodByName(access.Prop)
-			if method.IsValid() {
-				return method.Interface(), nil
-			}
-			return nil, fmt.Errorf("property not found: %s", access.Prop)
-		}
-		return field.Interface(), nil
-
-	case reflect.Slice, reflect.Array:
-		// 对于切片和数组，只支持 length 属性
-		if access.Prop == "length" {
-			return val.Len(), nil
-		}
-		return nil, fmt.Errorf("unsupported slice property: %s", access.Prop)
-
-	default:
-		return nil, fmt.Errorf("unsupported object type: %v", val.Kind())
-	}
-}
-
-func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
-	// 检查是否是切片类型
-	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
-		return nil, ErrPropNotSupport
-	}
-
-	switch access.Prop {
-	case "length":
-		return val.Len(), nil
-
-	case "slice":
-		if !access.IsCall {
-			return nil, ErrPropNotSupport
-		}
-
-		// 检查参数
-		if len(access.Args) < 1 || len(access.Args) > 2 {
-			return nil, fmt.Errorf("%w: slice method requires 1 or 2 arguments", ErrInCall)
-		}
-
-		// 获取起始位置
-		start, ok := toInt(access.Args[0])
-		if !ok {
-			return nil, fmt.Errorf("%w: first argument of slice must be a number", ErrInCall)
-		}
-
-		// 处理负数索引
-		if start < 0 {
-			start = val.Len() + start
-		}
-		if start < 0 {
-			start = 0
-		}
-
-		end := val.Len()
-		if len(access.Args) > 1 {
-			// 获取结束位置
-			if e, ok := toInt(access.Args[1]); ok {
-				if e < 0 {
-					end = val.Len() + e
-				} else {
-					end = e
-				}
-			} else {
-				return nil, fmt.Errorf("%w: second argument of slice must be a number", ErrInCall)
-			}
-		}
-
-		// 边界检查
-		if start > val.Len() {
-			start = val.Len()
-		}
-		if end > val.Len() {
-			end = val.Len()
-		}
-		if end < start {
-			end = start
-		}
-
-		// 直接返回切片
-		return val.Slice(start, end).Interface(), nil
-
-	case "indexOf":
-		if !access.IsCall {
-			return nil, ErrPropNotSupport
-		}
-
-		if len(access.Args) < 1 {
-			return nil, fmt.Errorf("%w: indexOf method requires 1 argument", ErrInCall)
-		}
-
-		// 遍历查找元素
-		searchVal := access.Args[0]
-		for i := 0; i < val.Len(); i++ {
-			current := val.Index(i).Interface()
-			// 使用 CompareValues 进行比较
-			cmp, err := util.CompareValues(current, searchVal)
-			if err == nil && cmp == 0 {
-				return i, nil
-			}
-		}
-		return -1, nil
-
-	case "join":
-		if !access.IsCall {
-			return nil, ErrPropNotSupport
-		}
-
-		// 默认分隔符
-		separator := ","
-		if len(access.Args) > 0 {
-			if sep, ok := access.Args[0].(string); ok {
-				separator = sep
-			}
-		}
-
-		// 构建字符串
-		var result strings.Builder
-		for i := 0; i < val.Len(); i++ {
-			if i > 0 {
-				result.WriteString(separator)
-			}
-			result.WriteString(fmt.Sprint(val.Index(i).Interface()))
-		}
-		return result.String(), nil
-
-	case "splice":
-		if !access.IsCall {
-			return nil, ErrPropNotSupport
-		}
-
-		// 检查参数
-		if len(access.Args) < 1 {
-			return nil, fmt.Errorf("%w: splice method requires at least 1 argument", ErrInCall)
-		}
-
-		// 获取起始位置
-		start, ok := toInt(access.Args[0])
-		if !ok {
-			return nil, fmt.Errorf("%w: first argument of splice must be a number", ErrInCall)
-		}
-
-		// 处理负数索引
-		if start < 0 {
-			start = val.Len() + start
-		}
-		if start < 0 {
-			start = 0
-		}
-		if start > val.Len() {
-			start = val.Len()
-		}
-
-		// 获取删除数量
-		deleteCount := val.Len() - start
-		if len(access.Args) > 1 {
-			if count, ok := toInt(access.Args[1]); ok {
-				if count < 0 {
-					count = 0
-				}
-				if start+count > val.Len() {
-					deleteCount = val.Len() - start
-				} else {
-					deleteCount = count
-				}
-			} else {
-				return nil, fmt.Errorf("%w: second argument of splice must be a number", ErrInCall)
-			}
-		}
-
-		// 创建新切片存储结果
-		newLen := val.Len() - deleteCount + len(access.Args) - 2
-		if newLen < 0 {
-			newLen = 0
-		}
-
-		// 创建新的切片，类型与原切片相同
-		newSlice := reflect.MakeSlice(val.Type(), newLen, newLen)
-
-		// 复制前半部分
-		if start > 0 {
-			reflect.Copy(newSlice.Slice(0, start), val.Slice(0, start))
-		}
-
-		// 插入新元素
-		insertCount := len(access.Args) - 2
-		if insertCount > 0 {
-			for i := 0; i < insertCount; i++ {
-				newVal := reflect.ValueOf(access.Args[i+2])
-				if !newVal.Type().AssignableTo(val.Type().Elem()) {
-					return nil, fmt.Errorf("%w: cannot insert value of type %v into slice of type %v",
-						ErrInCall, newVal.Type(), val.Type().Elem())
-				}
-				newSlice.Index(start + i).Set(newVal)
-			}
-		}
-
-		// 复制后半部分
-		if start+deleteCount < val.Len() {
-			reflect.Copy(
-				newSlice.Slice(start+insertCount, newLen),
-				val.Slice(start+deleteCount, val.Len()),
-			)
-		}
-
-		// 直接返回切片
-		return newSlice.Interface(), nil
-	}
-
-	return nil, ErrPropNotSupport
-}
 
 // toInt 辅助函数，将值转换为 int
 func toInt(v any) (int, bool) {
@@ -447,17 +44,19 @@ func toInt(v any) (int, bool) {
 	}
 }
 
+type PropGetter func(chain []PropAccess, obj any) (any, error)
+
 // NewContext 创建新的转译上下文
-func NewContext(parent *Context) *Context {
-	return &Context{
+func NewContext(parent *Scope, propGetter PropGetter) *Scope {
+	return &Scope{
 		Vars:       make(map[string]any),
 		Parent:     parent, // 保留父级引用
-		PropGetter: DefaultPropGetter,
+		PropGetter: propGetter,
 	}
 }
 
-// 变量查找时向上追溯
-func (ctx *Context) GetVar(name string) (any, bool) {
+// GetVar 变量查找当前作用域内的变量，会向上追溯
+func (ctx *Scope) GetVar(name string) (any, bool) {
 	current := ctx
 	for current != nil {
 		if val, ok := current.Vars[name]; ok {
@@ -466,6 +65,27 @@ func (ctx *Context) GetVar(name string) (any, bool) {
 		current = current.Parent
 	}
 	return nil, false
+}
+
+func NewPropGetter(propAccessHandlers ...PropAccessHandler) PropGetter {
+	return func(chain []PropAccess, obj any) (any, error) {
+		result := obj
+		for _, access := range chain {
+			success := false
+			for _, handler := range propAccessHandlers {
+				resultNew, err := handler(access, result)
+				if err == nil {
+					success = true
+					result = resultNew
+					break
+				}
+			}
+			if !success {
+				return nil, ErrPropNotSupport
+			}
+		}
+		return result, nil
+	}
 }
 
 // DefaultPropGetter 默认的属性访问器，用于根据 JavaScript 的属性访问获取正确的值
@@ -477,43 +97,20 @@ func (ctx *Context) GetVar(name string) (any, bool) {
 //		{Prop: "slice", Args: []any{1, 2}, IsCall: true},
 //		{Prop: "toUpperCase", IsCall: true},
 //	}
-func DefaultPropGetter(chain []PropAccess, obj any) (any, error) {
-	fmt.Printf("\nDefaultPropGetter: obj=%T, chain=%+v\n", obj, chain)
-	result := obj
-	propHandlers := []PropAccessHandler{
-		StringPropAccessHandler,
-		ArrayPropAccessHandler,
-		MethodPropAccessHandler,
-		DataPropAccessHandler,
-	}
-	for _, access := range chain {
-		success := false
-		fmt.Printf("Trying to access: prop=%s, isCall=%v\n", access.Prop, access.IsCall)
-		for _, handler := range propHandlers {
-			resultNew, err := handler(access, result)
-			if err == nil {
-				success = true
-				result = resultNew
-				fmt.Printf("Handler succeeded: result=%v\n", result)
-				break
-			}
-			fmt.Printf("Handler failed: err=%v\n", err)
-		}
-		if !success {
-			return nil, ErrPropNotSupport
-		}
-	}
-	return result, nil
-}
+var DefaultPropGetter = NewPropGetter(
+	StringPropAccessHandler,
+	ArrayPropAccessHandler,
+	MethodPropAccessHandler,
+	DataPropAccessHandler,
+)
 
 // Execute 执行 JavaScript 代码并返回结果
-func Execute(js string, ctx *Context) (any, error) {
+func Execute(js string, ctx *Scope) (any, error) {
 	if ctx == nil {
-		ctx = NewContext(nil)
+		ctx = NewContext(nil, DefaultPropGetter)
 	}
 
 	program, err := parser.ParseFile(js)
-	PrintProgram(program)
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %v", err)
 	}
@@ -530,7 +127,7 @@ func Execute(js string, ctx *Context) (any, error) {
 	return nil, nil
 }
 
-func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
+func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 	switch s := stmt.(type) {
 	case *ast.ReturnStatement:
 		if s.Argument != nil {
@@ -612,8 +209,8 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 		fnLit := s.Function
 		fnName := fnLit.Name.Name
 
-		fn := func(args ...interface{}) interface{} {
-			childCtx := NewContext(ctx)
+		fn := func(args ...any) any {
+			childCtx := NewContext(ctx, ctx.PropGetter)
 			childCtx.PropGetter = ctx.PropGetter
 
 			for i, param := range fnLit.ParameterList.List {
@@ -624,7 +221,7 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 				}
 			}
 
-			var result interface{}
+			var result any
 			for _, stmt := range fnLit.Body.List {
 				if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
 					result = ret // 捕获最后一个返回值
@@ -641,7 +238,7 @@ func executeStatement(stmt ast.Stmt, ctx *Context) (any, error) {
 	}
 }
 
-func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
+func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 	switch e := expr.(type) {
 	case *ast.NumberLiteral:
 		return e.Value, nil
@@ -1080,7 +677,7 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 
 	case *ast.ArrayLiteral:
 		// 创建新的切片
-		arr := make([]interface{}, len(e.Value))
+		arr := make([]any, len(e.Value))
 		// 执行每个元素的表达式
 		for i, elem := range e.Value {
 			val, err := executeExpression(elem.Expr, ctx)
@@ -1092,9 +689,8 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		return arr, nil
 
 	case *ast.FunctionLiteral:
-		return func(args ...interface{}) interface{} {
-			childCtx := NewContext(ctx)
-			childCtx.PropGetter = ctx.PropGetter
+		return func(args ...any) any {
+			childCtx := NewContext(ctx, ctx.PropGetter)
 
 			for i, param := range e.ParameterList.List {
 				paramName := param.Target.Target.(*ast.Identifier).Name
@@ -1105,7 +701,7 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 				}
 			}
 
-			var result interface{}
+			var result any
 			for _, stmt := range e.Body.List {
 				if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
 					result = ret
@@ -1115,9 +711,8 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 		}, nil
 
 	case *ast.ArrowFunctionLiteral:
-		return func(args ...interface{}) interface{} {
-			childCtx := NewContext(ctx)
-			childCtx.PropGetter = ctx.PropGetter
+		return func(args ...any) any {
+			childCtx := NewContext(ctx, ctx.PropGetter)
 
 			params := e.ParameterList.List
 			for i, param := range params {
@@ -1131,7 +726,7 @@ func executeExpression(expr ast.Expr, ctx *Context) (any, error) {
 
 			switch body := e.Body.Body.(type) {
 			case *ast.BlockStatement:
-				var lastResult interface{}
+				var lastResult any
 				for _, stmt := range body.List {
 					if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
 						lastResult = ret
@@ -1196,4 +791,61 @@ func isTruthy(v any) bool {
 	default:
 		return true
 	}
+}
+
+// TranspileToGoFunc 将 JavaScript 函数编译为 Go 可执行函数
+// 输入应为单个箭头函数或匿名函数表达式
+func TranspileToGoFunc(jsFunc string, ctx *Scope) (func(...any) any, error) {
+	if ctx == nil {
+		ctx = NewContext(nil, ctx.PropGetter)
+	}
+
+	// 将函数包装为变量声明语句
+	wrappedJS := "var _ = " + jsFunc + ";"
+
+	// 解析为完整程序
+	program, err := parser.ParseFile(wrappedJS)
+	if err != nil {
+		return nil, fmt.Errorf("parse error: %v", err)
+	}
+
+	// 提取函数表达式
+	if len(program.Body) != 1 {
+		return nil, errors.New("input should be a single function expression")
+	}
+
+	decl, ok := program.Body[0].Stmt.(*ast.VariableDeclaration)
+	if !ok || len(decl.List) != 1 {
+		return nil, errors.New("invalid function expression format")
+	}
+
+	init := decl.List[0].Initializer
+	if init == nil {
+		return nil, errors.New("missing function initializer")
+	}
+
+	// 验证函数类型
+	var fnExpr ast.Expr
+	switch expr := init.Expr.(type) {
+	case *ast.ArrowFunctionLiteral:
+		fnExpr = expr
+	case *ast.FunctionLiteral:
+		fnExpr = expr
+	default:
+		return nil, errors.New("input is not a function expression")
+	}
+
+	// 复用现有的表达式执行逻辑
+	fn, err := executeExpression(fnExpr, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 类型断言确保返回函数类型
+	goFunc, ok := fn.(func(...any) any)
+	if !ok {
+		return nil, errors.New("compiled result is not a function")
+	}
+
+	return goFunc, nil
 }

@@ -3,20 +3,24 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
+	"time"
 
+	"github.com/dop251/goja"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestExecuteCode(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
 	ctx.Vars["concat"] = func(a, b string) string { return a + b }
 	ctx.Vars["console"] = struct {
-		Log func(a ...interface{}) (n int, err error)
+		Log func(a ...any) (n int, err error)
 	}{
 		Log: fmt.Println,
 	}
@@ -33,10 +37,10 @@ func TestExecuteCode(t *testing.T) {
 	}
 
 	// 为 console 对象设置自定义属性访问转换器
-	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj any) (any, error) {
 		// 如果是 console 对象，处理 log -> Log 的转换
 		if console, ok := obj.(struct {
-			Log func(...interface{}) (int, error)
+			Log func(...any) (int, error)
 		}); ok {
 			if len(chain) == 1 && chain[0].Prop == "log" {
 				return console.Log, nil
@@ -49,7 +53,7 @@ func TestExecuteCode(t *testing.T) {
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		// 基本运算测试
@@ -196,18 +200,18 @@ func TestExecuteCode(t *testing.T) {
 func TestCustomPropertyAccess(t *testing.T) {
 	// 定义一个测试结构体
 	type TestStruct struct {
-		data map[string]interface{}
+		data map[string]any
 	}
 
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	// 创建测试对象
 	testObj := &TestStruct{
-		data: map[string]interface{}{
+		data: map[string]any{
 			"a": &TestStruct{
-				data: map[string]interface{}{
+				data: map[string]any{
 					"b": &TestStruct{
-						data: map[string]interface{}{
+						data: map[string]any{
 							"c": "value",
 						},
 					},
@@ -220,7 +224,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 	ctx.Vars["obj"] = testObj
 
 	// 设置自定义属性访问转换器
-	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj any) (any, error) {
 		if ts, ok := obj.(*TestStruct); ok {
 			result := ts
 			for _, access := range chain {
@@ -242,7 +246,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -298,7 +302,7 @@ func (p *Person) Friend(name string) *Person {
 }
 
 func TestChainPropertyAccess(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	alice := &Person{
 		Name: "Alice",
@@ -316,7 +320,7 @@ func TestChainPropertyAccess(t *testing.T) {
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -368,12 +372,12 @@ func TestChainPropertyAccess(t *testing.T) {
 }
 
 func TestExecuteIfStatement(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -507,12 +511,12 @@ func TestExecuteIfStatement(t *testing.T) {
 }
 
 func TestExecuteBlockStatement(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
 	ctx.Vars["console"] = struct {
-		Log func(a ...interface{}) (n int, err error)
+		Log func(a ...any) (n int, err error)
 	}{
 		Log: fmt.Println,
 	}
@@ -529,10 +533,10 @@ func TestExecuteBlockStatement(t *testing.T) {
 	}
 
 	// 为 console 对象设置自定义属性访问转换器
-	ctx.PropGetter = func(chain []transpiler.PropAccess, obj interface{}) (interface{}, error) {
+	ctx.PropGetter = func(chain []transpiler.PropAccess, obj any) (any, error) {
 		// 如果是 console 对象，处理 log -> Log 的转换
 		if console, ok := obj.(struct {
-			Log func(...interface{}) (int, error)
+			Log func(...any) (int, error)
 		}); ok {
 			if len(chain) == 1 && chain[0].Prop == "log" {
 				return console.Log, nil
@@ -545,7 +549,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -677,7 +681,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 }
 
 func TestObjectLiteralRelated(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	// 添加一些变量到上下文
 	ctx.Vars["x"] = float64(1)
@@ -690,7 +694,7 @@ func TestObjectLiteralRelated(t *testing.T) {
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -804,11 +808,11 @@ func TestObjectLiteralRelated(t *testing.T) {
 }
 
 func TestArrayMethods(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	// 在每个测试前重置数组，确保测试相互独立
 	setupArrays := func() {
-		ctx.Vars["arr"] = []interface{}{1, 2, 3, 4, 5}
+		ctx.Vars["arr"] = []any{1, 2, 3, 4, 5}
 		ctx.Vars["strArr"] = []string{"hello", "world", "test"}
 	}
 
@@ -816,7 +820,7 @@ func TestArrayMethods(t *testing.T) {
 		name    string
 		setup   func()
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -829,19 +833,19 @@ func TestArrayMethods(t *testing.T) {
 			name:  "slice方法-单参数",
 			setup: setupArrays,
 			js:    "var result = arr.slice(2);",
-			want:  []interface{}{3, 4, 5},
+			want:  []any{3, 4, 5},
 		},
 		{
 			name:  "slice方法-双参数",
 			setup: setupArrays,
 			js:    "var result = arr.slice(1, 3);",
-			want:  []interface{}{2, 3},
+			want:  []any{2, 3},
 		},
 		{
 			name:  "slice方法-负索引",
 			setup: setupArrays,
 			js:    "var result = arr.slice(-2);",
-			want:  []interface{}{4, 5},
+			want:  []any{4, 5},
 		},
 		{
 			name:  "indexOf方法-存在的元素",
@@ -883,25 +887,25 @@ func TestArrayMethods(t *testing.T) {
 			name:  "splice方法-删除元素",
 			setup: setupArrays,
 			js:    "var result = arr.splice(2, 1);",
-			want:  []interface{}{1, 2, 4, 5},
+			want:  []any{1, 2, 4, 5},
 		},
 		{
 			name:  "splice方法-替换元素",
 			setup: setupArrays,
 			js:    "var result = arr.splice(1, 2, 6, 7);",
-			want:  []interface{}{1, 6, 7, 4, 5},
+			want:  []any{1, 6, 7, 4, 5},
 		},
 		{
 			name:  "splice方法-插入元素",
 			setup: setupArrays,
 			js:    "var result = arr.splice(2, 0, 8);",
-			want:  []interface{}{1, 2, 8, 3, 4, 5},
+			want:  []any{1, 2, 8, 3, 4, 5},
 		},
 		{
 			name:  "splice方法-负索引",
 			setup: setupArrays,
 			js:    "var result = arr.splice(-2, 1);",
-			want:  []interface{}{1, 2, 3, 5},
+			want:  []any{1, 2, 3, 5},
 		},
 		{
 			name:    "slice方法-参数类型错误",
@@ -933,8 +937,8 @@ func TestArrayMethods(t *testing.T) {
 			if !tt.wantErr {
 				result := ctx.Vars["result"]
 				// 对于切片类型，使用 CompareValues 进行比较
-				if gotSlice, ok := result.([]interface{}); ok {
-					if wantSlice, ok := tt.want.([]interface{}); ok {
+				if gotSlice, ok := result.([]any); ok {
+					if wantSlice, ok := tt.want.([]any); ok {
 						if len(gotSlice) != len(wantSlice) {
 							t.Errorf("result slice length = %v, want %v", len(gotSlice), len(wantSlice))
 							return
@@ -966,12 +970,12 @@ func TestArrayMethods(t *testing.T) {
 
 // 添加新的三目运算符测试
 func TestConditionalExpression(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		{
@@ -1071,12 +1075,12 @@ func TestConditionalExpression(t *testing.T) {
 }
 
 func TestFunctionSupport(t *testing.T) {
-	ctx := transpiler.NewContext(nil)
+	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
 
 	tests := []struct {
 		name    string
 		js      string
-		want    interface{}
+		want    any
 		wantErr bool
 	}{
 		// 函数声明测试
@@ -1227,4 +1231,160 @@ func TestFunctionSupport(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTranspileToGoFunc(t *testing.T) {
+	tests := []struct {
+		name    string
+		js      string
+		args    []any
+		want    any
+		wantErr bool
+	}{
+		{
+			name:    "函数 1",
+			js:      `function add(a, b) { return a + b; }`,
+			args:    []any{2, 3},
+			want:    float64(5),
+			wantErr: false,
+		},
+		{
+			name:    "函数 2",
+			js:      `function multiply(a, b) { return a + b; }`,
+			args:    []any{"hello", "world"},
+			want:    "helloworld",
+			wantErr: false,
+		},
+		{
+			name: "函数 3",
+			js: `function multiply(a, b) {
+				var c = a * b;
+				var d = a + b;
+				return c + d;
+			}`,
+			args:    []any{2, 3},
+			want:    float64(11),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			goFunc, err := transpiler.TranspileToGoFunc(tt.js, nil)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TranspileToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			result := goFunc(tt.args...)
+			cmp, err := util.CompareValues(result, tt.want)
+			if err != nil || cmp != 0 {
+				t.Errorf("TranspileToGoFunc() result = %v, want %v", result, tt.want)
+			}
+		})
+	}
+}
+
+type User struct {
+	Id   int
+	Name string
+}
+
+func (u *User) SetName(name string) {
+	u.Name = name
+}
+
+func TestTranspileToGoFuncPerformance(t *testing.T) {
+	// 1. Native Go Function
+	runtime.GC()
+	goFunc1 := func(a, b *User) *User {
+		var name = a.Name
+		b.SetName(name)
+		return b
+	}
+	start1 := time.Now()
+	for i := 0; i < 1000000; i++ {
+		user1 := &User{Id: 1, Name: "hello"}
+		user2 := &User{Id: 2, Name: "world"}
+		goFunc1(user1, user2)
+		assert.Equal(t, user2.Name, "hello")
+	}
+	elapsed1 := time.Since(start1)
+	fmt.Printf("Native Go Function: %s\n", elapsed1)
+
+	// 2. Transpiled Go Function
+	runtime.GC()
+	js := `function(a, b) {
+		var name = a.Name;
+		b.SetName(name);
+		return b;
+	}`
+	ctx2 := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	goFunc2, _ := transpiler.TranspileToGoFunc(js, ctx2)
+	start2 := time.Now()
+	for i := 0; i < 1000000; i++ {
+		user1 := &User{Id: 1, Name: "hello"}
+		user2 := &User{Id: 2, Name: "world"}
+		goFunc2(user1, user2)
+		assert.Equal(t, user2.Name, "hello")
+	}
+	elapsed2 := time.Since(start2)
+	fmt.Printf("Transpiled: %s\n", elapsed2)
+
+	// 3. Transpiled Go Function with Specialized PropGetter
+	userPropAccessHandler := func(access transpiler.PropAccess, obj any) (any, error) {
+		if user, ok := obj.(*User); ok {
+			if access.IsCall {
+				switch access.Prop {
+				case "SetName":
+					arg0 := access.Args[0].(string)
+					user.SetName(arg0)
+					return nil, nil
+				}
+			} else {
+				switch access.Prop {
+				case "Id":
+					return user.Id, nil
+				case "Name":
+					return user.Name, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("unsupported property access: %v", access)
+	}
+	propGetter := transpiler.NewPropGetter(
+		userPropAccessHandler,
+		transpiler.StringPropAccessHandler,
+		transpiler.ArrayPropAccessHandler,
+		transpiler.MethodPropAccessHandler,
+		transpiler.DataPropAccessHandler,
+	)
+	ctx3 := transpiler.NewContext(nil, propGetter)
+	goFunc3, _ := transpiler.TranspileToGoFunc(js, ctx3)
+	start3 := time.Now()
+	for i := 0; i < 1000000; i++ {
+		user1 := &User{Id: 1, Name: "hello"}
+		user2 := &User{Id: 2, Name: "world"}
+		goFunc3(user1, user2)
+		assert.Equal(t, user2.Name, "hello")
+	}
+	elapsed3 := time.Since(start3)
+	fmt.Printf("Transpiled (Specialized): %s\n", elapsed3)
+
+	// 4. Goja
+	runtime.GC()
+	vm := goja.New()
+	vm.RunString(`function test(a, b) {
+		var name = a.Name;
+		b.SetName(name);
+		return b;
+	}`)
+	var goFunc4 func(a, b *User) *User
+	vm.ExportTo(vm.Get("test"), &goFunc4)
+	start4 := time.Now()
+	for i := 0; i < 1000000; i++ {
+		user1 := &User{Id: 1, Name: "hello"}
+		user2 := &User{Id: 2, Name: "world"}
+		goFunc4(user1, user2)
+	}
+	elapsed4 := time.Since(start4)
+	fmt.Printf("Goja: %s\n", elapsed4)
 }
