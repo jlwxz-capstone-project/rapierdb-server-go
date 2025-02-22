@@ -7,9 +7,51 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/parser"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
 
 var ErrInvalidPermissionDefinition = errors.New("invalid permission definition")
+
+type Permission struct {
+	Version string
+	Rules   map[string]CollectionRule
+}
+
+type CollectionRuleFunc = func(...any) any
+
+type CollectionRule struct {
+	CanView   CollectionRuleFunc
+	CanCreate CollectionRuleFunc
+	CanUpdate CollectionRuleFunc
+	CanDelete CollectionRuleFunc
+}
+
+func (p *Permission) CanView(collection string, docId string, doc loro.LoroDoc, ctx map[string]any) bool {
+	rule, ok := p.Rules[collection]
+	if !ok {
+		return false
+	}
+	ret := rule.CanView(docId, doc, ctx)
+	if b, ok := ret.(bool); ok {
+		return b
+	}
+	return false
+}
+
+func (cr *CollectionRule) setValidator(name string, fn CollectionRuleFunc) {
+	switch name {
+	case "canView":
+		cr.CanView = fn
+	case "canCreate":
+		cr.CanCreate = fn
+	case "canUpdate":
+		cr.CanUpdate = fn
+	case "canDelete":
+		cr.CanDelete = fn
+	default:
+		panic("invalid rule name")
+	}
+}
 
 // NewPermissionFromJs 从 Js 权限定义中生成 Go 权限定义
 //
@@ -40,6 +82,9 @@ func NewPermissionFromJs(js string) (any, error) {
 		return nil, err
 	}
 	transpiler.PrintProgram(program)
+	permission := Permission{
+		Rules: make(map[string]CollectionRule),
+	}
 
 	exprStmt, ok := program.Body[0].Stmt.(*ast.ExpressionStatement)
 	if !ok {
@@ -82,43 +127,45 @@ func NewPermissionFromJs(js string) (any, error) {
 	if !ok {
 		return nil, ErrInvalidPermissionDefinition
 	}
-	prop0Key, ok := prop0.Key.Expr.(*ast.Identifier)
+	prop0Key, ok := prop0.Key.Expr.(*ast.StringLiteral)
 	if !ok {
 		return nil, ErrInvalidPermissionDefinition
 	}
-	if prop0Key.Name != "version" {
+	if prop0Key.Value != "version" {
 		return nil, ErrInvalidPermissionDefinition
 	}
-	versionExpr, ok := prop0.Key.Expr.(*ast.StringLiteral)
+	versionExpr, ok := prop0.Value.Expr.(*ast.StringLiteral)
 	if !ok {
 		return nil, ErrInvalidPermissionDefinition
 	}
-	version := versionExpr.Value
+	permission.Version = versionExpr.Value
 	prop1, ok := arg0.Value[1].Prop.(*ast.PropertyKeyed)
 	if !ok {
 		return nil, ErrInvalidPermissionDefinition
 	}
-	prop1Key, ok := prop1.Key.Expr.(*ast.Identifier)
+	prop1Key, ok := prop1.Key.Expr.(*ast.StringLiteral)
 	if !ok {
 		return nil, ErrInvalidPermissionDefinition
 	}
-	if prop1Key.Name != "rules" {
+	if prop1Key.Value != "rules" {
 		return nil, ErrInvalidPermissionDefinition
 	}
 	rulesExpr, ok := prop1.Value.Expr.(*ast.ObjectLiteral)
 	if !ok {
 		return nil, ErrInvalidPermissionDefinition
 	}
+
 	for _, prop := range rulesExpr.Value {
 		propKeyed, ok := prop.Prop.(*ast.PropertyKeyed)
 		if !ok {
 			return nil, ErrInvalidPermissionDefinition
 		}
-		propKey, ok := propKeyed.Key.Expr.(*ast.Identifier)
+		propKey, ok := propKeyed.Key.Expr.(*ast.StringLiteral)
 		if !ok {
 			return nil, ErrInvalidPermissionDefinition
 		}
-		collection := propKey.Name
+		collectionName := propKey.Value
+		collectionRule := CollectionRule{}
 		ruleFuncs, ok := propKeyed.Value.Expr.(*ast.ObjectLiteral)
 		if !ok {
 			return nil, ErrInvalidPermissionDefinition
@@ -128,21 +175,31 @@ func NewPermissionFromJs(js string) (any, error) {
 			if !ok {
 				return nil, ErrInvalidPermissionDefinition
 			}
-			ruleFuncKey, ok := ruleFuncKeyed.Key.Expr.(*ast.Identifier)
+			ruleFuncKey, ok := ruleFuncKeyed.Key.Expr.(*ast.StringLiteral)
 			if !ok {
 				return nil, ErrInvalidPermissionDefinition
 			}
-			ruleFuncName := ruleFuncKey.Name
+			ruleFuncName := ruleFuncKey.Value
 			if ruleFuncName != "canView" && ruleFuncName != "canCreate" && ruleFuncName != "canUpdate" && ruleFuncName != "canDelete" {
 				return nil, ErrInvalidPermissionDefinition
 			}
-			ruleFuncExpr, ok := ruleFuncKeyed.Value.Expr.(*ast.ArrowFunctionLiteral)
-			if !ok {
+			var ruleFuncExpr ast.Expr
+			switch ruleFuncKeyed.Value.Expr.(type) {
+			case *ast.ArrowFunctionLiteral:
+				ruleFuncExpr = ruleFuncKeyed.Value.Expr
+			case *ast.FunctionLiteral:
+				ruleFuncExpr = ruleFuncKeyed.Value.Expr
+			default:
 				return nil, ErrInvalidPermissionDefinition
 			}
-
+			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, nil)
+			if err != nil {
+				return nil, err
+			}
+			collectionRule.setValidator(ruleFuncName, goFunc)
 		}
+		permission.Rules[collectionName] = collectionRule
 	}
 
-	return nil, nil
+	return permission, nil
 }

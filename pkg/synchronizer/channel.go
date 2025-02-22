@@ -25,4 +25,7 @@ type Channel interface {
 	// SetMsgHandler 设置消息处理函数
 	// handler: 用于处理接收到的消息的回调函数
 	SetMsgHandler(handler func(clientId string, msg []byte))
+
+	// GetAllConnectedClientIds 获取所有已连接的客户端ID
+	GetAllConnectedClientIds() []string
 }

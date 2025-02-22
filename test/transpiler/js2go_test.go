@@ -14,7 +14,7 @@ import (
 )
 
 func TestExecuteCode(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
@@ -203,7 +203,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 		data map[string]any
 	}
 
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	// 创建测试对象
 	testObj := &TestStruct{
@@ -302,7 +302,7 @@ func (p *Person) Friend(name string) *Person {
 }
 
 func TestChainPropertyAccess(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	alice := &Person{
 		Name: "Alice",
@@ -372,7 +372,7 @@ func TestChainPropertyAccess(t *testing.T) {
 }
 
 func TestExecuteIfStatement(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	tests := []struct {
 		name    string
@@ -511,7 +511,7 @@ func TestExecuteIfStatement(t *testing.T) {
 }
 
 func TestExecuteBlockStatement(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
@@ -681,7 +681,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 }
 
 func TestObjectLiteralRelated(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	// 添加一些变量到上下文
 	ctx.Vars["x"] = float64(1)
@@ -808,7 +808,7 @@ func TestObjectLiteralRelated(t *testing.T) {
 }
 
 func TestArrayMethods(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	// 在每个测试前重置数组，确保测试相互独立
 	setupArrays := func() {
@@ -970,7 +970,7 @@ func TestArrayMethods(t *testing.T) {
 
 // 添加新的三目运算符测试
 func TestConditionalExpression(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	tests := []struct {
 		name    string
@@ -1075,7 +1075,7 @@ func TestConditionalExpression(t *testing.T) {
 }
 
 func TestFunctionSupport(t *testing.T) {
-	ctx := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
 
 	tests := []struct {
 		name    string
@@ -1270,7 +1270,7 @@ func TestTranspileToGoFunc(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			goFunc, err := transpiler.TranspileToGoFunc(tt.js, nil)
+			goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TranspileToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -1317,8 +1317,8 @@ func TestTranspileToGoFuncPerformance(t *testing.T) {
 		b.SetName(name);
 		return b;
 	}`
-	ctx2 := transpiler.NewContext(nil, transpiler.DefaultPropGetter)
-	goFunc2, _ := transpiler.TranspileToGoFunc(js, ctx2)
+	ctx2 := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	goFunc2, _ := transpiler.TranspileJsScriptToGoFunc(js, ctx2)
 	start2 := time.Now()
 	for i := 0; i < 1000000; i++ {
 		user1 := &User{Id: 1, Name: "hello"}
@@ -1357,8 +1357,8 @@ func TestTranspileToGoFuncPerformance(t *testing.T) {
 		transpiler.MethodPropAccessHandler,
 		transpiler.DataPropAccessHandler,
 	)
-	ctx3 := transpiler.NewContext(nil, propGetter)
-	goFunc3, _ := transpiler.TranspileToGoFunc(js, ctx3)
+	ctx3 := transpiler.NewScope(nil, propGetter)
+	goFunc3, _ := transpiler.TranspileJsScriptToGoFunc(js, ctx3)
 	start3 := time.Now()
 	for i := 0; i < 1000000; i++ {
 		user1 := &User{Id: 1, Name: "hello"}

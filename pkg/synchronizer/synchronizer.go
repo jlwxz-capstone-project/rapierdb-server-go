@@ -1,31 +1,27 @@
 package synchronizer
 
 import (
+	"bytes"
 	"context"
 	"log"
-	"time"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permissions"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/synchronizer/message"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/synchronizer/message/v1"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
-
-// EventMessage 定义了同步事件的消息格式
-type EventMessage struct {
-	Type      string    `json:"type"`      // 事件类型
-	Timestamp time.Time `json:"timestamp"` // 事件发生时间
-	TxID      string    `json:"tx_id"`     // 事务ID
-	Data      any       `json:"data"`      // 事件相关数据
-}
 
 type SynchronizerConfig struct {
 }
 
 type Synchronizer struct {
-	storageEngine       *storage.StorageEngine
-	storageEngineEvents *StorageEngineEvents
-	channel             Channel
-	cancel              context.CancelFunc
-	config              SynchronizerConfig
+	storageEngine           *storage.StorageEngine
+	storageEngineEvents     *StorageEngineEvents
+	channel                 Channel
+	cancel                  context.CancelFunc
+	config                  SynchronizerConfig
+	permission              *permissions.Permission
+	collectionSubscriptions map[string]map[string]struct{}
 }
 
 type StorageEngineEvents struct {
@@ -34,7 +30,7 @@ type StorageEngineEvents struct {
 	RollbackedCh <-chan any
 }
 
-func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, config *SynchronizerConfig) *Synchronizer {
+func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, config *SynchronizerConfig, permission *permissions.Permission) *Synchronizer {
 	// 使用默认配置
 	if config == nil {
 		config = &SynchronizerConfig{}
@@ -46,6 +42,7 @@ func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, conf
 		channel:             channel,
 		cancel:              nil,
 		config:              *config,
+		permission:          permission,
 	}
 	return synchronizer
 }
@@ -82,42 +79,74 @@ func (s *Synchronizer) Start() error {
 	}()
 
 	msgHandler := func(clientId string, msg []byte) {
-		// handle message
+		buf := bytes.NewBuffer(msg)
+		msgType, err := util.ReadVarUint(buf)
+		if err != nil {
+			log.Println("msgHandler: failed to read message type", err)
+			return
+		}
 	}
 	s.channel.SetMsgHandler(msgHandler)
 
 	return nil
 }
 
+func (s *Synchronizer) Subscribe(clientId string, collection string) {
+	if _, ok := s.collectionSubscriptions[clientId]; !ok {
+		s.collectionSubscriptions[clientId] = make(map[string]struct{})
+	}
+	s.collectionSubscriptions[clientId][collection] = struct{}{}
+}
+
+func (s *Synchronizer) Unsubscribe(clientId string, collection string) {
+	if subscriptions, ok := s.collectionSubscriptions[clientId]; ok {
+		delete(subscriptions, collection)
+		// 如果该客户端没有订阅任何集合了,删除该客户端的记录
+		if len(subscriptions) == 0 {
+			delete(s.collectionSubscriptions, clientId)
+		}
+	}
+}
+
 // handleTransactionCommitted 处理事务提交事件
 // 注意，这个方法会捕获所有错误，保证不会因为错误而中断
-func (s *Synchronizer) handleTransactionCommitted(event any) {
-	// 哪个节点提交的事务，就向这个节点发送 AckTransactionMessage
-	committedEvent, ok := event.(*storage.TransactionCommittedEvent)
+func (s *Synchronizer) handleTransactionCommitted(event_ any) {
+	event, ok := event_.(*storage.TransactionCommittedEvent)
 	if !ok {
 		log.Println("handleTransactionCommitted: event is not a *storage.TransactionCommittedEvent")
 		return
 	}
+	// 哪个节点提交的事务，就向这个节点发送 AckTransactionMessage
 	ackMsg := message.AckTransactionMessageV1{
-		TxID: committedEvent.Transaction.TxID,
+		TxID: event.Transaction.TxID,
 	}
 	ackMsgBytes, err := ackMsg.Encode()
 	if err != nil {
 		log.Println("handleTransactionCommitted: failed to encode ack message", err)
 	}
-	err = s.channel.Send(committedEvent.Committer, ackMsgBytes)
+	err = s.channel.Send(event.Committer, ackMsgBytes)
 	if err != nil {
 		log.Println("handleTransactionCommitted: failed to send ack message", err)
 	}
-	// 遍历所有节点，将新的文档通过 PostUpdateMessage 节点
+	// 遍历所有节点，对每个节点，检查本次事务改动的文档是否在这个节点订阅的集合中
+	// 并且对这个节点可见。如果对一个节点，存在这样的文档，则将这些文档通过
+	// PostUpdateMessage 发送给这个节点
+	clientIds := s.channel.GetAllConnectedClientIds()
+	for _, clientId := range clientIds {
+		if cs, ok := s.collectionSubscriptions[clientId]; ok {
+			for collection := range cs {
+
+			}
+		}
+	}
 }
 
 func (s *Synchronizer) handleTransactionCanceled(event any) {
-
+	// 哪个节点发送的事务被取消，就向这个节点发送 TransactionFailedMessage
 }
 
 func (s *Synchronizer) handleTransactionRollbacked(event any) {
-
+	// 哪个节点发送的事务被回滚，就向这个节点发送 TransactionFailedMessage
 }
 
 func (s *Synchronizer) Stop() {
@@ -127,14 +156,12 @@ func (s *Synchronizer) Stop() {
 	}
 
 	// 取消所有订阅
-	if s.subscriptions != nil {
-		for _, ch := range s.subscriptions {
-			s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, ch)
-			s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, ch)
-			s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, ch)
-		}
+	if s.storageEngineEvents != nil {
+		s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, s.storageEngineEvents.CommittedCh)
+		s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, s.storageEngineEvents.CanceledCh)
+		s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, s.storageEngineEvents.RollbackedCh)
 	}
-	s.subscriptions = nil
+	s.storageEngineEvents = nil
 
 	// 卸载消息处理器
 	s.channel.SetMsgHandler(nil)

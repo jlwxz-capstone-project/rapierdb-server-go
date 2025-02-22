@@ -11,16 +11,6 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
-// Scope 定义转译上下文
-type Scope struct {
-	// 变量和函数映射表，让 js 代码可以访问这些变量和函数
-	Vars map[string]any
-	// 属性访问器
-	PropGetter func(chain []PropAccess, obj any) (any, error)
-	// 父级上下文
-	Parent *Scope
-}
-
 var (
 	ErrPropNotSupport = errors.New("property not supported")
 	ErrInCall         = errors.New("error in function call")
@@ -44,70 +34,10 @@ func toInt(v any) (int, bool) {
 	}
 }
 
-type PropGetter func(chain []PropAccess, obj any) (any, error)
-
-// NewContext 创建新的转译上下文
-func NewContext(parent *Scope, propGetter PropGetter) *Scope {
-	return &Scope{
-		Vars:       make(map[string]any),
-		Parent:     parent, // 保留父级引用
-		PropGetter: propGetter,
-	}
-}
-
-// GetVar 变量查找当前作用域内的变量，会向上追溯
-func (ctx *Scope) GetVar(name string) (any, bool) {
-	current := ctx
-	for current != nil {
-		if val, ok := current.Vars[name]; ok {
-			return val, true
-		}
-		current = current.Parent
-	}
-	return nil, false
-}
-
-func NewPropGetter(propAccessHandlers ...PropAccessHandler) PropGetter {
-	return func(chain []PropAccess, obj any) (any, error) {
-		result := obj
-		for _, access := range chain {
-			success := false
-			for _, handler := range propAccessHandlers {
-				resultNew, err := handler(access, result)
-				if err == nil {
-					success = true
-					result = resultNew
-					break
-				}
-			}
-			if !success {
-				return nil, ErrPropNotSupport
-			}
-		}
-		return result, nil
-	}
-}
-
-// DefaultPropGetter 默认的属性访问器，用于根据 JavaScript 的属性访问获取正确的值
-//
-// chain 是属性访问链，obj 是根对象。比如 obj.name.slice(1, 2).toUpperCase() 对应的 chain 为：
-//
-//	chain = []PropAccessor{
-//		{Prop: "name"},
-//		{Prop: "slice", Args: []any{1, 2}, IsCall: true},
-//		{Prop: "toUpperCase", IsCall: true},
-//	}
-var DefaultPropGetter = NewPropGetter(
-	StringPropAccessHandler,
-	ArrayPropAccessHandler,
-	MethodPropAccessHandler,
-	DataPropAccessHandler,
-)
-
-// Execute 执行 JavaScript 代码并返回结果
+// Execute 在作用域 ctx 内执行 JavaScript 代码并返回结果
 func Execute(js string, ctx *Scope) (any, error) {
 	if ctx == nil {
-		ctx = NewContext(nil, DefaultPropGetter)
+		ctx = NewScope(nil, DefaultPropGetter)
 	}
 
 	program, err := parser.ParseFile(js)
@@ -125,6 +55,70 @@ func Execute(js string, ctx *Scope) (any, error) {
 
 	// 总是返回 nil
 	return nil, nil
+}
+
+// TranspileJsAstToGoFunc 将 JavaScript 函数表达式 AST 编译为 Go 可执行函数
+func TranspileJsAstToGoFunc(ast ast.Expr, ctx *Scope) (func(...any) any, error) {
+	// TODO check ast type
+
+	// 将泛型类型转换为 ast.Expr 接口类型
+	fn, err := executeExpression(ast, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 类型断言确保返回函数类型
+	goFunc, ok := fn.(func(...any) any)
+	if !ok {
+		return nil, errors.New("compiled result is not a function")
+	}
+
+	return goFunc, nil
+}
+
+// TranspileJsScriptToGoFunc 将 JavaScript 函数编译为 Go 可执行函数
+// 输入应为单个箭头函数或匿名函数表达式
+func TranspileJsScriptToGoFunc(jsScript string, ctx *Scope) (func(...any) any, error) {
+	if ctx == nil {
+		ctx = NewScope(nil, ctx.PropGetter)
+	}
+
+	// 将函数包装为变量声明语句
+	wrappedJS := "var _ = " + jsScript + ";"
+
+	// 解析为完整程序
+	program, err := parser.ParseFile(wrappedJS)
+	if err != nil {
+		return nil, fmt.Errorf("parse error: %v", err)
+	}
+
+	// 提取函数表达式
+	if len(program.Body) != 1 {
+		return nil, errors.New("input should be a single function expression")
+	}
+
+	decl, ok := program.Body[0].Stmt.(*ast.VariableDeclaration)
+	if !ok || len(decl.List) != 1 {
+		return nil, errors.New("invalid function expression format")
+	}
+
+	init := decl.List[0].Initializer
+	if init == nil {
+		return nil, errors.New("missing function initializer")
+	}
+
+	// 验证函数类型
+	var fnExpr ast.Expr
+	switch expr := init.Expr.(type) {
+	case *ast.ArrowFunctionLiteral:
+		fnExpr = expr
+	case *ast.FunctionLiteral:
+		fnExpr = expr
+	default:
+		return nil, errors.New("input is not a function expression")
+	}
+
+	return TranspileJsAstToGoFunc(fnExpr, ctx)
 }
 
 func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
@@ -210,7 +204,7 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 		fnName := fnLit.Name.Name
 
 		fn := func(args ...any) any {
-			childCtx := NewContext(ctx, ctx.PropGetter)
+			childCtx := NewScope(ctx, ctx.PropGetter)
 			childCtx.PropGetter = ctx.PropGetter
 
 			for i, param := range fnLit.ParameterList.List {
@@ -690,7 +684,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 
 	case *ast.FunctionLiteral:
 		return func(args ...any) any {
-			childCtx := NewContext(ctx, ctx.PropGetter)
+			childCtx := NewScope(ctx, ctx.PropGetter)
 
 			for i, param := range e.ParameterList.List {
 				paramName := param.Target.Target.(*ast.Identifier).Name
@@ -712,7 +706,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 
 	case *ast.ArrowFunctionLiteral:
 		return func(args ...any) any {
-			childCtx := NewContext(ctx, ctx.PropGetter)
+			childCtx := NewScope(ctx, ctx.PropGetter)
 
 			params := e.ParameterList.List
 			for i, param := range params {
@@ -791,61 +785,4 @@ func isTruthy(v any) bool {
 	default:
 		return true
 	}
-}
-
-// TranspileToGoFunc 将 JavaScript 函数编译为 Go 可执行函数
-// 输入应为单个箭头函数或匿名函数表达式
-func TranspileToGoFunc(jsFunc string, ctx *Scope) (func(...any) any, error) {
-	if ctx == nil {
-		ctx = NewContext(nil, ctx.PropGetter)
-	}
-
-	// 将函数包装为变量声明语句
-	wrappedJS := "var _ = " + jsFunc + ";"
-
-	// 解析为完整程序
-	program, err := parser.ParseFile(wrappedJS)
-	if err != nil {
-		return nil, fmt.Errorf("parse error: %v", err)
-	}
-
-	// 提取函数表达式
-	if len(program.Body) != 1 {
-		return nil, errors.New("input should be a single function expression")
-	}
-
-	decl, ok := program.Body[0].Stmt.(*ast.VariableDeclaration)
-	if !ok || len(decl.List) != 1 {
-		return nil, errors.New("invalid function expression format")
-	}
-
-	init := decl.List[0].Initializer
-	if init == nil {
-		return nil, errors.New("missing function initializer")
-	}
-
-	// 验证函数类型
-	var fnExpr ast.Expr
-	switch expr := init.Expr.(type) {
-	case *ast.ArrowFunctionLiteral:
-		fnExpr = expr
-	case *ast.FunctionLiteral:
-		fnExpr = expr
-	default:
-		return nil, errors.New("input is not a function expression")
-	}
-
-	// 复用现有的表达式执行逻辑
-	fn, err := executeExpression(fnExpr, ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// 类型断言确保返回函数类型
-	goFunc, ok := fn.(func(...any) any)
-	if !ok {
-		return nil, errors.New("compiled result is not a function")
-	}
-
-	return goFunc, nil
 }
