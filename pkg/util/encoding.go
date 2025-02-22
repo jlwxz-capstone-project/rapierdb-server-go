@@ -33,6 +33,11 @@ func WriteUint32(buf *bytes.Buffer, n uint32) error {
 	return binary.Write(buf, binary.LittleEndian, n)
 }
 
+// WriteUint64 编码一个无符号 64 位整数到 buf 中，使用小端编码，大小为 8 字节
+func WriteUint64(buf *bytes.Buffer, n uint64) error {
+	return binary.Write(buf, binary.LittleEndian, n)
+}
+
 // WriteInt8 编码一个有符号 8 位整数到 buf 中
 func WriteInt8(buf *bytes.Buffer, n int8) error {
 	return buf.WriteByte(byte(n))

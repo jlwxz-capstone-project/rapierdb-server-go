@@ -12,9 +12,13 @@ import (
 
 var ErrInvalidPermissionDefinition = errors.New("invalid permission definition")
 
-type Permission struct {
+type Permissions struct {
+	// 权限定义的版本
 	Version string
-	Rules   map[string]CollectionRule
+	// 权限定义的规则
+	Rules map[string]CollectionRule
+	// 权限定义的 Js 代码，序列化和反序列化时仅处理 JsDef 即可
+	JsDef string
 }
 
 type CollectionRuleFunc = func(...any) any
@@ -26,12 +30,12 @@ type CollectionRule struct {
 	CanDelete CollectionRuleFunc
 }
 
-func (p *Permission) CanView(collection string, docId string, doc loro.LoroDoc, ctx map[string]any) bool {
+func (p *Permissions) CanView(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
 	rule, ok := p.Rules[collection]
 	if !ok {
 		return false
 	}
-	ret := rule.CanView(docId, doc, ctx)
+	ret := rule.CanView(docId, doc, clientId)
 	if b, ok := ret.(bool); ok {
 		return b
 	}
@@ -76,14 +80,14 @@ func (cr *CollectionRule) setValidator(name string, fn CollectionRuleFunc) {
 // 我们需要先使用 parser 解析出这个 Js 权限定义的 AST，
 // 然后手工提取出所有集合对应的 canView, canCreate, canUpdate, canDelete 四个函数
 // 然后使用 transpiler 将这四个函数转换为 Go 函数
-func NewPermissionFromJs(js string) (any, error) {
+func NewPermissionFromJs(js string) (*Permissions, error) {
 	program, err := parser.ParseFile(js)
 	if err != nil {
 		return nil, err
 	}
-	transpiler.PrintProgram(program)
-	permission := Permission{
+	permission := Permissions{
 		Rules: make(map[string]CollectionRule),
+		JsDef: js,
 	}
 
 	exprStmt, ok := program.Body[0].Stmt.(*ast.ExpressionStatement)
@@ -201,5 +205,5 @@ func NewPermissionFromJs(js string) (any, error) {
 		permission.Rules[collectionName] = collectionRule
 	}
 
-	return permission, nil
+	return &permission, nil
 }

@@ -21,21 +21,18 @@ var (
 )
 
 type InsertOp struct {
-	Database   string
 	Collection string
 	DocID      string
 	Snapshot   []byte
 }
 
 type UpdateOp struct {
-	Database   string
 	Collection string
 	DocID      string
 	Update     []byte
 }
 
 type DeleteOp struct {
-	Database   string
 	Collection string
 	DocID      string
 }
@@ -43,6 +40,8 @@ type DeleteOp struct {
 type Transaction struct {
 	// 事务 ID，应该是 UUID，通常由客户端生成
 	TxID string
+	// 目标数据库
+	TargetDatabase string
 	// 提交者，通常是客户端的 ID
 	Committer string
 	// 操作
@@ -56,6 +55,10 @@ type TransactionOp interface {
 func EnsureTransactionValid(tr *Transaction) error {
 	if len(tr.TxID) != 36 {
 		return fmt.Errorf("%w: invalid tx_id = \"%s\"", ErrTransactionInvalid, tr.TxID)
+	}
+
+	if tr.TargetDatabase == "" {
+		return fmt.Errorf("%w: invalid target_database = \"%s\"", ErrTransactionInvalid, tr.TargetDatabase)
 	}
 
 	if tr.Committer == "" {
@@ -73,10 +76,6 @@ func EnsureTransactionValid(tr *Transaction) error {
 func (op *InsertOp) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := util.WriteVarUint(buf, uint64(OP_INSERT))
-	if err != nil {
-		return nil, err
-	}
-	err = util.WriteVarString(buf, op.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +101,6 @@ func (op *UpdateOp) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = util.WriteVarString(buf, op.Database)
-	if err != nil {
-		return nil, err
-	}
 	err = util.WriteVarString(buf, op.Collection)
 	if err != nil {
 		return nil, err
@@ -128,10 +123,6 @@ func (op *DeleteOp) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = util.WriteVarString(buf, op.Database)
-	if err != nil {
-		return nil, err
-	}
 	err = util.WriteVarString(buf, op.Collection)
 	if err != nil {
 		return nil, err
@@ -147,6 +138,10 @@ func (op *DeleteOp) Encode() ([]byte, error) {
 func (tr *Transaction) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := util.WriteVarString(buf, tr.TxID)
+	if err != nil {
+		return nil, err
+	}
+	err = util.WriteVarString(buf, tr.TargetDatabase)
 	if err != nil {
 		return nil, err
 	}
@@ -209,10 +204,6 @@ func DecodeOperation(data []byte) (any, error) {
 // DecodeInsertOp 从字节流解码 InsertOp
 func DecodeInsertOp(data []byte) (*InsertOp, error) {
 	buf := bytes.NewBuffer(data)
-	database, err := util.ReadVarString(buf)
-	if err != nil {
-		return nil, err
-	}
 	collection, err := util.ReadVarString(buf)
 	if err != nil {
 		return nil, err
@@ -226,7 +217,6 @@ func DecodeInsertOp(data []byte) (*InsertOp, error) {
 		return nil, err
 	}
 	return &InsertOp{
-		Database:   database,
 		Collection: collection,
 		DocID:      docID,
 		Snapshot:   snapshot,
@@ -236,10 +226,6 @@ func DecodeInsertOp(data []byte) (*InsertOp, error) {
 // DecodeUpdateOp 从字节流解码 UpdateOp
 func DecodeUpdateOp(data []byte) (*UpdateOp, error) {
 	buf := bytes.NewBuffer(data)
-	database, err := util.ReadVarString(buf)
-	if err != nil {
-		return nil, err
-	}
 	collection, err := util.ReadVarString(buf)
 	if err != nil {
 		return nil, err
@@ -253,7 +239,6 @@ func DecodeUpdateOp(data []byte) (*UpdateOp, error) {
 		return nil, err
 	}
 	return &UpdateOp{
-		Database:   database,
 		Collection: collection,
 		DocID:      docID,
 		Update:     update,
@@ -263,10 +248,6 @@ func DecodeUpdateOp(data []byte) (*UpdateOp, error) {
 // DecodeDeleteOp 从字节流解码 DeleteOp
 func DecodeDeleteOp(data []byte) (*DeleteOp, error) {
 	buf := bytes.NewBuffer(data)
-	database, err := util.ReadVarString(buf)
-	if err != nil {
-		return nil, err
-	}
 	collection, err := util.ReadVarString(buf)
 	if err != nil {
 		return nil, err
@@ -276,7 +257,6 @@ func DecodeDeleteOp(data []byte) (*DeleteOp, error) {
 		return nil, err
 	}
 	return &DeleteOp{
-		Database:   database,
 		Collection: collection,
 		DocID:      docID,
 	}, nil
@@ -286,6 +266,10 @@ func DecodeDeleteOp(data []byte) (*DeleteOp, error) {
 func DecodeTransaction(data []byte) (*Transaction, error) {
 	buf := bytes.NewBuffer(data)
 	txID, err := util.ReadVarString(buf)
+	if err != nil {
+		return nil, err
+	}
+	targetDatabase, err := util.ReadVarString(buf)
 	if err != nil {
 		return nil, err
 	}
@@ -299,9 +283,10 @@ func DecodeTransaction(data []byte) (*Transaction, error) {
 	}
 
 	tr := &Transaction{
-		TxID:       txID,
-		Committer:  committer,
-		Operations: make([]any, 0, opCount),
+		TxID:           txID,
+		TargetDatabase: targetDatabase,
+		Committer:      committer,
+		Operations:     make([]any, 0, opCount),
 	}
 
 	for i := uint64(0); i < opCount; i++ {

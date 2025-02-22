@@ -409,11 +409,11 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		{
 			name: "transaction with insert operation",
 			tx: &storage.Transaction{
-				TxID:      "12345678-1234-5678-1234-567812345678",
-				Committer: "client-1",
+				TxID:           "12345678-1234-5678-1234-567812345678",
+				TargetDatabase: "test_db",
+				Committer:      "client-1",
 				Operations: []any{
 					&storage.InsertOp{
-						Database:   "test_db",
 						Collection: "test_collection",
 						DocID:      "doc1",
 						Snapshot:   []byte(`{"name": "test"}`),
@@ -425,11 +425,11 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		{
 			name: "transaction with update operation",
 			tx: &storage.Transaction{
-				TxID:      "12345678-1234-5678-1234-567812345679",
-				Committer: "client-2",
+				TxID:           "12345678-1234-5678-1234-567812345679",
+				TargetDatabase: "test_db",
+				Committer:      "client-2",
 				Operations: []any{
 					&storage.UpdateOp{
-						Database:   "test_db",
 						Collection: "test_collection",
 						DocID:      "doc1",
 						Update:     []byte(`{"$set": {"name": "updated"}}`),
@@ -441,11 +441,11 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		{
 			name: "transaction with delete operation",
 			tx: &storage.Transaction{
-				TxID:      "12345678-1234-5678-1234-567812345680",
-				Committer: "client-3",
+				TxID:           "12345678-1234-5678-1234-567812345680",
+				TargetDatabase: "test_db",
+				Committer:      "client-3",
 				Operations: []any{
 					&storage.DeleteOp{
-						Database:   "test_db",
 						Collection: "test_collection",
 						DocID:      "doc1",
 					},
@@ -456,23 +456,21 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		{
 			name: "transaction with multiple operations",
 			tx: &storage.Transaction{
-				TxID:      "12345678-1234-5678-1234-567812345681",
-				Committer: "client-4",
+				TxID:           "12345678-1234-5678-1234-567812345681",
+				TargetDatabase: "test_db",
+				Committer:      "client-4",
 				Operations: []any{
 					&storage.InsertOp{
-						Database:   "test_db",
 						Collection: "test_collection",
 						DocID:      "doc1",
 						Snapshot:   []byte(`{"name": "test"}`),
 					},
 					&storage.UpdateOp{
-						Database:   "test_db",
 						Collection: "test_collection",
 						DocID:      "doc2",
 						Update:     []byte(`{"$set": {"name": "updated"}}`),
 					},
 					&storage.DeleteOp{
-						Database:   "test_db",
 						Collection: "test_collection",
 						DocID:      "doc3",
 					},
@@ -507,21 +505,18 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 				case *storage.InsertOp:
 					decodedOp, ok := decoded.Operations[i].(*storage.InsertOp)
 					assert.True(t, ok)
-					assert.Equal(t, originalOp.Database, decodedOp.Database)
 					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
 					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
 					assert.Equal(t, originalOp.Snapshot, decodedOp.Snapshot)
 				case *storage.UpdateOp:
 					decodedOp, ok := decoded.Operations[i].(*storage.UpdateOp)
 					assert.True(t, ok)
-					assert.Equal(t, originalOp.Database, decodedOp.Database)
 					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
 					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
 					assert.Equal(t, originalOp.Update, decodedOp.Update)
 				case *storage.DeleteOp:
 					decodedOp, ok := decoded.Operations[i].(*storage.DeleteOp)
 					assert.True(t, ok)
-					assert.Equal(t, originalOp.Database, decodedOp.Database)
 					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
 					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
 				}

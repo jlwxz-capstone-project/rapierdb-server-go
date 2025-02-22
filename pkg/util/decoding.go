@@ -51,6 +51,13 @@ func ReadUint32(buf *bytes.Buffer) (uint32, error) {
 	return n, err
 }
 
+// ReadUint64 从 buf 中解码一个无符号 64 位整数，使用小端编码，大小为 8 字节
+func ReadUint64(buf *bytes.Buffer) (uint64, error) {
+	var n uint64
+	err := binary.Read(buf, binary.LittleEndian, &n)
+	return n, err
+}
+
 // ReadInt8 从 buf 中解码一个有符号 8 位整数
 func ReadInt8(buf *bytes.Buffer) (int8, error) {
 	b, err := buf.ReadByte()

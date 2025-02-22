@@ -519,3 +519,150 @@ func parseTreeSchema(data map[string]any) (*TreeSchema, error) {
 		TreeNodeSchema: treeNodeSchema,
 	}, nil
 }
+
+func (d *DatabaseSchema) ToJSON() map[string]any {
+	collections := make(map[string]any)
+	for name, coll := range d.Collections {
+		collections[name] = coll.ToJSON()
+	}
+
+	return map[string]any{
+		"type":        DATABASE_SCHEMA,
+		"name":        d.Name,
+		"version":     d.Version,
+		"collections": collections,
+	}
+}
+
+func (c *CollectionSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      COLLECTION_SCHEMA,
+		"name":      c.Name,
+		"docSchema": c.DocSchema.ToJSON(),
+	}
+}
+
+func (d *DocSchema) ToJSON() map[string]any {
+	fields := make(map[string]any)
+	for name, field := range d.Fields {
+		if s, ok := field.(interface{ ToJSON() map[string]any }); ok {
+			fields[name] = s.ToJSON()
+		}
+	}
+
+	return map[string]any{
+		"type":   DOC_SCHEMA,
+		"fields": fields,
+	}
+}
+
+func (a *AnySchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":     ANY_SCHEMA,
+		"nullable": a.Nullable,
+	}
+}
+
+func (b *BooleanSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      BOOLEAN_SCHEMA,
+		"nullable":  b.Nullable,
+		"unique":    b.Unique,
+		"indexType": b.IndexType,
+	}
+}
+
+func (d *DateSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      DATE_SCHEMA,
+		"nullable":  d.Nullable,
+		"unique":    d.Unique,
+		"indexType": d.IndexType,
+	}
+}
+
+func (e *EnumSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      ENUM_SCHEMA,
+		"values":    e.Values,
+		"nullable":  e.Nullable,
+		"unique":    e.Unique,
+		"indexType": e.IndexType,
+	}
+}
+
+func (l *ListSchema) ToJSON() map[string]any {
+	item := l.ItemSchema.(interface{ ToJSON() map[string]any }).ToJSON()
+	return map[string]any{
+		"type":       LIST_SCHEMA,
+		"nullable":   l.Nullable,
+		"itemSchema": item,
+	}
+}
+
+func (m *MovableListSchema) ToJSON() map[string]any {
+	item := m.ItemSchema.(interface{ ToJSON() map[string]any }).ToJSON()
+	return map[string]any{
+		"type":       MOVABLE_LIST_SCHEMA,
+		"nullable":   m.Nullable,
+		"itemSchema": item,
+	}
+}
+
+func (n *NumberSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      NUMBER_SCHEMA,
+		"nullable":  n.Nullable,
+		"unique":    n.Unique,
+		"indexType": n.IndexType,
+	}
+}
+
+func (o *ObjectSchema) ToJSON() map[string]any {
+	shape := make(map[string]any)
+	for name, field := range o.Shape {
+		if s, ok := field.(interface{ ToJSON() map[string]any }); ok {
+			shape[name] = s.ToJSON()
+		}
+	}
+	return map[string]any{
+		"type":     OBJECT_SCHEMA,
+		"nullable": o.Nullable,
+		"shape":    shape,
+	}
+}
+
+func (r *RecordSchema) ToJSON() map[string]any {
+	value := r.ValueSchema.(interface{ ToJSON() map[string]any }).ToJSON()
+	return map[string]any{
+		"type":        RECORD_SCHEMA,
+		"nullable":    r.Nullable,
+		"valueSchema": value,
+	}
+}
+
+func (s *StringSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      STRING_SCHEMA,
+		"nullable":  s.Nullable,
+		"unique":    s.Unique,
+		"indexType": s.IndexType,
+	}
+}
+
+func (t *TextSchema) ToJSON() map[string]any {
+	return map[string]any{
+		"type":      TEXT_SCHEMA,
+		"nullable":  t.Nullable,
+		"indexType": t.IndexType,
+	}
+}
+
+func (t *TreeSchema) ToJSON() map[string]any {
+	node := t.TreeNodeSchema.(interface{ ToJSON() map[string]any }).ToJSON()
+	return map[string]any{
+		"type":           TREE_SCHEMA,
+		"nullable":       t.Nullable,
+		"treeNodeSchema": node,
+	}
+}

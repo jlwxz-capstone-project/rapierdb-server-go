@@ -20,7 +20,7 @@ type Synchronizer struct {
 	channel                 Channel
 	cancel                  context.CancelFunc
 	config                  SynchronizerConfig
-	permission              *permissions.Permission
+	permission              *permissions.Permissions
 	collectionSubscriptions map[string]map[string]struct{}
 }
 
@@ -30,7 +30,7 @@ type StorageEngineEvents struct {
 	RollbackedCh <-chan any
 }
 
-func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, config *SynchronizerConfig, permission *permissions.Permission) *Synchronizer {
+func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, config *SynchronizerConfig, permission *permissions.Permissions) *Synchronizer {
 	// 使用默认配置
 	if config == nil {
 		config = &SynchronizerConfig{}
@@ -131,11 +131,28 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 	// 遍历所有节点，对每个节点，检查本次事务改动的文档是否在这个节点订阅的集合中
 	// 并且对这个节点可见。如果对一个节点，存在这样的文档，则将这些文档通过
 	// PostUpdateMessage 发送给这个节点
+	postUpdateMsg := &message.PostTransactionMessageV1{}
 	clientIds := s.channel.GetAllConnectedClientIds()
 	for _, clientId := range clientIds {
-		if cs, ok := s.collectionSubscriptions[clientId]; ok {
-			for collection := range cs {
-
+		cs, ok := s.collectionSubscriptions[clientId]
+		if !ok { // 没有订阅任何集合
+			continue
+		}
+		for _, op := range event.Transaction.Operations {
+			switch op := op.(type) {
+			case *storage.InsertOp:
+				_, subscribed := cs[op.Collection]
+				if !subscribed {
+					continue
+				}
+				doc, err := s.storageEngine.LoadDoc(op.Database, op.Collection, op.DocID)
+				if err != nil {
+					continue
+				}
+				canView := s.permission.CanView(op.Collection, op.DocID, doc, clientId)
+				if !canView {
+					continue
+				}
 			}
 		}
 	}

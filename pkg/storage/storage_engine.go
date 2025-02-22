@@ -5,20 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permissions"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/schema"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // 存储引擎使用的常量
 const (
 	// 存储元数据的键
-	STORAGE_META_KEY = "ms"
+	STORAGE_META_KEY = "m"
 	// 文档键的前缀
 	DOC_KEY_PREFIX = "d"
-	// 数据库名称的最大字节数
-	DB_SIZE_IN_BYTES = 16
 	// 集合名称的最大字节数
 	COLLECTION_SIZE_IN_BYTES = 16
 	// 文档ID的最大字节数
@@ -26,7 +27,7 @@ const (
 )
 
 // 文档键的总字节数 = 前缀(1) + 数据库名称字节数(16) + 分隔符(1) + 集合名称字节数(16) + 分隔符(1) + 文档ID字节数(16)
-var KEY_SIZE_IN_BYTES = 1 + DB_SIZE_IN_BYTES + 1 + COLLECTION_SIZE_IN_BYTES + 1 + DOC_ID_SIZE_IN_BYTES
+var KEY_SIZE_IN_BYTES = 1 + COLLECTION_SIZE_IN_BYTES + 1 + DOC_ID_SIZE_IN_BYTES
 
 // 存储引擎可能返回的错误
 var (
@@ -44,8 +45,6 @@ var (
 	ErrStorageEngineClosed = errors.New("storage engine closed")
 	// 事务被取消时返回
 	ErrTransactionCancelled = errors.New("transaction cancelled")
-	// 数据库名称超过最大长度时返回
-	ErrDbNameTooLarge = errors.New("db name too large")
 	// 集合名称超过最大长度时返回
 	ErrCollectionNameTooLarge = errors.New("collection name too large")
 	// 文档ID超过最大长度时返回
@@ -80,13 +79,16 @@ type TransactionRollbackedEvent struct {
 }
 
 // StorageEngine 是存储引擎的主要结构体
+// 每个存储引擎只能管理一个 RapierDB 数据库
+// 如果需要管理多个数据库，需要创建多个存储引擎
 type StorageEngine struct {
-	mu        sync.RWMutex        // 用于保护并发访问
-	pebbleDB  *pebble.DB          // 底层的 PebbleDB 实例
-	docsCache *DocsCache          // 文档缓存
-	meta      *StorageMeta        // 存储引擎元数据
-	eb        *util.EventBus      // 事件总线
-	hooks     *StorageEngineHooks // 存储引擎钩子
+	mu        sync.RWMutex          // 用于保护并发访问
+	pebbleDB  *pebble.DB            // 底层的 PebbleDB 实例
+	docsCache *DocsCache            // 文档缓存
+	meta      *DatabaseMeta         // 存储引擎元数据
+	eb        *util.EventBus        // 事件总线
+	hooks     *StorageEngineHooks   // 存储引擎钩子
+	opts      *StorageEngineOptions // 存储引擎选项
 }
 
 // StorageEngineHooks 定义了存储引擎的钩子函数
@@ -102,16 +104,47 @@ type rollbackInfo struct {
 	toUpdate [][3]any // 需要更新的文档信息，格式为 [文档ID, 键, 文档对象]
 }
 
+// CreateNewDatabase 创建一个新的数据库
+// path: 数据库的存储路径，要求不能有已经存在的数据库
+func CreateNewDatabase(path string, schema *schema.DatabaseSchema, permissions *permissions.Permissions) error {
+	pebbleOpts := &pebble.Options{}
+	pebbleOpts.EnsureDefaults()
+	pebbleOpts.ErrorIfExists = true
+	pebbleDB, err := pebble.Open(path, pebbleOpts)
+	if err != nil {
+		return err
+	}
+
+	databaseMeta := &DatabaseMeta{
+		DatabaseSchema: schema,
+		Permissions:    permissions,
+		CreatedAt:      uint64(time.Now().Unix()),
+	}
+
+	err = writeDatabaseMeta(pebbleDB, databaseMeta)
+	if err != nil {
+		return err
+	}
+
+	err = pebbleDB.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // OpenStorageEngine 打开存储引擎
 // path: 存储路径
 // options: 存储引擎选项
-func OpenStorageEngine(path string, options StorageEngineOptions) (*StorageEngine, error) {
-	pebbleDB, err := pebble.Open(path, options.Options)
+func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
+	pebbleOpts := opts.GetPebbleOpts()
+	pebbleDB, err := pebble.Open(opts.Path, pebbleOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	storageMeta, err := loadOrCreateStorageMeta(pebbleDB)
+	databaseMeta, err := loadDatabaseMeta(pebbleDB)
 	if err != nil {
 		return nil, err
 	}
@@ -120,43 +153,47 @@ func OpenStorageEngine(path string, options StorageEngineOptions) (*StorageEngin
 		mu:        sync.RWMutex{},
 		pebbleDB:  pebbleDB,
 		docsCache: NewEmptyDocsCache(),
-		meta:      storageMeta,
+		meta:      databaseMeta,
 		eb:        util.NewEventBus(),
 		hooks:     &StorageEngineHooks{},
+		opts:      opts,
 	}, nil
 }
 
-// loadOrCreateStorageMeta 加载或创建存储元数据
-func loadOrCreateStorageMeta(pebbleDB *pebble.DB) (*StorageMeta, error) {
+// loadDatabaseMeta 加载数据库元数据
+func loadDatabaseMeta(pebbleDB *pebble.DB) (*DatabaseMeta, error) {
 	if pebbleDB == nil {
 		return nil, ErrStorageEngineClosed
 	}
 
 	// 尝试获取已存在的存储元数据
-	storageMetaBytes, _, err := pebbleDB.Get([]byte(STORAGE_META_KEY))
-	if err != nil && err != pebble.ErrNotFound {
-		return nil, err
-	}
+	storageMetaBytes, closer, err := pebbleDB.Get([]byte(STORAGE_META_KEY))
 
-	// 如果元数据不存在，创建新的
+	// 元数据不存在
 	if err == pebble.ErrNotFound {
-		storageMeta := NewEmptyStorageMeta()
-		storageMetaBytes, err := storageMeta.ToBinary()
-		if err != nil {
-			return nil, err
-		}
-		pebbleDB.Set([]byte(STORAGE_META_KEY), storageMetaBytes, pebble.Sync)
-		return storageMeta, nil
+		return nil, ErrDatabaseMetaNotFound
+	} else if err != nil {
+		return nil, err
 	} else {
-		return StorageMetaFromBinary(storageMetaBytes)
+		closer.Close()
+		return NewDatabaseMetaFromBytes(storageMetaBytes)
 	}
+}
+
+func writeDatabaseMeta(pebbleDB *pebble.DB, meta *DatabaseMeta) error {
+	metaBytes, err := meta.ToBytes()
+	if err != nil {
+		return err
+	}
+	return pebbleDB.Set([]byte(STORAGE_META_KEY), metaBytes, pebble.Sync)
 }
 
 // LoadDoc 加载指定的文档
 // 如果文档在缓存中存在，直接返回缓存的文档
 // 否则从存储中加载文档并更新缓存
-func (e *StorageEngine) LoadDoc(dbName, collectionName, docID string) (*loro.LoroDoc, error) {
-	key, err := CalcDocKey(dbName, collectionName, docID)
+func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, error) {
+	keyBytes, err := CalcDocKey(collectionName, docID)
+	key := util.Bytes2String(keyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +201,7 @@ func (e *StorageEngine) LoadDoc(dbName, collectionName, docID string) (*loro.Lor
 	// 先检查缓存
 	{
 		e.mu.RLock()
-		doc, ok := e.docsCache.docs[string(key)]
+		doc, ok := e.docsCache.docs[key]
 		e.mu.RUnlock()
 		if ok {
 			return doc.Doc, nil
@@ -176,12 +213,12 @@ func (e *StorageEngine) LoadDoc(dbName, collectionName, docID string) (*loro.Lor
 	defer e.mu.Unlock()
 
 	// 双重检查，防止在获取锁的过程中其他goroutine已经加载了文档
-	if doc, ok := e.docsCache.docs[string(key)]; ok {
+	if doc, ok := e.docsCache.docs[key]; ok {
 		return doc.Doc, nil
 	}
 
 	// 从存储加载文档
-	snapshot, _, err := e.pebbleDB.Get(key)
+	snapshot, _, err := e.pebbleDB.Get(keyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -190,19 +227,21 @@ func (e *StorageEngine) LoadDoc(dbName, collectionName, docID string) (*loro.Lor
 	doc.Import(snapshot)
 
 	// 更新缓存
-	e.docsCache.docs[string(key)] = &LoadedDoc{DocID: docID, Doc: doc}
+	e.docsCache.docs[key] = &LoadedDoc{DocID: docID, Doc: doc}
 	return doc, nil
 }
 
 // LoadAllDocsInCollection 加载指定集合中的所有文档
 // updateCache: 是否更新缓存
-func (e *StorageEngine) LoadAllDocsInCollection(dbName, collectionName string, updateCache bool) (map[string]*loro.LoroDoc, error) {
-	lowerbound, err := CalcCollectionLowerBound(dbName, collectionName)
+func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCache bool) (map[string]*loro.LoroDoc, error) {
+	lowerbound, err := CalcCollectionLowerBound(collectionName)
+	fmt.Println("lowerbound", util.Bytes2String(lowerbound))
 	if err != nil {
 		return nil, err
 	}
 
-	upperbound, err := CalcCollectionUpperBound(dbName, collectionName)
+	upperbound, err := CalcCollectionUpperBound(collectionName)
+	fmt.Println("upperbound", util.Bytes2String(upperbound))
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +263,7 @@ func (e *StorageEngine) LoadAllDocsInCollection(dbName, collectionName string, u
 		snapshot := iter.Value()
 		doc := loro.NewLoroDoc()
 		doc.Import(snapshot)
+		fmt.Println("key", util.Bytes2String(key))
 		docId := GetDocIdFromKey(key)
 		result[docId] = doc
 
@@ -235,8 +275,8 @@ func (e *StorageEngine) LoadAllDocsInCollection(dbName, collectionName string, u
 }
 
 // LoadDocAndFork 加载文档并创建一个分支
-func (e *StorageEngine) LoadDocAndFork(dbName, collectionName, docID string) (*loro.LoroDoc, error) {
-	doc, err := e.LoadDoc(dbName, collectionName, docID)
+func (e *StorageEngine) LoadDocAndFork(collectionName, docID string) (*loro.LoroDoc, error) {
+	doc, err := e.LoadDoc(collectionName, docID)
 	if err != nil {
 		return nil, err
 	}
@@ -266,45 +306,45 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 		switch op := op.(type) {
 		case InsertOp:
 			{
-				database := op.Database
 				collection := op.Collection
 				docID := op.DocID
-				key, err := CalcDocKey(database, collection, docID)
+				keyBytes, err := CalcDocKey(collection, docID)
+				key := util.Bytes2String(keyBytes)
 				if err != nil {
 					return err
 				}
 
 				// 检查文档是否已存在
-				oldDoc := e.docsCache.Get(key)
+				oldDoc := e.docsCache.Get(keyBytes)
 				if oldDoc != nil {
-					return fmt.Errorf("%w: doc key = %s", ErrInsertExistingDoc, string(key))
+					return fmt.Errorf("%w: doc key = %s", ErrInsertExistingDoc, key)
 				}
 
 				// 更新缓存
 				doc := loro.NewLoroDoc()
 				doc.Import(op.Snapshot)
-				e.docsCache.Set(key, docID, doc)
+				e.docsCache.Set(keyBytes, docID, doc)
 
 				// 记录回滚信息
-				rb.toDelete = append(rb.toDelete, key)
+				rb.toDelete = append(rb.toDelete, keyBytes)
 
 				// 添加到批处理
-				batch.Set(key, op.Snapshot, pebble.Sync)
+				batch.Set(keyBytes, op.Snapshot, pebble.Sync)
 			}
 		case UpdateOp:
 			{
-				database := op.Database
 				collection := op.Collection
 				docID := op.DocID
-				key, err := CalcDocKey(database, collection, docID)
+				keyBytes, err := CalcDocKey(collection, docID)
+				key := util.Bytes2String(keyBytes)
 				if err != nil {
 					return err
 				}
 
 				// 检查文档是否存在
-				doc := e.docsCache.Get(key)
+				doc := e.docsCache.Get(keyBytes)
 				if doc == nil {
-					return fmt.Errorf("%w: doc key = %s", ErrUpdateNonExistentDoc, string(key))
+					return fmt.Errorf("%w: doc key = %s", ErrUpdateNonExistentDoc, key)
 				}
 
 				// 更新缓存
@@ -315,43 +355,43 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// 记录回滚信息
 				rbAction := [3]any{
 					docID,
-					key,
+					keyBytes,
 					forkedDoc,
 				}
 				rb.toUpdate = append(rb.toUpdate, rbAction)
 
 				// 添加到批处理
-				batch.Set(key, snapshot.Bytes(), pebble.Sync)
+				batch.Set(keyBytes, snapshot.Bytes(), pebble.Sync)
 			}
 		case DeleteOp:
 			{
-				database := op.Database
 				collection := op.Collection
 				docID := op.DocID
-				key, err := CalcDocKey(database, collection, docID)
+				keyBytes, err := CalcDocKey(collection, docID)
+				key := util.Bytes2String(keyBytes)
 				if err != nil {
 					return err
 				}
 
 				// 检查文档是否存在
-				oldDoc := e.docsCache.Get(key)
+				oldDoc := e.docsCache.Get(keyBytes)
 				if oldDoc == nil {
-					return fmt.Errorf("%w: doc key = %s", ErrDeleteNonExistentDoc, string(key))
+					return fmt.Errorf("%w: doc key = %s", ErrDeleteNonExistentDoc, key)
 				}
 
 				// 更新缓存
-				e.docsCache.Delete(key)
+				e.docsCache.Delete(keyBytes)
 
 				// 记录回滚信息
 				rbAction := [3]any{
 					docID,
-					key,
+					keyBytes,
 					oldDoc,
 				}
 				rb.toUpdate = append(rb.toUpdate, rbAction)
 
 				// 添加到批处理
-				batch.Delete(key, pebble.Sync)
+				batch.Delete(keyBytes, pebble.Sync)
 			}
 		}
 	}
@@ -372,12 +412,19 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// 存储引擎关闭后不能提交事务
 	if e.pebbleDB == nil {
 		return ErrStorageEngineClosed
 	}
 
+	// 检查事务是否有效
 	if err := EnsureTransactionValid(tr); err != nil {
 		return err
+	}
+
+	// 确认这个事务的目标是当前数据库
+	if tr.TargetDatabase != e.meta.DatabaseSchema.Name {
+		return fmt.Errorf("%w: target database = %s, expected = %s", ErrTransactionInvalid, tr.TargetDatabase, e.meta.DatabaseSchema.Name)
 	}
 
 	rb := &rollbackInfo{}
@@ -446,4 +493,8 @@ func (e *StorageEngine) Subscribe(topic string) <-chan any {
 // Unsubscribe 取消订阅指定主题的事件
 func (e *StorageEngine) Unsubscribe(topic string, ch <-chan any) {
 	e.eb.Unsubscribe(topic, ch)
+}
+
+func (e *StorageEngine) GetDbPath() string {
+	return e.opts.Path
 }

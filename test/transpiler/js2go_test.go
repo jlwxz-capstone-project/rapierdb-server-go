@@ -1354,8 +1354,8 @@ func TestTranspileToGoFuncPerformance(t *testing.T) {
 		userPropAccessHandler,
 		transpiler.StringPropAccessHandler,
 		transpiler.ArrayPropAccessHandler,
-		transpiler.MethodPropAccessHandler,
-		transpiler.DataPropAccessHandler,
+		transpiler.MethodCallHandler,
+		transpiler.DataFieldAccessHandler,
 	)
 	ctx3 := transpiler.NewScope(nil, propGetter)
 	goFunc3, _ := transpiler.TranspileJsScriptToGoFunc(js, ctx3)

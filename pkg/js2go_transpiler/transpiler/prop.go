@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -70,80 +69,95 @@ func NewPropGetter(propAccessHandlers ...PropAccessHandler) PropGetter {
 var DefaultPropGetter = NewPropGetter(
 	StringPropAccessHandler,
 	ArrayPropAccessHandler,
-	MethodPropAccessHandler,
-	DataPropAccessHandler,
+	MethodCallHandler,
+	DataFieldAccessHandler,
 )
 
-func DataPropAccessHandler(access PropAccess, obj any) (any, error) {
+func GetField(obj any, fieldKey string) any {
 	val := reflect.ValueOf(obj)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 
-	// 添加函数调用处理
-	if val.Kind() == reflect.Struct {
-		// 尝试获取方法
-		method := val.MethodByName(access.Prop)
-		if method.IsValid() {
-			if access.IsCall {
-				// 处理函数调用
-				args := make([]reflect.Value, len(access.Args))
-				for i, arg := range access.Args {
-					args[i] = reflect.ValueOf(arg)
-				}
-				results := method.Call(args)
-				if len(results) > 0 {
-					return results[0].Interface(), nil
-				}
-				return nil, nil
-			}
-			return method.Interface(), nil
-		}
-	}
-
-	// 非方法调用的属性访问
 	switch val.Kind() {
 	case reflect.Map:
-		// 对于 map，先尝试直接访问
-		if m, ok := obj.(map[string]any); ok {
-			if val, ok := m[access.Prop]; ok {
-				return val, nil
-			}
+		// 对于 map，使用反射获取字段值
+		fieldKeyVal := reflect.ValueOf(fieldKey)
+		fieldVal := val.MapIndex(fieldKeyVal)
+		if !fieldVal.IsValid() {
+			return nil
 		}
-		// 如果直接访问失败，尝试使用反射
-		mapVal := val.MapIndex(reflect.ValueOf(access.Prop))
-		if !mapVal.IsValid() {
-			// 尝试查找方法
-			method := val.MethodByName(access.Prop)
-			if method.IsValid() {
-				return method.Interface(), nil
-			}
-			return nil, fmt.Errorf("property not found: %s", access.Prop)
-		}
-		return mapVal.Interface(), nil
+		return fieldVal.Interface()
 
 	case reflect.Struct:
-		field := val.FieldByName(access.Prop)
+		// 对于结构体，使用反射获得字段值
+		field := val.FieldByName(fieldKey)
 		if !field.IsValid() {
-			// 尝试查找方法
-			method := val.MethodByName(access.Prop)
-			if method.IsValid() {
-				return method.Interface(), nil
-			}
-			return nil, fmt.Errorf("property not found: %s", access.Prop)
+			return nil
 		}
-		return field.Interface(), nil
-
-	case reflect.Slice, reflect.Array:
-		// 对于切片和数组，只支持 length 属性
-		if access.Prop == "length" {
-			return val.Len(), nil
-		}
-		return nil, fmt.Errorf("unsupported slice property: %s", access.Prop)
-
-	default:
-		return nil, fmt.Errorf("unsupported object type: %v", val.Kind())
+		return field.Interface()
 	}
+	return nil
+}
+
+func MethodCallHandler(access PropAccess, obj any) (any, error) {
+	if !access.IsCall {
+		return nil, ErrPropNotSupport
+	}
+
+	val := reflect.ValueOf(obj)
+
+	// 先尝试获取方法
+	method := val.MethodByName(access.Prop)
+	if method.IsValid() {
+		args := make([]reflect.Value, len(access.Args))
+		for i, arg := range access.Args {
+			args[i] = reflect.ValueOf(arg)
+		}
+		results := method.Call(args)
+		if len(results) == 0 {
+			return nil, nil
+		}
+		// Js 不支持多值返回，因此仅返回第一个返回值
+		return results[0].Interface(), nil
+	}
+
+	// 如果获取方法失败，再尝试获取属性，如果获取到的属性值是函数也行
+	field := GetField(obj, access.Prop)
+	if field == nil {
+		return nil, fmt.Errorf("property not found: %s", access.Prop)
+	}
+
+	// 检查属性是否是可调用的函数
+	fieldVal := reflect.ValueOf(field)
+	if fieldVal.Kind() != reflect.Func {
+		return nil, fmt.Errorf("property %s is not callable", access.Prop)
+	}
+
+	// 调用函数
+	args := make([]reflect.Value, len(access.Args))
+	for i, arg := range access.Args {
+		args[i] = reflect.ValueOf(arg)
+	}
+	results := fieldVal.Call(args)
+	if len(results) == 0 {
+		return nil, nil
+	}
+	// Js 不支持多值返回，因此仅返回第一个返回值
+	return results[0].Interface(), nil
+}
+
+func DataFieldAccessHandler(access PropAccess, obj any) (any, error) {
+	if access.IsCall {
+		return nil, ErrPropNotSupport
+	}
+
+	// 获取属性值
+	field := GetField(obj, access.Prop)
+	if field == nil {
+		return nil, fmt.Errorf("property not found: %s", access.Prop)
+	}
+	return field, nil
 }
 
 func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
@@ -336,53 +350,6 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 		return newSlice.Interface(), nil
 	}
 
-	return nil, ErrPropNotSupport
-}
-
-// 全局方法缓存
-var methodCache = sync.Map{}
-
-func MethodPropAccessHandler(access PropAccess, obj any) (any, error) {
-	if access.IsCall {
-		val := reflect.ValueOf(obj)
-		typ := val.Type()
-
-		// 生成缓存key
-		cacheKey := typ.Name() + "." + access.Prop
-
-		// 从缓存获取方法和索引
-		var method reflect.Value
-		if miAny, ok := methodCache.Load(cacheKey); ok {
-			mi := miAny.(int)
-			method = val.Method(mi)
-		} else {
-			method = val.MethodByName(access.Prop)
-			if !method.IsValid() {
-				return nil, fmt.Errorf("method not found: %s", access.Prop)
-			}
-			mi := -1
-			// 查找方法索引
-			for i := 0; i < typ.NumMethod(); i++ {
-				if typ.Method(i).Name == access.Prop {
-					mi = i
-					break
-				}
-			}
-
-			methodCache.Store(cacheKey, mi)
-		}
-
-		args := make([]reflect.Value, len(access.Args))
-		for i, arg := range access.Args {
-			args[i] = reflect.ValueOf(arg)
-		}
-
-		results := method.Call(args)
-		if len(results) == 0 {
-			return nil, nil
-		}
-		return results[0].Interface(), nil
-	}
 	return nil, ErrPropNotSupport
 }
 
