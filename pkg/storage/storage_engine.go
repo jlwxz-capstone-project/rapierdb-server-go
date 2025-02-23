@@ -193,7 +193,6 @@ func writeDatabaseMeta(pebbleDB *pebble.DB, meta *DatabaseMeta) error {
 // 否则从存储中加载文档并更新缓存
 func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, error) {
 	keyBytes, err := CalcDocKey(collectionName, docID)
-	key := util.Bytes2String(keyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -201,10 +200,10 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 	// 先检查缓存
 	{
 		e.mu.RLock()
-		doc, ok := e.docsCache.docs[key]
+		doc, ok := e.docsCache.Get(keyBytes)
 		e.mu.RUnlock()
 		if ok {
-			return doc.Doc, nil
+			return doc, nil
 		}
 	}
 
@@ -213,8 +212,8 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 	defer e.mu.Unlock()
 
 	// 双重检查，防止在获取锁的过程中其他goroutine已经加载了文档
-	if doc, ok := e.docsCache.docs[key]; ok {
-		return doc.Doc, nil
+	if doc, ok := e.docsCache.Get(keyBytes); ok {
+		return doc, nil
 	}
 
 	// 从存储加载文档
@@ -227,7 +226,7 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 	doc.Import(snapshot)
 
 	// 更新缓存
-	e.docsCache.docs[key] = &LoadedDoc{DocID: docID, Doc: doc}
+	e.docsCache.Set(keyBytes, docID, doc)
 	return doc, nil
 }
 
@@ -315,8 +314,8 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 
 				// 检查文档是否已存在
-				oldDoc := e.docsCache.Get(keyBytes)
-				if oldDoc != nil {
+				_, ok := e.docsCache.Get(keyBytes)
+				if ok {
 					return fmt.Errorf("%w: doc key = %s", ErrInsertExistingDoc, key)
 				}
 
@@ -342,8 +341,8 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 
 				// 检查文档是否存在
-				doc := e.docsCache.Get(keyBytes)
-				if doc == nil {
+				doc, ok := e.docsCache.Get(keyBytes)
+				if !ok {
 					return fmt.Errorf("%w: doc key = %s", ErrUpdateNonExistentDoc, key)
 				}
 
@@ -374,8 +373,8 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 
 				// 检查文档是否存在
-				oldDoc := e.docsCache.Get(keyBytes)
-				if oldDoc == nil {
+				oldDoc, ok := e.docsCache.Get(keyBytes)
+				if !ok {
 					return fmt.Errorf("%w: doc key = %s", ErrDeleteNonExistentDoc, key)
 				}
 
