@@ -37,10 +37,11 @@ func toInt(v any) (int, bool) {
 // Execute 在作用域 ctx 内执行 JavaScript 代码并返回结果
 func Execute(js string, ctx *Scope) (any, error) {
 	if ctx == nil {
-		ctx = NewScope(nil, DefaultPropGetter)
+		ctx = NewScope(nil, ctx.PropGetter, ctx.PropMutator)
 	}
 
 	program, err := parser.ParseFile(js)
+	PrintProgram(program)
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %v", err)
 	}
@@ -80,7 +81,7 @@ func TranspileJsAstToGoFunc(ast ast.Expr, ctx *Scope) (func(...any) any, error) 
 // 输入应为单个箭头函数或匿名函数表达式
 func TranspileJsScriptToGoFunc(jsScript string, ctx *Scope) (func(...any) any, error) {
 	if ctx == nil {
-		ctx = NewScope(nil, ctx.PropGetter)
+		ctx = NewScope(nil, ctx.PropGetter, ctx.PropMutator)
 	}
 
 	// 将函数包装为变量声明语句
@@ -204,7 +205,7 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 		fnName := fnLit.Name.Name
 
 		fn := func(args ...any) any {
-			childCtx := NewScope(ctx, ctx.PropGetter)
+			childCtx := NewScope(ctx, ctx.PropGetter, ctx.PropMutator)
 			childCtx.PropGetter = ctx.PropGetter
 
 			for i, param := range fnLit.ParameterList.List {
@@ -338,7 +339,15 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 					if err != nil {
 						return nil, err
 					}
-					access.Prop = fmt.Sprint(prop)
+					// 只允许字符串和数字作为 Prop
+					switch prop := prop.(type) {
+					case string:
+						access.Prop = prop
+					case int, int16, int32, int64, uint, uint16, uint32, uint64, float32, float64:
+						access.Prop = util.ToInt(prop)
+					default:
+						return nil, fmt.Errorf("unsupported property type: %T", prop)
+					}
 				}
 
 				// 检查对象是否是函数调用
@@ -643,7 +652,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			}
 
 			// 获取属性名
-			var propName string
+			var propName any
 			switch prop := target.Property.Prop.(type) {
 			case *ast.Identifier:
 				propName = prop.Name
@@ -652,18 +661,25 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				propName = fmt.Sprint(val)
+				// 将计算结果转换为字符串或整数，因为属性名只能是字符串或整数
+				switch val := val.(type) {
+				case string:
+					propName = val
+				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+					propName = util.ToInt(val)
+				default:
+					return nil, fmt.Errorf("unsupported property type: %T", val)
+				}
 			default:
 				return nil, fmt.Errorf("unsupported property type: %T", prop)
 			}
 
-			// 设置属性值
-			if m, ok := obj.(map[string]any); ok {
-				m[propName] = right
-				return right, nil
+			// 使用 PropMutator 设置属性值
+			err = ctx.PropMutator(obj, propName, right)
+			if err != nil {
+				return nil, err
 			}
-
-			return nil, fmt.Errorf("cannot assign to %T", obj)
+			return right, nil
 
 		default:
 			return nil, fmt.Errorf("invalid assignment target: %T", target)
@@ -684,7 +700,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 
 	case *ast.FunctionLiteral:
 		return func(args ...any) any {
-			childCtx := NewScope(ctx, ctx.PropGetter)
+			childCtx := NewScope(ctx, ctx.PropGetter, ctx.PropMutator)
 
 			for i, param := range e.ParameterList.List {
 				paramName := param.Target.Target.(*ast.Identifier).Name
@@ -706,7 +722,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 
 	case *ast.ArrowFunctionLiteral:
 		return func(args ...any) any {
-			childCtx := NewScope(ctx, ctx.PropGetter)
+			childCtx := NewScope(ctx, ctx.PropGetter, ctx.PropMutator)
 
 			params := e.ParameterList.List
 			for i, param := range params {

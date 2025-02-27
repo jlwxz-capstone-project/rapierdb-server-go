@@ -14,7 +14,7 @@ import (
 )
 
 func TestExecuteCode(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
@@ -203,7 +203,7 @@ func TestCustomPropertyAccess(t *testing.T) {
 		data map[string]any
 	}
 
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	// 创建测试对象
 	testObj := &TestStruct{
@@ -228,14 +228,16 @@ func TestCustomPropertyAccess(t *testing.T) {
 		if ts, ok := obj.(*TestStruct); ok {
 			result := ts
 			for _, access := range chain {
-				if val, ok := result.data[access.Prop]; ok {
-					if next, ok := val.(*TestStruct); ok {
-						result = next
+				if prop, ok := access.Prop.(string); ok {
+					if val, ok := result.data[prop]; ok {
+						if next, ok := val.(*TestStruct); ok {
+							result = next
+						} else {
+							return val, nil
+						}
 					} else {
-						return val, nil
+						return nil, fmt.Errorf("属性不存在: %s", access.Prop)
 					}
-				} else {
-					return nil, fmt.Errorf("属性不存在: %s", access.Prop)
 				}
 			}
 			return result, nil
@@ -302,7 +304,7 @@ func (p *Person) Friend(name string) *Person {
 }
 
 func TestChainPropertyAccess(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	alice := &Person{
 		Name: "Alice",
@@ -372,7 +374,7 @@ func TestChainPropertyAccess(t *testing.T) {
 }
 
 func TestExecuteIfStatement(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	tests := []struct {
 		name    string
@@ -511,7 +513,7 @@ func TestExecuteIfStatement(t *testing.T) {
 }
 
 func TestExecuteBlockStatement(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	// 添加一些测试用的函数和变量
 	ctx.Vars["add"] = func(a, b float64) float64 { return a + b }
@@ -681,7 +683,7 @@ func TestExecuteBlockStatement(t *testing.T) {
 }
 
 func TestObjectLiteralRelated(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	// 添加一些变量到上下文
 	ctx.Vars["x"] = float64(1)
@@ -808,7 +810,7 @@ func TestObjectLiteralRelated(t *testing.T) {
 }
 
 func TestArrayMethods(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	// 在每个测试前重置数组，确保测试相互独立
 	setupArrays := func() {
@@ -970,7 +972,7 @@ func TestArrayMethods(t *testing.T) {
 
 // 添加新的三目运算符测试
 func TestConditionalExpression(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	tests := []struct {
 		name    string
@@ -1075,7 +1077,7 @@ func TestConditionalExpression(t *testing.T) {
 }
 
 func TestFunctionSupport(t *testing.T) {
-	ctx := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx := transpiler.NewScope(nil, nil, nil)
 
 	tests := []struct {
 		name    string
@@ -1233,6 +1235,77 @@ func TestFunctionSupport(t *testing.T) {
 	}
 }
 
+func TestArrayAccess(t *testing.T) {
+	ctx := transpiler.NewScope(nil, nil, nil)
+
+	tests := []struct {
+		name    string
+		js      string
+		want    any
+		wantErr bool
+	}{
+		{
+			name: "基本索引访问",
+			js:   "var arr = [1, 2, 3]; var result = arr[1];",
+			want: float64(2),
+		},
+		{
+			name: "表达式索引",
+			js:   "var arr = [1, 2, 3]; var result = arr[2 * 0 + 2];",
+			want: float64(3),
+		},
+		{
+			name: "最后元素访问",
+			js:   "var arr = [1, 2, 3, 4, 5]; var result = arr[arr.length - 1];",
+			want: float64(5),
+		},
+		{
+			name: "嵌套数组访问",
+			js:   "var arr = [[1, 2], [3, 4]]; var result = arr[1][0];",
+			want: float64(3),
+		},
+		{
+			name:    "索引越界",
+			js:      "var arr = [1, 2, 3]; var result = arr[5];",
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "字符串数组访问",
+			js:   "var arr = ['hello', 'world']; var result = arr[1];",
+			want: "world",
+		},
+		{
+			name: "动态修改数组",
+			js:   "var arr = [1, 2, 3]; arr[1] = 10; var result = arr[1];",
+			want: float64(10),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 重置上下文
+			ctx.Vars = make(map[string]any)
+
+			// 执行代码
+			_, err := transpiler.Execute(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 验证结果
+			if !tt.wantErr {
+				result := ctx.Vars["result"]
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("ctx.Vars[\"result\"] = %v (%T), want %v (%T)",
+						result, result, tt.want, tt.want)
+				}
+			}
+		})
+	}
+}
+
 func TestTranspileToGoFunc(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1317,7 +1390,7 @@ func TestTranspileToGoFuncPerformance(t *testing.T) {
 		b.SetName(name);
 		return b;
 	}`
-	ctx2 := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+	ctx2 := transpiler.NewScope(nil, nil, nil)
 	goFunc2, _ := transpiler.TranspileJsScriptToGoFunc(js, ctx2)
 	start2 := time.Now()
 	for i := 0; i < 1000000; i++ {
@@ -1357,7 +1430,7 @@ func TestTranspileToGoFuncPerformance(t *testing.T) {
 		transpiler.MethodCallHandler,
 		transpiler.DataFieldAccessHandler,
 	)
-	ctx3 := transpiler.NewScope(nil, propGetter)
+	ctx3 := transpiler.NewScope(nil, propGetter, nil)
 	goFunc3, _ := transpiler.TranspileJsScriptToGoFunc(js, ctx3)
 	start3 := time.Now()
 	for i := 0; i < 1000000; i++ {

@@ -236,7 +236,8 @@ func NewPermissionFromJs(js string) (*Permissions, error) {
 			default:
 				return nil, ErrInvalidPermissionDefinition
 			}
-			scope := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+			// TODO 使用自定义 PropGetter 和 PropMutator
+			scope := transpiler.NewScope(nil, transpiler.DefaultPropGetter, transpiler.DefaultPropMutator)
 			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, scope)
 			if err != nil {
 				return nil, err

@@ -6,16 +6,25 @@ type Scope struct {
 	Vars map[string]any
 	// 属性访问器
 	PropGetter func(chain []PropAccess, obj any) (any, error)
+	// 属性赋值器
+	PropMutator PropMutator
 	// 父级上下文
 	Parent *Scope
 }
 
 // NewScope 创建新的作用域
-func NewScope(parent *Scope, propGetter PropGetter) *Scope {
+func NewScope(parent *Scope, propGetter PropGetter, propMutator PropMutator) *Scope {
+	if propGetter == nil {
+		propGetter = DefaultPropGetter
+	}
+	if propMutator == nil {
+		propMutator = DefaultPropMutator
+	}
 	return &Scope{
-		Vars:       make(map[string]any),
-		Parent:     parent, // 保留父级引用
-		PropGetter: propGetter,
+		Vars:        make(map[string]any),
+		Parent:      parent, // 保留父级引用
+		PropGetter:  propGetter,
+		PropMutator: propMutator,
 	}
 }
 
