@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -430,6 +431,83 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 					return nil, fmt.Errorf("%w: arguments of replace must be strings", ErrInCall)
 				}
 				return strings.Replace(str, old, new, 1), nil
+			}
+		}
+	}
+	return nil, ErrPropNotSupport
+}
+
+func LoroDocAccessHandler(access PropAccess, obj any) (any, error) {
+	if doc, ok := obj.(*loro.LoroDoc); ok {
+		if !access.IsCall {
+			return doc.GetByPath(access.Prop), nil
+		}
+	}
+	return nil, ErrPropNotSupport
+}
+
+// LoroContainerOrValueAccessHandler 处理 LoroContainerOrValue 的属性访问。
+// LoroContainer 只是一个包装类型，实际存储的是 LoroValue 或 LoroContainer，
+// 我们不希望用户注意到这个包装类型，因此下面手工根据 LoroContainerOrValue
+// 的类型转发给 LoroValueAccessHandler 或 LoroContainerAccessHandler 处理
+func LoroContainerOrValueAccessHandler(access PropAccess, obj any) (any, error) {
+	if cov, ok := obj.(*loro.LoroContainerOrValue); ok {
+		switch cov.GetType() {
+		case 0:
+			value, err := cov.GetValue()
+			if err != nil {
+				return nil, err
+			}
+			// 转发给 LoroValueAccessHandler 处理
+			return LoroValueAccessHandler(access, value)
+		case 1:
+			container, err := cov.GetContainer()
+			if err != nil {
+				return nil, err
+			}
+			// 转发给 LoroContainerAccessHandler 处理
+			return LoroContainerAccessHandler(access, container)
+		}
+	}
+	return nil, ErrPropNotSupport
+}
+
+func LoroValueAccessHandler(access PropAccess, obj any) (any, error) {
+	if _, ok := obj.(*loro.LoroValue); ok {
+		return nil, ErrPropNotSupport // TODO
+	}
+	return nil, ErrPropNotSupport
+}
+
+func LoroContainerAccessHandler(access PropAccess, obj any) (any, error) {
+	if lc, ok := obj.(*loro.LoroContainer); ok {
+		lcType := lc.GetType()
+		switch lcType {
+		case loro.LORO_CONTAINER_TEXT:
+			text, err := lc.GetText()
+			if err != nil {
+				return nil, err
+			}
+			return LoroTextAccessHandler(access, text)
+		}
+		// TODO 其他类型
+	}
+	return nil, ErrPropNotSupport
+}
+
+// LoroTextAccessHandler 处理 LoroText 的属性访问
+//
+//	text.length // 返回字符串长度
+func LoroTextAccessHandler(access PropAccess, obj any) (any, error) {
+	if text, ok := obj.(*loro.LoroText); ok {
+		if !access.IsCall {
+			switch access.Prop {
+			case "length":
+				s, err := text.ToString()
+				if err != nil {
+					return nil, err
+				}
+				return len(s), nil
 			}
 		}
 	}

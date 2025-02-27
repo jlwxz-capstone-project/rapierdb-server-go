@@ -30,12 +30,52 @@ type CollectionRule struct {
 	CanDelete CollectionRuleFunc
 }
 
+// CanView 检查客户端是否有权限查看指定集合中的指定文档
 func (p *Permissions) CanView(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
 	rule, ok := p.Rules[collection]
 	if !ok {
 		return false
 	}
 	ret := rule.CanView(docId, doc, clientId)
+	if b, ok := ret.(bool); ok {
+		return b
+	}
+	return false
+}
+
+// CanCreate 检查客户端是否有权限创建指定集合中的文档
+func (p *Permissions) CanCreate(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
+	rule, ok := p.Rules[collection]
+	if !ok {
+		return false
+	}
+	ret := rule.CanCreate(docId, doc, clientId)
+	if b, ok := ret.(bool); ok {
+		return b
+	}
+	return false
+}
+
+// CanUpdate 检查客户端是否有权限更新指定集合中的指定文档
+func (p *Permissions) CanUpdate(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
+	rule, ok := p.Rules[collection]
+	if !ok {
+		return false
+	}
+	ret := rule.CanUpdate(docId, doc, clientId)
+	if b, ok := ret.(bool); ok {
+		return b
+	}
+	return false
+}
+
+// CanDelete 检查客户端是否有权限删除指定集合中的指定文档
+func (p *Permissions) CanDelete(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
+	rule, ok := p.Rules[collection]
+	if !ok {
+		return false
+	}
+	ret := rule.CanDelete(docId, doc, clientId)
 	if b, ok := ret.(bool); ok {
 		return b
 	}
@@ -196,7 +236,8 @@ func NewPermissionFromJs(js string) (*Permissions, error) {
 			default:
 				return nil, ErrInvalidPermissionDefinition
 			}
-			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, nil)
+			scope := transpiler.NewScope(nil, transpiler.DefaultPropGetter)
+			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, scope)
 			if err != nil {
 				return nil, err
 			}

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
@@ -289,4 +290,30 @@ func TestLoroContainerToGoObject(t *testing.T) {
 		goValue := util.Must(m.ToContainer().ToGoObject())
 		assert.Equal(t, map[string]any{"key1": true, "key2": 1.23, "key3": int64(100), "key4": "Hello, World!", "key5": "Hello, World!"}, goValue)
 	}
+}
+
+func TestLoroDocAccessHandler(t *testing.T) {
+	doc := loro.NewLoroDoc()
+	text := doc.GetText("test")
+	text.UpdateText("Hello, World!")
+
+	propGetter := transpiler.NewPropGetter(
+		transpiler.LoroDocAccessHandler,
+		transpiler.LoroContainerOrValueAccessHandler,
+		transpiler.LoroValueAccessHandler,
+		transpiler.LoroContainerAccessHandler,
+		transpiler.LoroTextAccessHandler,
+		transpiler.ArrayPropAccessHandler,
+		transpiler.StringPropAccessHandler,
+		transpiler.MethodCallHandler,
+		transpiler.DataFieldAccessHandler,
+	)
+	scope := transpiler.NewScope(nil, propGetter)
+	js := `function test(doc) {
+		return doc.test.length
+	}`
+	goFunc, err := transpiler.TranspileJsScriptToGoFunc(js, scope)
+	assert.Nil(t, err)
+	result := goFunc(doc)
+	fmt.Printf("goFunc: %v\n", result)
 }

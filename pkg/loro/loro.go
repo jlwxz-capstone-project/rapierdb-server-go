@@ -1918,6 +1918,58 @@ func (lv *LoroValue) GetType() LoroValueType {
 	return LoroValueType(t)
 }
 
+func (lv *LoroValue) Get() (any, error) {
+	t := lv.GetType()
+	switch t {
+	case LORO_NULL_VALUE:
+		return nil, nil
+	case LORO_BOOL_VALUE:
+		bv, err := lv.GetBool()
+		if err != nil {
+			return nil, err
+		}
+		return bv, nil
+	case LORO_DOUBLE_VALUE:
+		dv, err := lv.GetDouble()
+		if err != nil {
+			return nil, err
+		}
+		return dv, nil
+	case LORO_I64_VALUE:
+		iv, err := lv.GetI64()
+		if err != nil {
+			return nil, err
+		}
+		return iv, nil
+	case LORO_STRING_VALUE:
+		sv, err := lv.GetString()
+		if err != nil {
+			return nil, err
+		}
+		return sv, nil
+	case LORO_MAP_VALUE:
+		mv, err := lv.GetMap()
+		if err != nil {
+			return nil, err
+		}
+		return mv, nil
+	case LORO_LIST_VALUE:
+		lv, err := lv.GetList()
+		if err != nil {
+			return nil, err
+		}
+		return lv, nil
+	case LORO_BINARY_VALUE:
+		bv, err := lv.GetBinary()
+		if err != nil {
+			return nil, err
+		}
+		return bv.Bytes(), nil
+	default:
+		return nil, fmt.Errorf("unknown loro value type: %d", t)
+	}
+}
+
 func (lv *LoroValue) GetBool() (bool, error) {
 	var err C.uint8_t
 	ret := C.loro_value_get_bool(lv.ptr, &err)
@@ -2234,9 +2286,10 @@ func (lv *LoroContainerOrValue) Destroy() {
 	C.destroy_loro_container_value(lv.ptr)
 }
 
-func (lv *LoroContainerOrValue) GetType() LoroContainerType {
+// 0 - value, 1 - container
+func (lv *LoroContainerOrValue) GetType() int {
 	t := C.loro_container_value_get_type(lv.ptr)
-	return LoroContainerType(t)
+	return int(t)
 }
 
 func (lv *LoroContainerOrValue) GetContainer() (*LoroContainer, error) {
