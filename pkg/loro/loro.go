@@ -1752,6 +1752,33 @@ type LoroValue struct {
 	ptr unsafe.Pointer
 }
 
+func (lv *LoroValue) Unwrap() (any, error) {
+	t := lv.GetType()
+	switch t {
+	case LORO_NULL_VALUE:
+		return nil, nil
+	case LORO_BOOL_VALUE:
+		return lv.GetBool()
+	case LORO_DOUBLE_VALUE:
+		return lv.GetDouble()
+	case LORO_I64_VALUE:
+		return lv.GetI64()
+	case LORO_STRING_VALUE:
+		return lv.GetString()
+	case LORO_BINARY_VALUE:
+		b, err := lv.GetBinary()
+		if err != nil {
+			return nil, err
+		}
+		return b.Bytes(), nil
+	case LORO_MAP_VALUE:
+		return lv.GetMap()
+	case LORO_LIST_VALUE:
+		return lv.GetList()
+	}
+	return nil, fmt.Errorf("unknown loro value type: %d", t)
+}
+
 func NewLoroValueFromJson(json string) (*LoroValue, error) {
 	ptr := C.loro_value_from_json(C.CString(json))
 	if ptr == nil {
@@ -2269,6 +2296,43 @@ func (c *LoroContainer) ToGoObject() (any, error) {
 	return nil, fmt.Errorf("unknown container type")
 }
 
+func (c *LoroContainer) Unwrap() (any, error) {
+	t := c.GetType()
+	switch t {
+	case LORO_CONTAINER_MAP:
+		m, err := c.GetMap()
+		if err != nil {
+			return nil, err
+		}
+		return m, nil
+	case LORO_CONTAINER_LIST:
+		l, err := c.GetList()
+		if err != nil {
+			return nil, err
+		}
+		return l, nil
+	case LORO_CONTAINER_MOVABLE_LIST:
+		l, err := c.GetMovableList()
+		if err != nil {
+			return nil, err
+		}
+		return l, nil
+	case LORO_CONTAINER_TEXT:
+		text, err := c.GetText()
+		if err != nil {
+			return nil, err
+		}
+		return text, nil
+	case LORO_CONTAINER_TREE:
+		tree, err := c.GetTree()
+		if err != nil {
+			return nil, err
+		}
+		return tree, nil
+	}
+	return nil, fmt.Errorf("unknown container type: %d", t)
+}
+
 // -------------- Loro Container Value --------------
 
 const (
@@ -2280,6 +2344,25 @@ type LoroContainerValueType int32
 
 type LoroContainerOrValue struct {
 	ptr unsafe.Pointer
+}
+
+func (lv *LoroContainerOrValue) Unwrap() (any, error) {
+	t := lv.GetType()
+	switch t {
+	case LORO_VALUE_TYPE:
+		value, err := lv.GetValue()
+		if err != nil {
+			return nil, err
+		}
+		return value.Unwrap()
+	case LORO_CONTAINER_TYPE:
+		container, err := lv.GetContainer()
+		if err != nil {
+			return nil, err
+		}
+		return container.Unwrap()
+	}
+	return nil, fmt.Errorf("unknown loro container or value type: %d", t)
 }
 
 func (lv *LoroContainerOrValue) Destroy() {

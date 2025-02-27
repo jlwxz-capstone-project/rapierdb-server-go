@@ -456,59 +456,14 @@ func LoroDocAccessHandler(access PropAccess, obj any) (any, error) {
 	if doc, ok := obj.(*loro.LoroDoc); ok {
 		if !access.IsCall {
 			if prop, ok := access.Prop.(string); ok {
-				return doc.GetByPath(prop), nil
+				a, err := doc.GetByPath(prop).Unwrap()
+				if err != nil {
+					return nil, ErrPropNotSupport // UNSAFE 原错误被吞掉了
+				}
+				return a, nil
 			}
 			return nil, ErrPropNotSupport
 		}
-	}
-	return nil, ErrPropNotSupport
-}
-
-// LoroContainerOrValueAccessHandler 处理 LoroContainerOrValue 的属性访问。
-// LoroContainer 只是一个包装类型，实际存储的是 LoroValue 或 LoroContainer，
-// 我们不希望用户注意到这个包装类型，因此下面手工根据 LoroContainerOrValue
-// 的类型转发给 LoroValueAccessHandler 或 LoroContainerAccessHandler 处理
-func LoroContainerOrValueAccessHandler(access PropAccess, obj any) (any, error) {
-	if cov, ok := obj.(*loro.LoroContainerOrValue); ok {
-		switch cov.GetType() {
-		case 0:
-			value, err := cov.GetValue()
-			if err != nil {
-				return nil, err
-			}
-			// 转发给 LoroValueAccessHandler 处理
-			return LoroValueAccessHandler(access, value)
-		case 1:
-			container, err := cov.GetContainer()
-			if err != nil {
-				return nil, err
-			}
-			// 转发给 LoroContainerAccessHandler 处理
-			return LoroContainerAccessHandler(access, container)
-		}
-	}
-	return nil, ErrPropNotSupport
-}
-
-func LoroValueAccessHandler(access PropAccess, obj any) (any, error) {
-	if _, ok := obj.(*loro.LoroValue); ok {
-		return nil, ErrPropNotSupport // TODO
-	}
-	return nil, ErrPropNotSupport
-}
-
-func LoroContainerAccessHandler(access PropAccess, obj any) (any, error) {
-	if lc, ok := obj.(*loro.LoroContainer); ok {
-		lcType := lc.GetType()
-		switch lcType {
-		case loro.LORO_CONTAINER_TEXT:
-			text, err := lc.GetText()
-			if err != nil {
-				return nil, err
-			}
-			return LoroTextAccessHandler(access, text)
-		}
-		// TODO 其他类型
 	}
 	return nil, ErrPropNotSupport
 }
@@ -550,6 +505,21 @@ func LoroTextAccessHandler(access PropAccess, obj any) (any, error) {
 				return nil, fmt.Errorf("index out of range: %d", index)
 			}
 			return string(s[index]), nil
+		}
+	}
+	return nil, ErrPropNotSupport
+}
+
+func LoroMapAccessHandler(access PropAccess, obj any) (any, error) {
+	if lm, ok := obj.(*loro.LoroMap); ok {
+		if !access.IsCall {
+			if prop, ok := access.Prop.(string); ok {
+				a, err := lm.Get(prop).Unwrap()
+				if err != nil {
+					return nil, ErrPropNotSupport // UNSAFE 原错误被吞掉了
+				}
+				return a, nil
+			}
 		}
 	}
 	return nil, ErrPropNotSupport

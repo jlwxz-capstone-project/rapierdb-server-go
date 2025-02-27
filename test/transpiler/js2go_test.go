@@ -9,6 +9,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -1460,4 +1461,67 @@ func TestTranspileToGoFuncPerformance(t *testing.T) {
 	}
 	elapsed4 := time.Since(start4)
 	fmt.Printf("Goja: %s\n", elapsed4)
+}
+
+func TestLoroValueAccess(t *testing.T) {
+	tests := []struct {
+		name    string
+		js      string
+		args    []any
+		want    any
+		wantErr bool
+	}{
+		{
+			name: "访问 Map 属性",
+			js: `function getName(doc) {
+				return doc.test.name;
+			}`,
+			args: []any{func() *loro.LoroDoc {
+				doc := loro.NewLoroDoc()
+				testMap := doc.GetMap("test")
+				testMap.InsertString("name", "Alice")
+				return doc
+			}()},
+			want:    "Alice",
+			wantErr: false,
+		},
+		{
+			name: "访问嵌套 Map 属性",
+			js: `function getNestedValue(doc) {
+				return doc.user.profile.age;
+			}`,
+			args: []any{func() *loro.LoroDoc {
+				doc := loro.NewLoroDoc()
+				userMap := doc.GetMap("user")
+				profileMap := doc.GetMap("profile")
+				profileMap, err := userMap.InsertMap("profile", profileMap)
+				assert.NoError(t, err)
+				profileMap.InsertI64("age", 30)
+				return doc
+			}()},
+			want:    int64(30),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			propGetter := transpiler.NewPropGetter(
+				transpiler.LoroDocAccessHandler,
+				transpiler.LoroTextAccessHandler,
+				transpiler.LoroMapAccessHandler,
+			)
+			ctx := transpiler.NewScope(nil, propGetter, nil)
+			goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TranspileJsScriptToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			got := goFunc(tt.args...)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
