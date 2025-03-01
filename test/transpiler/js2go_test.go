@@ -1543,3 +1543,202 @@ func TestLoroValueAccess(t *testing.T) {
 		})
 	}
 }
+
+// 测试解构赋值功能
+func TestDestructuringAssignment(t *testing.T) {
+	// 第一部分：基本执行测试
+	t.Run("基本执行测试", func(t *testing.T) {
+		ctx := transpiler.NewScope(nil, nil, nil)
+
+		tests := []struct {
+			name    string
+			js      string
+			want    any
+			wantErr bool
+		}{
+			// 对象解构赋值
+			{
+				name: "基本对象解构赋值",
+				js:   "var {a, b} = {a: 1, b: 2}; var result = a + b;",
+				want: float64(3),
+			},
+			// 嵌套对象解构赋值暂不支持
+			// {
+			// 	name: "嵌套对象解构赋值",
+			// 	js:   "var {a, b: {c}} = {a: 1, b: {c: 2}}; var result = a + c;",
+			// 	want: float64(3),
+			// },
+			{
+				name: "带默认值的对象解构",
+				js:   "var {a = 10, b = 20} = {a: 1}; var result = a + b;",
+				want: float64(21),
+			},
+			// 重命名解构暂不支持
+			// {
+			// 	name: "重命名变量的对象解构",
+			// 	js:   "var {a: x, b: y} = {a: 1, b: 2}; var result = x + y;",
+			// 	want: float64(3),
+			// },
+
+			// 数组解构赋值
+			{
+				name: "基本数组解构赋值",
+				js:   "var [a, b] = [1, 2]; var result = a + b;",
+				want: float64(3),
+			},
+			{
+				name: "忽略元素的数组解构赋值",
+				js:   "var [a, , c] = [1, 2, 3]; var result = a + c;",
+				want: float64(4),
+			},
+			// 数组默认值暂不支持
+			// {
+			// 	name: "默认值数组解构",
+			// 	js:   "var [a = 10, b = 20] = [1]; var result = a + b;",
+			// 	want: float64(21),
+			// },
+			// Rest参数暂不支持
+			// {
+			// 	name: "剩余参数数组解构",
+			// 	js:   "var [a, ...rest] = [1, 2, 3]; var result = a + rest[0];",
+			// 	want: float64(3),
+			// },
+
+			// 函数参数解构
+			{
+				name: "函数参数对象解构",
+				js:   "function test({a, b}) { return a + b; } var result = test({a: 1, b: 2});",
+				want: float64(3),
+			},
+			{
+				name: "函数参数数组解构",
+				js:   "function test([a, b]) { return a + b; } var result = test([1, 2]);",
+				want: float64(3),
+			},
+			{
+				name: "箭头函数参数解构",
+				js:   "var test = ({a, b}) => a + b; var result = test({a: 1, b: 2});",
+				want: float64(3),
+			},
+
+			// 简单赋值表达式解构
+			{
+				name: "对象赋值解构",
+				js:   "var a, b; ({a, b} = {a: 1, b: 2}); var result = a + b;",
+				want: float64(3),
+			},
+			{
+				name: "数组赋值解构",
+				js:   "var a, b; [a, b] = [1, 2]; var result = a + b;",
+				want: float64(3),
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				// 重置上下文
+				ctx.Vars = make(map[string]any)
+
+				// 执行代码
+				_, err := transpiler.Execute(tt.js, ctx)
+				if (err != nil) != tt.wantErr {
+					t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+
+				// 非错误情况，验证结果
+				if !tt.wantErr {
+					result := ctx.Vars["result"]
+					if !reflect.DeepEqual(result, tt.want) {
+						t.Errorf("ctx.Vars[\"result\"] = %v (%T), want %v (%T)",
+							result, result, tt.want, tt.want)
+					}
+				}
+			})
+		}
+	})
+}
+
+func TestDestructuringAssignment2(t *testing.T) {
+	// 第二部分：转译函数测试
+	t.Run("转译函数测试", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			js      string
+			args    []any
+			want    any
+			wantErr bool
+		}{
+			{
+				name: "函数参数对象解构",
+				js: `function process({x, y}) {
+					return x + y;
+				}`,
+				args:    []any{map[string]any{"x": 10, "y": 20}},
+				want:    float64(30),
+				wantErr: false,
+			},
+			{
+				name: "函数参数数组解构",
+				js: `function process([first, second]) {
+					return first + second;
+				}`,
+				args:    []any{[]any{10, 20}},
+				want:    float64(30),
+				wantErr: false,
+			},
+			// 删除带默认值的对象解构测试用例
+			{
+				name: "箭头函数解构",
+				js: `({name, age}) => {
+					return name + " is " + age + " years old";
+				}`,
+				args:    []any{map[string]any{"name": "Alice", "age": 30}},
+				want:    "Alice is 30 years old",
+				wantErr: false,
+			},
+			{
+				name: "内部使用解构",
+				js: `function transform(data) {
+					const {x, y} = data;
+					return x * y;
+				}`,
+				args:    []any{map[string]any{"x": 10, "y": 20}},
+				want:    float64(200),
+				wantErr: false,
+			},
+			{
+				name: "实用场景-HTTP方法提取",
+				js: `function parseMethod({method}) {
+					return method;
+				}`,
+				args:    []any{map[string]any{"method": "GET", "url": "/api/users"}},
+				want:    "GET",
+				wantErr: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := transpiler.NewScope(nil, nil, nil)
+				t.Run(tt.name, func(t *testing.T) {
+					goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, ctx)
+					if (err != nil) != tt.wantErr {
+						t.Errorf("TranspileJsScriptToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
+						return
+					}
+
+					if err != nil {
+						return
+					}
+
+					// 调用Go函数并验证结果
+					result := goFunc(tt.args...)
+					if !reflect.DeepEqual(result, tt.want) {
+						t.Errorf("TranspileJsScriptToGoFunc() result = %v, want %v", result, tt.want)
+					}
+				})
+			})
+		}
+	})
+}

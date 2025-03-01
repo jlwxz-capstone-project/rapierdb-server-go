@@ -156,10 +156,42 @@ func PrintNode(node ast.Node, depth int, prefix string) {
 func formatParams(pl ast.ParameterList) string {
 	params := make([]string, len(pl.List))
 	for i, p := range pl.List {
-		if id, ok := p.Target.Target.(*ast.Identifier); ok {
-			params[i] = id.Name
-		} else {
+		switch target := p.Target.Target.(type) {
+		case *ast.Identifier:
+			// 简单标识符参数
+			params[i] = target.Name
+		case *ast.ObjectPattern:
+			// 对象解构赋值
+			properties := make([]string, len(target.Properties))
+			for j, prop := range target.Properties {
+				switch pp := prop.Prop.(type) {
+				case *ast.PropertyShort:
+					properties[j] = pp.Name.Name
+				default:
+					properties[j] = "unknown_prop"
+				}
+			}
+			params[i] = "{" + strings.Join(properties, ", ") + "}"
+		case *ast.ArrayPattern:
+			// 数组解构赋值
+			elements := make([]string, 0, len(target.Elements))
+			for _, elem := range target.Elements {
+				if elem.Expr == nil {
+					elements = append(elements, "_") // 跳过的元素
+				} else if id, ok := elem.Expr.(*ast.Identifier); ok {
+					elements = append(elements, id.Name)
+				} else {
+					elements = append(elements, "complex_elem")
+				}
+			}
+			params[i] = "[" + strings.Join(elements, ", ") + "]"
+		default:
 			params[i] = "complex_param"
+		}
+
+		// 添加默认值信息
+		if p.Initializer != nil {
+			params[i] += " = ..."
 		}
 	}
 	return strings.Join(params, ", ")

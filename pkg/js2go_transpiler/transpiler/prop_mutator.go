@@ -8,16 +8,16 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
 
-// PropMutator 表示赋值处理器
-type PropMutator func(obj any, propName any, value any) error
+// PropSetter 表示赋值处理器
+type PropSetter func(obj any, propName any, value any) error
 
-// PropMutateHandler 表示单个赋值处理方法
-type PropMutateHandler func(obj any, propName any, value any) error
+// SetPropHandler 表示单个赋值处理方法
+type SetPropHandler func(obj any, propName any, value any) error
 
-// NewPropMutator 创建一个赋值处理器，顺序尝试每个处理方法
-func NewPropMutator(propMutateHandlers ...PropMutateHandler) PropMutator {
+// NewPropSetter 创建一个赋值处理器，顺序尝试每个处理方法
+func NewPropSetter(propSetHandlers ...SetPropHandler) PropSetter {
 	return func(obj any, propName any, value any) error {
-		for _, handler := range propMutateHandlers {
+		for _, handler := range propSetHandlers {
 			err := handler(obj, propName, value)
 			if err == nil {
 				return nil
@@ -27,15 +27,15 @@ func NewPropMutator(propMutateHandlers ...PropMutateHandler) PropMutator {
 	}
 }
 
-// DefaultPropMutator 默认的赋值处理器
-var DefaultPropMutator = NewPropMutator(
-	MapPropMutateHandler,
-	SlicePropMutateHandler,
-	StructPropMutateHandler,
+// DefaultPropSetter 默认的赋值处理器
+var DefaultPropSetter = NewPropSetter(
+	MapSetPropHandler,
+	SliceSetPropHandler,
+	StructSetPropHandler,
 )
 
-// MapPropMutateHandler 处理 map 类型的属性赋值
-func MapPropMutateHandler(obj any, propName any, value any) error {
+// MapSetPropHandler 处理 map 类型的属性赋值
+func MapSetPropHandler(obj any, propName any, value any) error {
 	if m, ok := obj.(map[string]any); ok {
 		key := fmt.Sprint(propName)
 		m[key] = value
@@ -44,8 +44,8 @@ func MapPropMutateHandler(obj any, propName any, value any) error {
 	return ErrPropNotSupport
 }
 
-// SlicePropMutateHandler 处理切片类型的属性赋值
-func SlicePropMutateHandler(obj any, propName any, value any) error {
+// SliceSetPropHandler 处理切片类型的属性赋值
+func SliceSetPropHandler(obj any, propName any, value any) error {
 	val := reflect.ValueOf(obj)
 	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
 		return ErrPropNotSupport
@@ -73,8 +73,8 @@ func SlicePropMutateHandler(obj any, propName any, value any) error {
 	return nil
 }
 
-// StructPropMutateHandler 处理结构体类型的属性赋值
-func StructPropMutateHandler(obj any, propName any, value any) error {
+// StructSetPropHandler 处理结构体类型的属性赋值
+func StructSetPropHandler(obj any, propName any, value any) error {
 	val := reflect.ValueOf(obj)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -112,7 +112,7 @@ func StructPropMutateHandler(obj any, propName any, value any) error {
 	return nil
 }
 
-func LoroListPropMutateHandler(obj any, propName any, value any) error {
+func LoroListSetPropHandler(obj any, propName any, value any) error {
 	if ll, ok := obj.(loro.LoroList); ok {
 		switch v := value.(type) {
 		case int:

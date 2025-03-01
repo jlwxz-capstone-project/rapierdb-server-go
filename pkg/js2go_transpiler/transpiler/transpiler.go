@@ -176,6 +176,45 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 			switch target := decl.Target.Target.(type) {
 			case *ast.Identifier:
 				ctx.Vars[target.Name] = value
+			case *ast.ObjectPattern:
+				// 处理对象解构赋值
+				if value != nil {
+					for _, prop := range target.Properties {
+						switch p := prop.Prop.(type) {
+						case *ast.PropertyShort:
+							propName := p.Name.Name
+							propValue, _ := ctx.PropGetter([]PropAccess{{Prop: propName}}, value)
+
+							// 处理默认值
+							if propValue == nil && p.Initializer != nil {
+								propValue, _ = executeExpression(p.Initializer.Expr, ctx)
+							}
+
+							ctx.Vars[propName] = propValue
+						}
+					}
+				}
+			case *ast.ArrayPattern:
+				// 处理数组解构赋值
+				if arr, ok := value.([]any); ok {
+					for i, elem := range target.Elements {
+						if elem.Expr == nil {
+							continue
+						}
+
+						if i < len(arr) {
+							switch e := elem.Expr.(type) {
+							case *ast.Identifier:
+								ctx.Vars[e.Name] = arr[i]
+							}
+						} else {
+							switch e := elem.Expr.(type) {
+							case *ast.Identifier:
+								ctx.Vars[e.Name] = nil
+							}
+						}
+					}
+				}
 			default:
 				return nil, fmt.Errorf("unsupported variable declaration target: %T", decl.Target.Target)
 			}
@@ -209,9 +248,60 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 
 			for i, param := range fnLit.ParameterList.List {
 				if i < len(args) {
-					childCtx.Vars[param.Target.Target.(*ast.Identifier).Name] = args[i]
+					// 根据参数类型进行处理
+					switch target := param.Target.Target.(type) {
+					case *ast.Identifier:
+						// 简单标识符参数
+						childCtx.Vars[target.Name] = args[i]
+					case *ast.ObjectPattern:
+						// 对象解构参数
+						objArg, ok := args[i].(map[string]any)
+						if !ok {
+							// 如果参数不是对象，则忽略
+							continue
+						}
+						// 处理对象解构的每个属性
+						for _, prop := range target.Properties {
+							switch p := prop.Prop.(type) {
+							case *ast.PropertyShort:
+								propName := p.Name.Name
+								propValue, _ := ctx.PropGetter([]PropAccess{{Prop: propName}}, objArg)
+								// 处理默认值
+								if propValue == nil && p.Initializer != nil {
+									propValue, _ = executeExpression(p.Initializer.Expr, ctx)
+								}
+								childCtx.Vars[propName] = propValue
+							}
+						}
+					case *ast.ArrayPattern:
+						// 数组解构参数
+						arrArg, ok := args[i].([]any)
+						if !ok {
+							// 如果参数不是数组，则忽略
+							continue
+						}
+						// 处理数组解构的每个元素
+						for j, elem := range target.Elements {
+							if elem.Expr == nil {
+								continue // 跳过空位
+							}
+							if j < len(arrArg) {
+								if id, ok := elem.Expr.(*ast.Identifier); ok {
+									childCtx.Vars[id.Name] = arrArg[j]
+								}
+							} else {
+								if id, ok := elem.Expr.(*ast.Identifier); ok {
+									childCtx.Vars[id.Name] = nil
+								}
+							}
+						}
+					}
 				} else {
-					childCtx.Vars[param.Target.Target.(*ast.Identifier).Name] = nil // 设置为undefined
+					// 参数不足，设置为nil
+					if id, ok := param.Target.Target.(*ast.Identifier); ok {
+						childCtx.Vars[id.Name] = nil
+					}
+					// 对于解构参数，不处理默认情况
 				}
 			}
 
@@ -511,9 +601,11 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 		case token.Plus:
 			// 字符串拼接
 			if ls, ok := left.(string); ok {
-				if rs, ok := right.(string); ok {
-					return ls + rs, nil
-				}
+				// 如果左边是字符串，将右边转换为字符串并拼接
+				return ls + fmt.Sprintf("%v", right), nil
+			} else if rs, ok := right.(string); ok {
+				// 如果右边是字符串，将左边转换为字符串并拼接
+				return fmt.Sprintf("%v", left) + rs, nil
 			}
 			// 数字相加
 			lv, lok := toFloat64(left)
@@ -651,6 +743,49 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			ctx.Vars[target.Name] = right
 			return right, nil
 
+		case *ast.ObjectPattern:
+			// 对象解构赋值
+			if right != nil {
+				for _, prop := range target.Properties {
+					switch p := prop.Prop.(type) {
+					case *ast.PropertyShort:
+						propName := p.Name.Name
+						propValue, _ := ctx.PropGetter([]PropAccess{{Prop: propName}}, right)
+
+						// 处理默认值
+						if propValue == nil && p.Initializer != nil {
+							propValue, _ = executeExpression(p.Initializer.Expr, ctx)
+						}
+
+						ctx.Vars[propName] = propValue
+					}
+				}
+			}
+			return right, nil
+
+		case *ast.ArrayPattern:
+			// 数组解构赋值
+			if arr, ok := right.([]any); ok {
+				for i, elem := range target.Elements {
+					if elem.Expr == nil {
+						continue
+					}
+
+					if i < len(arr) {
+						switch e := elem.Expr.(type) {
+						case *ast.Identifier:
+							ctx.Vars[e.Name] = arr[i]
+						}
+					} else {
+						switch e := elem.Expr.(type) {
+						case *ast.Identifier:
+							ctx.Vars[e.Name] = nil
+						}
+					}
+				}
+			}
+			return right, nil
+
 		case *ast.MemberExpression:
 			// 对象属性赋值
 			obj, err := executeExpression(target.Object.Expr, ctx)
@@ -710,11 +845,76 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			childCtx := NewScope(ctx, ctx.PropGetter, ctx.PropMutator)
 
 			for i, param := range e.ParameterList.List {
-				paramName := param.Target.Target.(*ast.Identifier).Name
-				if i < len(args) {
-					childCtx.Vars[paramName] = args[i]
-				} else {
-					childCtx.Vars[paramName] = nil // 设置为undefined
+				// 处理解构赋值的情况
+				switch target := param.Target.Target.(type) {
+				case *ast.Identifier:
+					// 简单参数的情况
+					paramName := target.Name
+					if i < len(args) {
+						childCtx.Vars[paramName] = args[i]
+					} else {
+						childCtx.Vars[paramName] = nil // 设置为undefined
+					}
+				case *ast.ObjectPattern:
+					// 对象解构赋值的情况
+					var objArg any = nil
+					if i < len(args) {
+						objArg = args[i]
+					}
+
+					// 如果存在默认值且传入的参数为nil，使用默认值
+					if objArg == nil && param.Initializer != nil {
+						objArg, _ = executeExpression(param.Initializer.Expr, ctx)
+					}
+
+					// 将对象的属性解构到上下文变量中
+					if objArg != nil {
+						for _, prop := range target.Properties {
+							switch p := prop.Prop.(type) {
+							case *ast.PropertyShort:
+								propName := p.Name.Name
+								value, _ := ctx.PropGetter([]PropAccess{{Prop: propName}}, objArg)
+
+								// 如果属性值为nil且存在默认值，则使用默认值
+								if value == nil && p.Initializer != nil {
+									value, _ = executeExpression(p.Initializer.Expr, ctx)
+								}
+
+								childCtx.Vars[propName] = value
+							}
+						}
+					}
+				case *ast.ArrayPattern:
+					// 数组解构赋值的情况
+					var arrArg any = nil
+					if i < len(args) {
+						arrArg = args[i]
+					}
+
+					// 如果存在默认值且传入的参数为nil，使用默认值
+					if arrArg == nil && param.Initializer != nil {
+						arrArg, _ = executeExpression(param.Initializer.Expr, ctx)
+					}
+
+					// 将数组的元素解构到上下文变量中
+					if arr, ok := arrArg.([]any); ok {
+						for j, elem := range target.Elements {
+							if elem.Expr == nil {
+								continue // 跳过空元素 如 [a,,b]
+							}
+
+							if j < len(arr) {
+								if id, ok := elem.Expr.(*ast.Identifier); ok {
+									childCtx.Vars[id.Name] = arr[j]
+								}
+							} else {
+								// 超出数组长度时设为nil
+								if id, ok := elem.Expr.(*ast.Identifier); ok {
+									childCtx.Vars[id.Name] = nil
+								}
+							}
+						}
+					}
 				}
 			}
 
@@ -733,11 +933,79 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 
 			params := e.ParameterList.List
 			for i, param := range params {
-				paramName := param.Target.Target.(*ast.Identifier).Name
-				if i < len(args) {
-					childCtx.Vars[paramName] = args[i]
-				} else {
-					childCtx.Vars[paramName] = nil // 设置为undefined
+				// 处理解构赋值的情况
+				switch target := param.Target.Target.(type) {
+				case *ast.Identifier:
+					// 简单参数的情况
+					paramName := target.Name
+					if i < len(args) {
+						childCtx.Vars[paramName] = args[i]
+					} else {
+						childCtx.Vars[paramName] = nil // 设置为undefined
+					}
+				case *ast.ObjectPattern:
+					// 对象解构赋值的情况
+					var objArg any = nil
+					if i < len(args) {
+						objArg = args[i]
+					}
+
+					// 如果存在默认值且传入的参数为nil，使用默认值
+					if objArg == nil && param.Initializer != nil {
+						objArg, _ = executeExpression(param.Initializer.Expr, childCtx)
+					}
+
+					// 将对象的属性解构到上下文变量中
+					if objArg != nil {
+						for _, prop := range target.Properties {
+							switch p := prop.Prop.(type) {
+							case *ast.PropertyShort:
+								propName := p.Name.Name
+								value, err := ctx.PropGetter([]PropAccess{{Prop: propName}}, objArg)
+								if err != nil {
+									continue
+								}
+
+								// 如果属性值为nil且存在默认值，则使用默认值
+								if value == nil && p.Initializer != nil {
+									value, _ = executeExpression(p.Initializer.Expr, childCtx)
+								}
+
+								childCtx.Vars[propName] = value
+							}
+						}
+					}
+				case *ast.ArrayPattern:
+					// 数组解构赋值的情况
+					var arrArg any = nil
+					if i < len(args) {
+						arrArg = args[i]
+					}
+
+					// 如果存在默认值且传入的参数为nil，使用默认值
+					if arrArg == nil && param.Initializer != nil {
+						arrArg, _ = executeExpression(param.Initializer.Expr, childCtx)
+					}
+
+					// 将数组的元素解构到上下文变量中
+					if arr, ok := arrArg.([]any); ok {
+						for j, elem := range target.Elements {
+							if elem.Expr == nil {
+								continue // 跳过空元素 如 [a,,b]
+							}
+
+							if j < len(arr) {
+								if id, ok := elem.Expr.(*ast.Identifier); ok {
+									childCtx.Vars[id.Name] = arr[j]
+								}
+							} else {
+								// 超出数组长度时设为nil
+								if id, ok := elem.Expr.(*ast.Identifier); ok {
+									childCtx.Vars[id.Name] = nil
+								}
+							}
+						}
+					}
 				}
 			}
 
@@ -745,13 +1013,17 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			case *ast.BlockStatement:
 				var lastResult any
 				for _, stmt := range body.List {
-					if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
+					ret, err := executeStatement(stmt.Stmt, childCtx)
+					if err == nil && ret != nil {
 						lastResult = ret
 					}
 				}
 				return lastResult
 			case *ast.Expression:
-				result, _ := executeExpression(body.Expr, childCtx)
+				result, err := executeExpression(body.Expr, childCtx)
+				if err != nil {
+					return nil
+				}
 				return result
 			}
 			return nil

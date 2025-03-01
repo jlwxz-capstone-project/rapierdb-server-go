@@ -248,7 +248,7 @@ func NewPermissionFromJs(js string) (*Permissions, error) {
 				transpiler.DataFieldAccessHandler,
 				transpiler.MethodCallHandler,
 			)
-			propMutator := transpiler.DefaultPropMutator
+			propMutator := transpiler.DefaultPropSetter
 			scope := transpiler.NewScope(nil, propGetter, propMutator)
 			transpiler.PrintNode(ruleFuncExpr, 0, "ruleFuncExpr")
 			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, scope)
