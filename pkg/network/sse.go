@@ -1,4 +1,4 @@
-package synchronizer
+package network
 
 import (
 	"bytes"

@@ -6,50 +6,48 @@ import (
 	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permissions"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/schema"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestKeyUtils(t *testing.T) {
 	t.Run("calcDocKey 应该正确计算文档键值", func(t *testing.T) {
-		key, err := storage.CalcDocKey("users", "doc1")
+		key, err := storage_engine.CalcDocKey("users", "doc1")
 		assert.NoError(t, err)
-		assert.Equal(t, "users", storage.GetCollectionNameFromKey(key))
-		assert.Equal(t, "doc1", storage.GetDocIdFromKey(key))
+		assert.Equal(t, "users", storage_engine.GetCollectionNameFromKey(key))
+		assert.Equal(t, "doc1", storage_engine.GetDocIdFromKey(key))
 	})
 
 	t.Run("calcDocKey 应该检查字段长度限制", func(t *testing.T) {
 		// 集合名称太长
-		_, err := storage.CalcDocKey("very_very_very_long_collection_name", "doc1")
+		_, err := storage_engine.CalcDocKey("very_very_very_long_collection_name", "doc1")
 		assert.Error(t, err)
 
 		// 文档ID太长
-		_, err = storage.CalcDocKey("users", "very_very_very_long_document_id")
+		_, err = storage_engine.CalcDocKey("users", "very_very_very_long_document_id")
 		assert.Error(t, err)
 	})
 
 	t.Run("calcCollectionLowerBound 和 calcCollectionUpperBound 应该正确计算范围", func(t *testing.T) {
-		lower, err := storage.CalcCollectionLowerBound("users")
+		lower, err := storage_engine.CalcCollectionLowerBound("users")
 		assert.NoError(t, err)
 
-		upper, err := storage.CalcCollectionUpperBound("users")
+		upper, err := storage_engine.CalcCollectionUpperBound("users")
 		assert.NoError(t, err)
 
 		// 验证下界和上界包含相同的数据库和集合名称
-		assert.Equal(t, "users", storage.GetCollectionNameFromKey(lower))
-		assert.Equal(t, "users", storage.GetCollectionNameFromKey(upper))
+		assert.Equal(t, "users", storage_engine.GetCollectionNameFromKey(lower))
+		assert.Equal(t, "users", storage_engine.GetCollectionNameFromKey(upper))
 
 		// 验证下界的文档ID部分全为0
-		docIdLower := storage.GetDocIdFromKey(lower)
+		docIdLower := storage_engine.GetDocIdFromKey(lower)
 		for _, b := range []byte(docIdLower) {
 			assert.Equal(t, byte(0), b)
 		}
 
 		// 验证上界的文档ID部分全为0xFF
-		docIdUpper := storage.GetDocIdFromKey(upper)
+		docIdUpper := storage_engine.GetDocIdFromKey(upper)
 		for _, b := range []byte(docIdUpper) {
 			assert.Equal(t, byte(0xFF), b)
 		}
@@ -65,12 +63,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 		doc := loro.NewLoroDoc()
 		doc.GetText("name").InsertText("Alice", 0)
 
-		tr := storage.Transaction{
+		tr := storage_engine.Transaction{
 			TxID:           "11111111-1111-1111-1111-111111111111",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
 			Operations: []any{
-				storage.InsertOp{
+				storage_engine.InsertOp{
 					Collection: "users",
 					DocID:      "user1",
 					Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -95,12 +93,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 		loadedText.InsertText("Hello ", 0)
 
 		snapshot := loadedDoc.ExportSnapshot().Bytes()
-		tr := storage.Transaction{
+		tr := storage_engine.Transaction{
 			TxID:           "22222222-2222-2222-2222-222222222222",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
 			Operations: []any{
-				storage.InsertOp{
+				storage_engine.InsertOp{
 					Collection: "users",
 					DocID:      "user1",
 					Snapshot:   snapshot,
@@ -119,12 +117,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 		assert.Equal(t, "Alice and Bob", util.Must(loadedText.ToString()))
 
 		update := loadedDoc.ExportUpdatesFrom(vv).Bytes()
-		tr := storage.Transaction{
+		tr := storage_engine.Transaction{
 			TxID:           "33333333-3333-3333-3333-333333333333",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
 			Operations: []any{
-				storage.UpdateOp{
+				storage_engine.UpdateOp{
 					Collection: "users",
 					DocID:      "user1",
 					Update:     update,
@@ -137,12 +135,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 	t.Run("更新不存在的文档应该报错", func(t *testing.T) {
 		doc := loro.NewLoroDoc()
 		update := doc.ExportAllUpdates().Bytes()
-		tr := storage.Transaction{
+		tr := storage_engine.Transaction{
 			TxID:           "44444444-4444-4444-4444-444444444444",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
 			Operations: []any{
-				storage.UpdateOp{
+				storage_engine.UpdateOp{
 					Collection: "users",
 					DocID:      "xxxxxxx",
 					Update:     update,
@@ -158,12 +156,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 			doc := loro.NewLoroDoc()
 			doc.GetText("test").InsertText("Hello, World!", 0)
 			snapshot := doc.ExportSnapshot().Bytes()
-			tr := storage.Transaction{
+			tr := storage_engine.Transaction{
 				TxID:           "77777777-7777-7777-7777-777777777777",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
 				Operations: []any{
-					storage.InsertOp{
+					storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "user2",
 						Snapshot:   snapshot,
@@ -178,12 +176,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		tr := storage.Transaction{
+		tr := storage_engine.Transaction{
 			TxID:           "88888888-8888-8888-8888-888888888888",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
 			Operations: []any{
-				storage.DeleteOp{
+				storage_engine.DeleteOp{
 					Collection: "users",
 					DocID:      "user2",
 				},
@@ -220,12 +218,12 @@ func TestStorageEngineCRUD(t *testing.T) {
 			doc.GetText("name").UpdateText(user.name)
 			doc.GetText("age").UpdateText(fmt.Sprintf("%d", user.age))
 
-			tr := storage.Transaction{
+			tr := storage_engine.Transaction{
 				TxID:           "99999999-9999-9999-9999-99999999999" + user.id[len(user.id)-1:],
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
 				Operations: []any{
-					storage.InsertOp{
+					storage_engine.InsertOp{
 						Collection: "test_users",
 						DocID:      user.id,
 						Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -257,10 +255,10 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 	t.Run("BeforeTransaction hook 应该能阻止事务", func(t *testing.T) {
 		// 设置 hook 函数
 		hookCalled := false
-		hook := func(tr *storage.Transaction) error {
+		hook := func(tr *storage_engine.Transaction) error {
 			hookCalled = true
 			// 检查事务中是否包含特定的文档ID
-			if tr.Operations[0].(storage.InsertOp).DocID == "blocked_doc" {
+			if tr.Operations[0].(storage_engine.InsertOp).DocID == "blocked_doc" {
 				return fmt.Errorf("document blocked")
 			}
 			return nil
@@ -270,12 +268,12 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 		// 尝试插入被阻止的文档
 		doc := loro.NewLoroDoc()
 		doc.GetText("name").InsertText("Blocked", 0)
-		tr := storage.Transaction{
+		tr := storage_engine.Transaction{
 			TxID:           "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
 			Operations: []any{
-				storage.InsertOp{
+				storage_engine.InsertOp{
 					Collection: "users",
 					DocID:      "blocked_doc",
 					Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -295,12 +293,12 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 	})
 	t.Run("事务事件应该被正确触发", func(t *testing.T) {
 		// 订阅事件
-		committedCh := engine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
-		canceledCh := engine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
-		rollbackedCh := engine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED)
-		defer engine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, committedCh)
-		defer engine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, canceledCh)
-		defer engine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, rollbackedCh)
+		committedCh := engine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
+		canceledCh := engine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
+		rollbackedCh := engine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED)
+		defer engine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, committedCh)
+		defer engine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, canceledCh)
+		defer engine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, rollbackedCh)
 
 		// 测试事务取消事件
 		{
@@ -308,12 +306,12 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			doc := loro.NewLoroDoc()
 			snapshot := doc.ExportSnapshot()
 
-			tr := &storage.Transaction{
+			tr := &storage_engine.Transaction{
 				TxID:           "00000000-0000-0000-0000-000000000001",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
 				Operations: []any{
-					storage.InsertOp{
+					storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "canceled_doc",
 						Snapshot:   snapshot.Bytes(),
@@ -322,9 +320,9 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			}
 
 			// 设置一个会导致事务取消的 hook
-			hook := func(tr *storage.Transaction) error {
+			hook := func(tr *storage_engine.Transaction) error {
 				if tr != nil && len(tr.Operations) > 0 {
-					if op, ok := tr.Operations[0].(storage.InsertOp); ok && op.DocID == "canceled_doc" {
+					if op, ok := tr.Operations[0].(storage_engine.InsertOp); ok && op.DocID == "canceled_doc" {
 						return fmt.Errorf("transaction canceled")
 					}
 				}
@@ -340,10 +338,10 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到取消事件
 			select {
 			case event := <-canceledCh:
-				canceledEvent, ok := event.(*storage.TransactionCanceledEvent)
+				canceledEvent, ok := event.(*storage_engine.TransactionCanceledEvent)
 				assert.True(t, ok)
 				assert.Equal(t, "test-client", canceledEvent.Committer)
-				assert.Equal(t, "canceled_doc", canceledEvent.Transaction.Operations[0].(storage.InsertOp).DocID)
+				assert.Equal(t, "canceled_doc", canceledEvent.Transaction.Operations[0].(storage_engine.InsertOp).DocID)
 			case <-time.After(time.Second):
 				t.Fatal("未收到事务取消事件")
 			}
@@ -356,12 +354,12 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 
 			doc := loro.NewLoroDoc()
 			doc.GetText("name").InsertText("Success", 0)
-			tr := storage.Transaction{
+			tr := storage_engine.Transaction{
 				TxID:           "cccccccc-cccc-cccc-cccc-cccccccccccc",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
 				Operations: []any{
-					storage.InsertOp{
+					storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "success_doc",
 						Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -373,9 +371,9 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到提交事件
 			select {
 			case event := <-committedCh:
-				tr, ok := event.(*storage.TransactionCommittedEvent)
+				tr, ok := event.(*storage_engine.TransactionCommittedEvent)
 				assert.True(t, ok)
-				op, ok := tr.Transaction.Operations[0].(storage.InsertOp)
+				op, ok := tr.Transaction.Operations[0].(storage_engine.InsertOp)
 				assert.True(t, ok)
 				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
@@ -387,12 +385,12 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 		{
 			doc := loro.NewLoroDoc()
 			doc.GetText("name").InsertText("Duplicate", 0)
-			tr := storage.Transaction{
+			tr := storage_engine.Transaction{
 				TxID:           "dddddddd-dddd-dddd-dddd-dddddddddddd",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
 				Operations: []any{
-					storage.InsertOp{
+					storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "success_doc", // 使用已存在的文档ID
 						Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -404,9 +402,9 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到回滚事件
 			select {
 			case event := <-rollbackedCh:
-				tr, ok := event.(*storage.TransactionRollbackedEvent)
+				tr, ok := event.(*storage_engine.TransactionRollbackedEvent)
 				assert.True(t, ok)
-				op, ok := tr.Transaction.Operations[0].(storage.InsertOp)
+				op, ok := tr.Transaction.Operations[0].(storage_engine.InsertOp)
 				assert.True(t, ok)
 				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
@@ -417,13 +415,13 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 }
 
 // 辅助函数
-func setupEngine(t *testing.T) *storage.StorageEngine {
+func setupEngine(t *testing.T) *storage_engine.StorageEngine {
 	dbPath := t.TempDir()
 	fmt.Println("dbPath", dbPath)
-	dbSchema := schema.DatabaseSchema{
+	dbSchema := storage_engine.DatabaseSchema{
 		Name:        "testdb",
 		Version:     "1.0.0",
-		Collections: map[string]*schema.CollectionSchema{},
+		Collections: map[string]*storage_engine.CollectionSchema{},
 	}
 	dbPermissionsJs := `
 	Permission.create({
@@ -431,17 +429,15 @@ func setupEngine(t *testing.T) *storage.StorageEngine {
 		rules: {},
 	});
 	`
-	dbPermissions, err := permissions.NewPermissionFromJs(dbPermissionsJs)
+	err := storage_engine.CreateNewDatabase(dbPath, &dbSchema, dbPermissionsJs)
 	assert.NoError(t, err)
-	err = storage.CreateNewDatabase(dbPath, &dbSchema, dbPermissions)
+	opts, err := storage_engine.DefaultStorageEngineOptions(dbPath)
 	assert.NoError(t, err)
-	opts, err := storage.DefaultStorageEngineOptions(dbPath)
-	assert.NoError(t, err)
-	engine, err := storage.OpenStorageEngine(opts)
+	engine, err := storage_engine.OpenStorageEngine(opts)
 	assert.NoError(t, err)
 	return engine
 }
 
-func cleanupEngine(t *testing.T, engine *storage.StorageEngine) {
+func cleanupEngine(t *testing.T, engine *storage_engine.StorageEngine) {
 	assert.NoError(t, engine.Close())
 }

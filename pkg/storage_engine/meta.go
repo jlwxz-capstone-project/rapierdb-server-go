@@ -1,18 +1,17 @@
-package storage
+package storage_engine
 
 import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permissions"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/schema"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 type DatabaseMeta struct {
-	DatabaseSchema *schema.DatabaseSchema
-	Permissions    *permissions.Permissions
-	CreatedAt      uint64
+	DatabaseSchema *DatabaseSchema
+	// 权限定义的 Js 代码
+	Permissions string
+	CreatedAt   uint64
 }
 
 // ToBytes 将数据库元数据序列化为字节数组
@@ -24,7 +23,7 @@ func (s *DatabaseMeta) ToBytes() ([]byte, error) {
 		return nil, err
 	}
 	util.WriteBytes(&buf, schemaJsonStr)
-	util.WriteVarString(&buf, s.Permissions.JsDef)
+	util.WriteVarString(&buf, s.Permissions)
 	util.WriteUint64(&buf, s.CreatedAt)
 	return buf.Bytes(), nil
 }
@@ -41,15 +40,11 @@ func NewDatabaseMetaFromBytes(data []byte) (*DatabaseMeta, error) {
 	if err != nil {
 		return nil, err
 	}
-	schema, err := schema.NewDatabaseSchemaFromJSON(schemaJson)
+	schema, err := NewDatabaseSchemaFromJSON(schemaJson)
 	if err != nil {
 		return nil, err
 	}
 	permissionsJs, err := util.ReadVarString(buf)
-	if err != nil {
-		return nil, err
-	}
-	permissions, err := permissions.NewPermissionFromJs(permissionsJs)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +54,7 @@ func NewDatabaseMetaFromBytes(data []byte) (*DatabaseMeta, error) {
 	}
 	return &DatabaseMeta{
 		DatabaseSchema: schema,
-		Permissions:    permissions,
+		Permissions:    permissionsJs,
 		CreatedAt:      createdAt,
 	}, nil
 }

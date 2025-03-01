@@ -1,4 +1,4 @@
-package synchronizer
+package db
 
 import (
 	"bytes"
@@ -6,9 +6,10 @@ import (
 	"errors"
 	"log"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permissions"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/synchronizer/message/v1"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -29,12 +30,12 @@ type SynchronizerConfig struct {
 }
 
 type Synchronizer struct {
-	storageEngine           *storage.StorageEngine
+	storageEngine           *storage_engine.StorageEngine
 	storageEngineEvents     *StorageEngineEvents
-	channel                 Channel
+	channel                 network.Channel
 	cancel                  context.CancelFunc
 	config                  SynchronizerConfig
-	permission              *permissions.Permissions
+	permission              *query.Permissions
 	collectionSubscriptions map[string]map[string]struct{}
 }
 
@@ -44,10 +45,15 @@ type StorageEngineEvents struct {
 	RollbackedCh <-chan any
 }
 
-func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, config *SynchronizerConfig, permission *permissions.Permissions) *Synchronizer {
+func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel network.Channel, config *SynchronizerConfig) *Synchronizer {
 	// 使用默认配置
 	if config == nil {
 		config = &SynchronizerConfig{}
+	}
+
+	permission, err := query.NewPermissionFromJs(storageEngine.GetPermissionsJs())
+	if err != nil {
+		log.Fatalf("NewSynchronizer: failed to create permission: %v", err)
 	}
 
 	synchronizer := &Synchronizer{
@@ -64,9 +70,9 @@ func NewSynchronizer(storageEngine *storage.StorageEngine, channel Channel, conf
 
 func (s *Synchronizer) Start() error {
 	// 订阅存储引擎事件
-	committedCh := s.storageEngine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
-	canceledCh := s.storageEngine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
-	rollbackedCh := s.storageEngine.Subscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED)
+	committedCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
+	canceledCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
+	rollbackedCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
@@ -164,7 +170,7 @@ func (s *Synchronizer) Unsubscribe(clientId string, collection string) {
 // handleTransactionCommitted 处理事务提交事件
 // 注意，这个方法会捕获所有错误，保证不会因为错误而中断
 func (s *Synchronizer) handleTransactionCommitted(event_ any) {
-	event, ok := event_.(*storage.TransactionCommittedEvent)
+	event, ok := event_.(*storage_engine.TransactionCommittedEvent)
 	if !ok {
 		log.Println("handleTransactionCommitted: event is not a *storage.TransactionCommittedEvent")
 		return
@@ -203,7 +209,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 
 		for _, op := range event.Transaction.Operations {
 			switch operation := op.(type) {
-			case storage.InsertOp:
+			case storage_engine.InsertOp:
 				// 检查该集合是否被订阅
 				if _, subscribed := subscriptions[operation.Collection]; !subscribed {
 					continue
@@ -223,7 +229,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				}
 
 				// 文档可见，添加到upsert列表
-				docKeyBytes, err := storage.CalcDocKey(operation.Collection, operation.DocID)
+				docKeyBytes, err := storage_engine.CalcDocKey(operation.Collection, operation.DocID)
 				if err != nil {
 					log.Printf("handleTransactionCommitted: failed to calc doc key for %s/%s: %v",
 						operation.Collection, operation.DocID, err)
@@ -232,7 +238,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				docKey := util.Bytes2String(docKeyBytes)
 				upsertDocs[docKey] = operation.Snapshot
 
-			case storage.UpdateOp:
+			case storage_engine.UpdateOp:
 				// 检查该集合是否被订阅
 				if _, subscribed := subscriptions[operation.Collection]; !subscribed {
 					continue
@@ -252,7 +258,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				}
 
 				// 文档可见，添加到upsert列表
-				docKeyBytes, err := storage.CalcDocKey(operation.Collection, operation.DocID)
+				docKeyBytes, err := storage_engine.CalcDocKey(operation.Collection, operation.DocID)
 				if err != nil {
 					log.Printf("handleTransactionCommitted: failed to calc doc key for %s/%s: %v",
 						operation.Collection, operation.DocID, err)
@@ -262,14 +268,14 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				snapshot := doc.ExportSnapshot()
 				upsertDocs[docKey] = snapshot.Bytes()
 
-			case storage.DeleteOp:
+			case storage_engine.DeleteOp:
 				// 检查该集合是否被订阅
 				if _, subscribed := subscriptions[operation.Collection]; !subscribed {
 					continue
 				}
 
 				// 被删除的文档添加到 delete 列表
-				docKeyBytes, err := storage.CalcDocKey(operation.Collection, operation.DocID)
+				docKeyBytes, err := storage_engine.CalcDocKey(operation.Collection, operation.DocID)
 				if err != nil {
 					log.Printf("handleTransactionCommitted: failed to calc doc key for %s/%s: %v",
 						operation.Collection, operation.DocID, err)
@@ -305,7 +311,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 
 func (s *Synchronizer) handleTransactionCanceled(event any) {
 	// 哪个节点发送的事务被取消，就向这个节点发送 TransactionFailedMessage
-	canceledEvent, ok := event.(*storage.TransactionCanceledEvent)
+	canceledEvent, ok := event.(*storage_engine.TransactionCanceledEvent)
 	if !ok {
 		log.Println("handleTransactionCanceled: event is not a *storage.TransactionCanceledEvent")
 		return
@@ -330,7 +336,7 @@ func (s *Synchronizer) handleTransactionCanceled(event any) {
 
 func (s *Synchronizer) handleTransactionRollbacked(event any) {
 	// 哪个节点发送的事务被回滚，就向这个节点发送 TransactionFailedMessage
-	rollbackedEvent, ok := event.(*storage.TransactionRollbackedEvent)
+	rollbackedEvent, ok := event.(*storage_engine.TransactionRollbackedEvent)
 	if !ok {
 		log.Println("handleTransactionRollbacked: event is not a *storage.TransactionRollbackedEvent")
 		return
@@ -361,9 +367,9 @@ func (s *Synchronizer) Stop() {
 
 	// 取消所有订阅
 	if s.storageEngineEvents != nil {
-		s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, s.storageEngineEvents.CommittedCh)
-		s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, s.storageEngineEvents.CanceledCh)
-		s.storageEngine.Unsubscribe(storage.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, s.storageEngineEvents.RollbackedCh)
+		s.storageEngine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, s.storageEngineEvents.CommittedCh)
+		s.storageEngine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, s.storageEngineEvents.CanceledCh)
+		s.storageEngine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, s.storageEngineEvents.RollbackedCh)
 	}
 	s.storageEngineEvents = nil
 

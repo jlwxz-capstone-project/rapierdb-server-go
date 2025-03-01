@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 
 	"github.com/stretchr/testify/assert"
@@ -403,17 +403,17 @@ func TestWriteAndReadVarInt(t *testing.T) {
 func TestTransactionEncodingDecoding(t *testing.T) {
 	testCases := []struct {
 		name    string
-		tx      *storage.Transaction
+		tx      *storage_engine.Transaction
 		wantErr bool
 	}{
 		{
 			name: "transaction with insert operation",
-			tx: &storage.Transaction{
+			tx: &storage_engine.Transaction{
 				TxID:           "12345678-1234-5678-1234-567812345678",
 				TargetDatabase: "test_db",
 				Committer:      "client-1",
 				Operations: []any{
-					&storage.InsertOp{
+					&storage_engine.InsertOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
 						Snapshot:   []byte(`{"name": "test"}`),
@@ -424,12 +424,12 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		},
 		{
 			name: "transaction with update operation",
-			tx: &storage.Transaction{
+			tx: &storage_engine.Transaction{
 				TxID:           "12345678-1234-5678-1234-567812345679",
 				TargetDatabase: "test_db",
 				Committer:      "client-2",
 				Operations: []any{
-					&storage.UpdateOp{
+					&storage_engine.UpdateOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
 						Update:     []byte(`{"$set": {"name": "updated"}}`),
@@ -440,12 +440,12 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		},
 		{
 			name: "transaction with delete operation",
-			tx: &storage.Transaction{
+			tx: &storage_engine.Transaction{
 				TxID:           "12345678-1234-5678-1234-567812345680",
 				TargetDatabase: "test_db",
 				Committer:      "client-3",
 				Operations: []any{
-					&storage.DeleteOp{
+					&storage_engine.DeleteOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
 					},
@@ -455,22 +455,22 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 		},
 		{
 			name: "transaction with multiple operations",
-			tx: &storage.Transaction{
+			tx: &storage_engine.Transaction{
 				TxID:           "12345678-1234-5678-1234-567812345681",
 				TargetDatabase: "test_db",
 				Committer:      "client-4",
 				Operations: []any{
-					&storage.InsertOp{
+					&storage_engine.InsertOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
 						Snapshot:   []byte(`{"name": "test"}`),
 					},
-					&storage.UpdateOp{
+					&storage_engine.UpdateOp{
 						Collection: "test_collection",
 						DocID:      "doc2",
 						Update:     []byte(`{"$set": {"name": "updated"}}`),
 					},
-					&storage.DeleteOp{
+					&storage_engine.DeleteOp{
 						Collection: "test_collection",
 						DocID:      "doc3",
 					},
@@ -491,7 +491,7 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 			assert.NoError(t, err)
 
 			// 测试解码
-			decoded, err := storage.DecodeTransaction(encoded)
+			decoded, err := storage_engine.DecodeTransaction(encoded)
 			assert.NoError(t, err)
 
 			// 验证解码后的事务
@@ -502,20 +502,20 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 			// 验证每个操作
 			for i, op := range tc.tx.Operations {
 				switch originalOp := op.(type) {
-				case *storage.InsertOp:
-					decodedOp, ok := decoded.Operations[i].(*storage.InsertOp)
+				case *storage_engine.InsertOp:
+					decodedOp, ok := decoded.Operations[i].(*storage_engine.InsertOp)
 					assert.True(t, ok)
 					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
 					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
 					assert.Equal(t, originalOp.Snapshot, decodedOp.Snapshot)
-				case *storage.UpdateOp:
-					decodedOp, ok := decoded.Operations[i].(*storage.UpdateOp)
+				case *storage_engine.UpdateOp:
+					decodedOp, ok := decoded.Operations[i].(*storage_engine.UpdateOp)
 					assert.True(t, ok)
 					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
 					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
 					assert.Equal(t, originalOp.Update, decodedOp.Update)
-				case *storage.DeleteOp:
-					decodedOp, ok := decoded.Operations[i].(*storage.DeleteOp)
+				case *storage_engine.DeleteOp:
+					decodedOp, ok := decoded.Operations[i].(*storage_engine.DeleteOp)
 					assert.True(t, ok)
 					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
 					assert.Equal(t, originalOp.DocID, decodedOp.DocID)

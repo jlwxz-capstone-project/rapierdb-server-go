@@ -1,7 +1,6 @@
-package permissions
+package query
 
 import (
-	_ "embed"
 	"errors"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
@@ -82,7 +81,7 @@ func (p *Permissions) CanDelete(collection string, docId string, doc *loro.LoroD
 	return false
 }
 
-func (cr *CollectionRule) setValidator(name string, fn CollectionRuleFunc) {
+func (cr *CollectionRule) SetValidator(name string, fn CollectionRuleFunc) {
 	switch name {
 	case "canView":
 		cr.CanView = fn
@@ -237,23 +236,26 @@ func NewPermissionFromJs(js string) (*Permissions, error) {
 				return nil, ErrInvalidPermissionDefinition
 			}
 			propGetter := transpiler.NewPropGetter(
-				transpiler.LoroDocAccessHandler,
-				transpiler.LoroTextAccessHandler,
-				transpiler.LoroMapAccessHandler,
-				transpiler.LoroListAccessHandler,
-				transpiler.LoroMovableListAccessHandler,
+				DbWrapperAccessHandler,
+				CollectionWrapperAccessHandler,
+				LoroDocAccessHandler,
+				LoroTextAccessHandler,
+				LoroMapAccessHandler,
+				LoroListAccessHandler,
+				LoroMovableListAccessHandler,
 				transpiler.StringPropAccessHandler,
 				transpiler.ArrayPropAccessHandler,
 				transpiler.DataFieldAccessHandler,
 				transpiler.MethodCallHandler,
 			)
-			scope := transpiler.NewScope(nil, propGetter, transpiler.DefaultPropMutator)
+			propMutator := transpiler.DefaultPropMutator
+			scope := transpiler.NewScope(nil, propGetter, propMutator)
 			transpiler.PrintNode(ruleFuncExpr, 0, "ruleFuncExpr")
 			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, scope)
 			if err != nil {
 				return nil, err
 			}
-			collectionRule.setValidator(ruleFuncName, goFunc)
+			collectionRule.SetValidator(ruleFuncName, goFunc)
 		}
 		permission.Rules[collectionName] = collectionRule
 	}

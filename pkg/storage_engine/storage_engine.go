@@ -1,5 +1,4 @@
-// Package storage 提供了存储引擎的实现
-package storage
+package storage_engine
 
 import (
 	"errors"
@@ -9,8 +8,6 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permissions"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/schema"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -106,7 +103,7 @@ type rollbackInfo struct {
 
 // CreateNewDatabase 创建一个新的数据库
 // path: 数据库的存储路径，要求不能有已经存在的数据库
-func CreateNewDatabase(path string, schema *schema.DatabaseSchema, permissions *permissions.Permissions) error {
+func CreateNewDatabase(path string, schema *DatabaseSchema, permissions string) error {
 	pebbleOpts := &pebble.Options{}
 	pebbleOpts.EnsureDefaults()
 	pebbleOpts.ErrorIfExists = true
@@ -479,6 +476,11 @@ func (e *StorageEngine) Close() error {
 	return nil
 }
 
+func (e *StorageEngine) IsValidCollection(collectionName string) bool {
+	_, ok := e.meta.DatabaseSchema.Collections[collectionName]
+	return ok
+}
+
 // SetBeforeTransactionHook 设置事务前钩子
 func (e *StorageEngine) SetBeforeTransactionHook(hook *func(tr *Transaction) error) {
 	e.hooks.BeforeTransaction = hook
@@ -496,4 +498,8 @@ func (e *StorageEngine) Unsubscribe(topic string, ch <-chan any) {
 
 func (e *StorageEngine) GetDbPath() string {
 	return e.opts.Path
+}
+
+func (e *StorageEngine) GetPermissionsJs() string {
+	return e.meta.Permissions
 }

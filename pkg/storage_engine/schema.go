@@ -1,4 +1,4 @@
-package schema
+package storage_engine
 
 import (
 	_ "embed"

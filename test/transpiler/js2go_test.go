@@ -10,6 +10,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
@@ -1522,11 +1523,11 @@ func TestLoroValueAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			propGetter := transpiler.NewPropGetter(
-				transpiler.LoroDocAccessHandler,
-				transpiler.LoroTextAccessHandler,
-				transpiler.LoroMapAccessHandler,
-				transpiler.LoroListAccessHandler,
-				transpiler.LoroMovableListAccessHandler,
+				query.LoroDocAccessHandler,
+				query.LoroTextAccessHandler,
+				query.LoroMapAccessHandler,
+				query.LoroListAccessHandler,
+				query.LoroMovableListAccessHandler,
 			)
 			ctx := transpiler.NewScope(nil, propGetter, nil)
 			goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, ctx)

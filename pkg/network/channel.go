@@ -1,4 +1,4 @@
-package synchronizer
+package network
 
 // Channel 定义了一个通用的通信通道接口
 // CONN 是一个泛型参数,表示连接的具体类型
