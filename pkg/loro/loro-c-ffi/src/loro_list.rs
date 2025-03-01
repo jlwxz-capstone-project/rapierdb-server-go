@@ -402,3 +402,176 @@ pub extern "C" fn loro_list_get_items(ptr: *mut LoroList) -> *mut Vec<*mut Value
         ptr
     }
 }
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_null(ptr: *mut LoroList, index: usize, err: *mut u8) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.insert(index, LoroValue::Null);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_bool(
+    ptr: *mut LoroList,
+    index: usize,
+    value: bool,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.insert(index, value);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_i64(ptr: *mut LoroList, index: usize, value: i64, err: *mut u8) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.insert(index, value);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_double(
+    ptr: *mut LoroList,
+    index: usize,
+    value: f64,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.insert(index, value);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_string(
+    ptr: *mut LoroList,
+    index: usize,
+    value_ptr: *const c_char,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let value = CStr::from_ptr(value_ptr).to_string_lossy().into_owned();
+        let res = list.insert(index, value);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_text(
+    ptr: *mut LoroList,
+    index: usize,
+    text_ptr: *mut LoroText,
+    err: *mut u8,
+) -> *mut LoroText {
+    unsafe {
+        let list = &mut *ptr;
+        let text = &mut *text_ptr;
+        let res = list.insert_container(index, text.clone());
+        if let Ok(new_text) = res {
+            *err = 0;
+            let boxed = Box::new(new_text);
+            let ptr = Box::into_raw(boxed);
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_list(
+    ptr: *mut LoroList,
+    index: usize,
+    list_ptr: *mut LoroList,
+    err: *mut u8,
+) -> *mut LoroList {
+    unsafe {
+        let list = &mut *ptr;
+        let new_list = &mut *list_ptr;
+        let res = list.insert_container(index, new_list.clone());
+        if let Ok(new_list) = res {
+            let boxed = Box::new(new_list);
+            let ptr = Box::into_raw(boxed);
+            *err = 0;
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_movable_list(
+    ptr: *mut LoroList,
+    index: usize,
+    movable_list_ptr: *mut LoroMovableList,
+    err: *mut u8,
+) -> *mut LoroMovableList {
+    unsafe {
+        let list = &mut *ptr;
+        let movable_list = &mut *movable_list_ptr;
+        let res = list.insert_container(index, movable_list.clone());
+        if let Ok(new_movable_list) = res {
+            let boxed = Box::new(new_movable_list);
+            let ptr = Box::into_raw(boxed);
+            *err = 0;
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_list_insert_map(
+    ptr: *mut LoroList,
+    index: usize,
+    map_ptr: *mut LoroMap,
+    err: *mut u8,
+) -> *mut LoroMap {
+    unsafe {
+        let list = &mut *ptr;
+        let map = &mut *map_ptr;
+        let res = list.insert_container(index, map.clone());
+        if let Ok(new_map) = res {
+            let boxed = Box::new(new_map);
+            let ptr = Box::into_raw(boxed);
+            *err = 0;
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}

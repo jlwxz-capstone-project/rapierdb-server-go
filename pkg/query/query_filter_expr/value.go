@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // ValueExpr 表示一个值
@@ -31,7 +32,7 @@ func (e *ValueExpr) MarshalJSON() ([]byte, error) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return json.Marshal(SerializedQueryFilterExpr{
 			Type:  ExprTypeValue,
-			Value: loro.ToInt64(v),
+			Value: util.ToInt64(v),
 		})
 	default:
 		return json.Marshal(SerializedQueryFilterExpr{

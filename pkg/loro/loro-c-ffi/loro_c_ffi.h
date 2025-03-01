@@ -163,6 +163,15 @@ extern uint32_t loro_list_len(void* ptr);
 extern void* loro_list_to_container(void* ptr);
 extern int loro_list_is_attached(void* ptr);
 extern void* loro_list_get_items(void* ptr);
+extern void loro_list_insert_null(void* ptr, uint32_t index, uint8_t* err);
+extern void loro_list_insert_bool(void* ptr, uint32_t index, int value, uint8_t* err);
+extern void loro_list_insert_double(void* ptr, uint32_t index, double value, uint8_t* err);
+extern void loro_list_insert_i64(void* ptr, uint32_t index, int64_t value, uint8_t* err);
+extern void loro_list_insert_string(void* ptr, uint32_t index, char* value_ptr, uint8_t* err);
+extern void* loro_list_insert_text(void* ptr, uint32_t index, void* text_ptr, uint8_t* err);
+extern void* loro_list_insert_list(void* ptr, uint32_t index, void* list_ptr, uint8_t* err);
+extern void* loro_list_insert_movable_list(void* ptr, uint32_t index, void* movable_list_ptr, uint8_t* err);
+extern void* loro_list_insert_map(void* ptr, uint32_t index, void* map_ptr, uint8_t* err);
 
 // Loro Movable List
 extern void* loro_movable_list_new_empty();

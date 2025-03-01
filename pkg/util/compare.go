@@ -3,8 +3,6 @@ package util
 import (
 	"errors"
 	"fmt"
-
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
 
 var (
@@ -42,10 +40,10 @@ func CompareValues(o1, o2 any) (int, error) {
 		}
 		return 0, fmt.Errorf("%w: comparing bool with %T", ErrTypeError, o2)
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		n1 := loro.ToInt64(v1)
+		n1 := ToInt64(v1)
 		switch v2 := o2.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-			n2 := loro.ToInt64(v2)
+			n2 := ToInt64(v2)
 			if n1 < n2 {
 				return -1, nil
 			}
@@ -56,7 +54,7 @@ func CompareValues(o1, o2 any) (int, error) {
 		case float32, float64:
 			// 整数转浮点数进行比较
 			f1 := float64(n1)
-			f2 := loro.ToFloat64(v2)
+			f2 := ToFloat64(v2)
 			if f1 < f2 {
 				return -1, nil
 			}
@@ -68,10 +66,10 @@ func CompareValues(o1, o2 any) (int, error) {
 			return 0, fmt.Errorf("%w: comparing numeric type with %T", ErrTypeError, o2)
 		}
 	case float32, float64:
-		f1 := loro.ToFloat64(v1)
+		f1 := ToFloat64(v1)
 		switch v2 := o2.(type) {
 		case float32, float64:
-			f2 := loro.ToFloat64(v2)
+			f2 := ToFloat64(v2)
 			if f1 < f2 {
 				return -1, nil
 			}
@@ -81,7 +79,7 @@ func CompareValues(o1, o2 any) (int, error) {
 			return 0, nil
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			// 整数转浮点数进行比较
-			f2 := float64(loro.ToInt64(v2))
+			f2 := float64(ToInt64(v2))
 			if f1 < f2 {
 				return -1, nil
 			}

@@ -1502,6 +1502,21 @@ func TestLoroValueAccess(t *testing.T) {
 			want:    int64(30),
 			wantErr: false,
 		},
+		{
+			name: "按下标访问 LoroList",
+			js: `function getNestedValue(doc) {
+				return doc.arr[1];
+			}`,
+			args: []any{func() *loro.LoroDoc {
+				doc := loro.NewLoroDoc()
+				arr := doc.GetList("arr")
+				arr.PushString("Hello")
+				arr.PushString("World")
+				return doc
+			}()},
+			want:    "World",
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1510,6 +1525,8 @@ func TestLoroValueAccess(t *testing.T) {
 				transpiler.LoroDocAccessHandler,
 				transpiler.LoroTextAccessHandler,
 				transpiler.LoroMapAccessHandler,
+				transpiler.LoroListAccessHandler,
+				transpiler.LoroMovableListAccessHandler,
 			)
 			ctx := transpiler.NewScope(nil, propGetter, nil)
 			goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, ctx)

@@ -3,6 +3,9 @@ package transpiler
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/cockroachdb/errors"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
 
 // PropMutator 表示赋值处理器
@@ -20,7 +23,7 @@ func NewPropMutator(propMutateHandlers ...PropMutateHandler) PropMutator {
 				return nil
 			}
 		}
-		return fmt.Errorf("cannot assign to property %v of %T", propName, obj)
+		return errors.WithStack(fmt.Errorf("cannot assign to property %v of %T", propName, obj))
 	}
 }
 
@@ -51,19 +54,19 @@ func SlicePropMutateHandler(obj any, propName any, value any) error {
 	// 只支持整数索引
 	index, ok := toInt(propName)
 	if !ok {
-		return fmt.Errorf("slice index must be an integer: %v", propName)
+		return errors.WithStack(fmt.Errorf("slice index must be an integer: %v", propName))
 	}
 
 	// 检查索引范围
 	if index < 0 || index >= val.Len() {
-		return fmt.Errorf("index out of range: %d", index)
+		return errors.WithStack(fmt.Errorf("index out of range: %d", index))
 	}
 
 	// 设置值
 	elemVal := reflect.ValueOf(value)
 	if !elemVal.Type().AssignableTo(val.Type().Elem()) {
-		return fmt.Errorf("cannot assign %T to slice element of type %s",
-			value, val.Type().Elem())
+		return errors.WithStack(fmt.Errorf("cannot assign %T to slice element of type %s",
+			value, val.Type().Elem()))
 	}
 
 	val.Index(index).Set(elemVal)
@@ -95,16 +98,31 @@ func StructPropMutateHandler(obj any, propName any, value any) error {
 
 	// 检查字段是否可设置
 	if !field.CanSet() {
-		return fmt.Errorf("field cannot be set: %s", fieldName)
+		return errors.WithStack(fmt.Errorf("field cannot be set: %s", fieldName))
 	}
 
 	// 设置值
 	valueVal := reflect.ValueOf(value)
 	if !valueVal.Type().AssignableTo(field.Type()) {
-		return fmt.Errorf("cannot assign %T to field of type %s",
-			value, field.Type())
+		return errors.WithStack(fmt.Errorf("cannot assign %T to field of type %s",
+			value, field.Type()))
 	}
 
 	field.Set(valueVal)
+	return nil
+}
+
+func LoroListPropMutateHandler(obj any, propName any, value any) error {
+	if ll, ok := obj.(loro.LoroList); ok {
+		switch v := value.(type) {
+		case int:
+			index := v
+			len := ll.GetLen()
+			if index < 0 || index >= int(len) {
+				return errors.WithStack(fmt.Errorf("index out of range: %d", index))
+			}
+			// TODO
+		}
+	}
 	return nil
 }

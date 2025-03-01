@@ -7,6 +7,7 @@ import (
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	"github.com/pkg/errors"
 )
 
 // PropAccess 表示一次属性访问
@@ -108,7 +109,7 @@ func MethodCallHandler(access PropAccess, obj any) (any, error) {
 
 	prop, ok := access.Prop.(string)
 	if !ok {
-		return nil, fmt.Errorf("property must be a string: %v", access.Prop)
+		return nil, errors.WithStack(fmt.Errorf("property must be a string: %v", access.Prop))
 	}
 
 	val := reflect.ValueOf(obj)
@@ -131,13 +132,13 @@ func MethodCallHandler(access PropAccess, obj any) (any, error) {
 	// 如果获取方法失败，再尝试获取属性，如果获取到的属性值是函数也行
 	field := GetField(obj, prop)
 	if field == nil {
-		return nil, fmt.Errorf("property not found: %s", prop)
+		return nil, errors.WithStack(fmt.Errorf("property not found: %s", prop))
 	}
 
 	// 检查属性是否是可调用的函数
 	fieldVal := reflect.ValueOf(field)
 	if fieldVal.Kind() != reflect.Func {
-		return nil, fmt.Errorf("property %s is not callable", access.Prop)
+		return nil, errors.WithStack(fmt.Errorf("property %s is not callable", access.Prop))
 	}
 
 	// 调用函数
@@ -361,7 +362,7 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 	case int:
 		index := prop
 		if index < 0 || index >= val.Len() {
-			return nil, fmt.Errorf("index out of range: %d", index)
+			return nil, errors.WithStack(fmt.Errorf("index out of range: %d", index))
 		}
 		return val.Index(index).Interface(), nil
 	}
@@ -396,11 +397,11 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 		case "substring":
 			if access.IsCall {
 				if len(access.Args) < 1 {
-					return nil, fmt.Errorf("%w: substring method requires 1 argument", ErrInCall)
+					return nil, errors.WithStack(fmt.Errorf("%w: substring method requires 1 argument", ErrInCall))
 				}
 				start, ok := access.Args[0].(int)
 				if !ok {
-					return nil, fmt.Errorf("%w: first argument of substring must be a number", ErrInCall)
+					return nil, errors.WithStack(fmt.Errorf("%w: first argument of substring must be a number", ErrInCall))
 				}
 				if start < 0 {
 					start = 0
@@ -409,7 +410,7 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 				if len(access.Args) > 1 {
 					end, ok := access.Args[1].(int)
 					if !ok {
-						return nil, fmt.Errorf("%w: second argument of substring must be a number", ErrInCall)
+						return nil, errors.WithStack(fmt.Errorf("%w: second argument of substring must be a number", ErrInCall))
 					}
 					if end > len(str) {
 						end = len(str)
@@ -425,11 +426,11 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 			// 查找子串位置
 			if access.IsCall {
 				if len(access.Args) < 1 {
-					return nil, fmt.Errorf("%w: indexOf method requires 1 argument", ErrInCall)
+					return nil, errors.WithStack(fmt.Errorf("%w: indexOf method requires 1 argument", ErrInCall))
 				}
 				substr, ok := access.Args[0].(string)
 				if !ok {
-					return nil, fmt.Errorf("%w: argument of indexOf must be a string", ErrInCall)
+					return nil, errors.WithStack(fmt.Errorf("%w: argument of indexOf must be a string", ErrInCall))
 				}
 				return strings.Index(str, substr), nil
 			}
@@ -438,12 +439,12 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 			// 替换字符串
 			if access.IsCall {
 				if len(access.Args) < 2 {
-					return nil, fmt.Errorf("%w: replace method requires 2 arguments", ErrInCall)
+					return nil, errors.WithStack(fmt.Errorf("%w: replace method requires 2 arguments", ErrInCall))
 				}
 				old, ok1 := access.Args[0].(string)
 				new, ok2 := access.Args[1].(string)
 				if !ok1 || !ok2 {
-					return nil, fmt.Errorf("%w: arguments of replace must be strings", ErrInCall)
+					return nil, errors.WithStack(fmt.Errorf("%w: arguments of replace must be strings", ErrInCall))
 				}
 				return strings.Replace(str, old, new, 1), nil
 			}
@@ -458,7 +459,7 @@ func LoroDocAccessHandler(access PropAccess, obj any) (any, error) {
 			if prop, ok := access.Prop.(string); ok {
 				a, err := doc.GetByPath(prop).Unwrap()
 				if err != nil {
-					return nil, ErrPropNotSupport // UNSAFE 原错误被吞掉了
+					return nil, err
 				}
 				return a, nil
 			}
@@ -502,7 +503,7 @@ func LoroTextAccessHandler(access PropAccess, obj any) (any, error) {
 				return nil, err
 			}
 			if index < 0 || index >= len(s) {
-				return nil, fmt.Errorf("index out of range: %d", index)
+				return nil, errors.WithStack(fmt.Errorf("index out of range: %d", index))
 			}
 			return string(s[index]), nil
 		}
@@ -510,13 +511,72 @@ func LoroTextAccessHandler(access PropAccess, obj any) (any, error) {
 	return nil, ErrPropNotSupport
 }
 
+// LoroMapAccessHandler 处理 LoroMap 的属性访问
 func LoroMapAccessHandler(access PropAccess, obj any) (any, error) {
 	if lm, ok := obj.(*loro.LoroMap); ok {
 		if !access.IsCall {
 			if prop, ok := access.Prop.(string); ok {
 				a, err := lm.Get(prop).Unwrap()
 				if err != nil {
-					return nil, ErrPropNotSupport // UNSAFE 原错误被吞掉了
+					return nil, err
+				}
+				return a, nil
+			}
+		}
+	}
+	return nil, ErrPropNotSupport
+}
+
+func LoroListAccessHandler(access PropAccess, obj any) (any, error) {
+	if ll, ok := obj.(*loro.LoroList); ok {
+		if !access.IsCall {
+			switch prop := access.Prop.(type) {
+			case string:
+				if prop == "length" {
+					return int(ll.GetLen()), nil
+				}
+			case int:
+				len := ll.GetLen()
+				if prop < 0 || prop >= int(len) {
+					return nil, errors.WithStack(fmt.Errorf("index out of range: %d", prop))
+				}
+				a, err := ll.Get(uint32(prop)).Unwrap()
+				if err != nil {
+					return nil, err
+				}
+				return a, nil
+			}
+		} else {
+			if prop, ok := access.Prop.(string); ok {
+				if prop == "push" {
+					if len(access.Args) != 1 {
+						return nil, errors.WithStack(fmt.Errorf("push method requires 1 argument"))
+					}
+					arg0 := access.Args[0]
+					return ll.Push(arg0)
+				}
+			}
+		}
+	}
+	return nil, ErrPropNotSupport
+}
+
+func LoroMovableListAccessHandler(access PropAccess, obj any) (any, error) {
+	if lm, ok := obj.(*loro.LoroMovableList); ok {
+		if !access.IsCall {
+			switch prop := access.Prop.(type) {
+			case string:
+				if prop == "length" {
+					return int(lm.GetLen()), nil
+				}
+			case int:
+				len := lm.GetLen()
+				if prop < 0 || prop >= int(len) {
+					return nil, errors.WithStack(fmt.Errorf("index out of range: %d", prop))
+				}
+				a, err := lm.Get(len).Unwrap()
+				if err != nil {
+					return nil, err
 				}
 				return a, nil
 			}
