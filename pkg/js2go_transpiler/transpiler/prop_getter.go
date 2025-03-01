@@ -547,15 +547,15 @@ func LoroListAccessHandler(access PropAccess, obj any) (any, error) {
 				return a, nil
 			}
 		} else {
-			if prop, ok := access.Prop.(string); ok {
-				if prop == "push" {
-					if len(access.Args) != 1 {
-						return nil, errors.WithStack(fmt.Errorf("push method requires 1 argument"))
-					}
-					arg0 := access.Args[0]
-					return ll.Push(arg0)
-				}
-			}
+			// if prop, ok := access.Prop.(string); ok {
+			// 	if prop == "push" {
+			// 		if len(access.Args) != 1 {
+			// 			return nil, errors.WithStack(fmt.Errorf("push method requires 1 argument"))
+			// 		}
+			// 		arg0 := access.Args[0]
+			// 		return ll.Push(arg0)
+			// 	}
+			// }
 		}
 	}
 	return nil, ErrPropNotSupport

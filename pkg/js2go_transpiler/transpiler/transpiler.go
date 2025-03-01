@@ -41,7 +41,6 @@ func Execute(js string, ctx *Scope) (any, error) {
 	}
 
 	program, err := parser.ParseFile(js)
-	PrintProgram(program)
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %v", err)
 	}
@@ -562,10 +561,18 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			}
 			return float64(int64(lv) % int64(rv)), nil
 
-		case token.Equal:
-			return reflect.DeepEqual(left, right), nil
-		case token.NotEqual:
-			return !reflect.DeepEqual(left, right), nil
+		case token.Equal, token.StrictEqual:
+			cmp, err := util.CompareValues(left, right)
+			if err != nil {
+				return nil, err
+			}
+			return cmp == 0, nil
+		case token.NotEqual, token.StrictNotEqual:
+			cmp, err := util.CompareValues(left, right)
+			if err != nil {
+				return nil, err
+			}
+			return cmp != 0, nil
 		case token.Greater:
 			cmp, err := util.CompareValues(left, right)
 			if err != nil {

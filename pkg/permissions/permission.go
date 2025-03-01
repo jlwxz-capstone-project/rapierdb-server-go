@@ -236,8 +236,19 @@ func NewPermissionFromJs(js string) (*Permissions, error) {
 			default:
 				return nil, ErrInvalidPermissionDefinition
 			}
-			// TODO 使用自定义 PropGetter 和 PropMutator
-			scope := transpiler.NewScope(nil, transpiler.DefaultPropGetter, transpiler.DefaultPropMutator)
+			propGetter := transpiler.NewPropGetter(
+				transpiler.LoroDocAccessHandler,
+				transpiler.LoroTextAccessHandler,
+				transpiler.LoroMapAccessHandler,
+				transpiler.LoroListAccessHandler,
+				transpiler.LoroMovableListAccessHandler,
+				transpiler.StringPropAccessHandler,
+				transpiler.ArrayPropAccessHandler,
+				transpiler.DataFieldAccessHandler,
+				transpiler.MethodCallHandler,
+			)
+			scope := transpiler.NewScope(nil, propGetter, transpiler.DefaultPropMutator)
+			transpiler.PrintNode(ruleFuncExpr, 0, "ruleFuncExpr")
 			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, scope)
 			if err != nil {
 				return nil, err
