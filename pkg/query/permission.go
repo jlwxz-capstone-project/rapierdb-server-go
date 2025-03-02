@@ -141,6 +141,7 @@ func NewPermissionFuncScope() *transpiler.Scope {
 	scope.Vars["field"] = FieldWrapper
 	scope.Vars["asc"] = SortAscWrapper
 	scope.Vars["desc"] = SortDescWrapper
+	scope.Vars["log"] = LogWrapper // TODO 仅用于测试
 	return scope
 }
 

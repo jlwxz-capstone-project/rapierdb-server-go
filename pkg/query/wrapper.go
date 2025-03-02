@@ -39,7 +39,7 @@ type CollectionWrapper struct {
 func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 	if cw, ok := obj.(*CollectionWrapper); ok {
 		if access.IsCall {
-			if access.Prop == "query" {
+			if access.Prop == "findMany" {
 				if len(access.Args) != 1 {
 					return nil, errors.WithStack(fmt.Errorf("query expects 1 argument"))
 				}
@@ -48,7 +48,7 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 				skip := transpiler.GetField(access.Args[0], "skip")
 				limit := transpiler.GetField(access.Args[0], "limit")
 
-				query := &Query{}
+				query := &FindManyQuery{}
 
 				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
 					query.Filter = filter
@@ -89,12 +89,31 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 					}
 				}
 
-				docs, err := cw.QueryExecutor.Execute(cw.Collection, query)
+				docs, err := cw.QueryExecutor.FindMany(cw.Collection, query)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
 
 				return docs, nil
+			} else if access.Prop == "findOne" {
+				if len(access.Args) != 1 {
+					return nil, errors.WithStack(fmt.Errorf("query expects 1 argument"))
+				}
+
+				query := &FindOneQuery{}
+				filter := transpiler.GetField(access.Args[0], "filter")
+				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
+					query.Filter = filter
+				} else {
+					return nil, errors.WithStack(fmt.Errorf("invalid query: filter must be a QueryFilterExpr"))
+				}
+
+				doc, err := cw.QueryExecutor.FindOne(cw.Collection, query)
+				if err != nil {
+					return nil, errors.WithStack(err)
+				}
+
+				return doc, nil
 			}
 		}
 	}
@@ -151,4 +170,9 @@ func SortDescWrapper(path string) SortField {
 		Field: path,
 		Order: SortOrderDesc,
 	}
+}
+
+// TODO 仅用于测试
+func LogWrapper(msg any) {
+	fmt.Println(msg)
 }

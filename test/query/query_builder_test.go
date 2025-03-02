@@ -18,12 +18,12 @@ func TestQueryBuilder(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		builder  func() *query.Query
+		builder  func() *query.FindOneQuery
 		expected bool
 	}{
 		{
 			"简单等于比较",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Eq("root/name", "Alice")).
 					Build()
@@ -32,7 +32,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"复合条件 AND",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.And(
 						query.Gt("root/age", int64(20)),
@@ -44,7 +44,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"复合条件 OR",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Or(
 						query.Eq("root/name", "Alice"),
@@ -56,7 +56,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"范围查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.And(
 						query.Gte("root/score", 80.0),
@@ -68,7 +68,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"IN 查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.In("root/name", "Alice", "Bob", "Charlie")).
 					Build()
@@ -77,7 +77,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"NOT IN 查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Nin("root/name", "Bob", "Charlie")).
 					Build()
@@ -86,7 +86,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"EXISTS 查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Exists("root/name")).
 					Build()
@@ -95,7 +95,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"REGEX 查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Regex("root/name", "^Al.*$")).
 					Build()
@@ -104,7 +104,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"NOT 查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Not(query.Eq("root/name", "Bob"))).
 					Build()
@@ -113,7 +113,7 @@ func TestQueryBuilder(t *testing.T) {
 		},
 		{
 			"带排序和分页的查询",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Gt("root/age", int64(20))).
 					Sort("root/age", query.SortOrderAsc).
@@ -139,7 +139,7 @@ func TestQueryBuilder(t *testing.T) {
 			data, err := q.MarshalJSON()
 			assert.NoError(t, err)
 
-			query2 := query.NewQuery()
+			query2 := query.NewFindOneQuery()
 			err = query2.UnmarshalJSON(data)
 			assert.NoError(t, err)
 
@@ -158,12 +158,12 @@ func TestQueryBuilderErrors(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		builder     func() *query.Query
+		builder     func() *query.FindOneQuery
 		expectedErr string
 	}{
 		{
 			"字段不存在",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Eq("root/nonexistent", "value")).
 					Build()
@@ -172,7 +172,7 @@ func TestQueryBuilderErrors(t *testing.T) {
 		},
 		{
 			"类型不匹配",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Eq("root/name", 42)). // 字符串字段和数字比较
 					Build()
@@ -181,7 +181,7 @@ func TestQueryBuilderErrors(t *testing.T) {
 		},
 		{
 			"无效的正则表达式",
-			func() *query.Query {
+			func() *query.FindOneQuery {
 				return query.NewQueryBuilder().
 					Filter(query.Regex("root/name", "[")).
 					Build()

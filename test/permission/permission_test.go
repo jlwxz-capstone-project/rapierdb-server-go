@@ -18,39 +18,51 @@ var testPermissionConditional string
 var testSchema1 string
 
 func TestPermissionFromJs(t *testing.T) {
-	t.Run("test_permission_conditional", func(t *testing.T) {
+	tests := []struct {
+		name     string
+		clientId string
+		want     bool
+	}{
+		{
+			name:     "文档所有者有权限",
+			clientId: "user1",
+			want:     true,
+		},
+		{
+			name:     "管理员有权限",
+			clientId: "user2",
+			want:     true,
+		},
+		{
+			name:     "不存在的用户没有权限",
+			clientId: "userXXXX",
+			want:     false,
+		},
+	}
+
+	t.Run("测试条件权限", func(t *testing.T) {
 		permission, err := query.NewPermissionFromJs(testPermissionConditional)
 		assert.NoError(t, err)
 
 		engine := setupEngine(t)
+		defer cleanupEngine(t, engine)
 
 		post1, err := engine.LoadDoc("postMetas", "post1")
 		assert.NoError(t, err)
-		{
-			params := query.CanViewParams{
-				Collection: "postMetas",
-				DocId:      "post1",
-				Doc:        post1,
-				ClientId:   "user1",
-				Db:         &query.DbWrapper{QueryExecutor: &query.QueryExecutor{StorageEngine: engine}},
-			}
-			result := permission.CanView(params)
-			assert.True(t, result)
-		}
 
-		{
-			params := query.CanViewParams{
-				Collection: "postMetas",
-				DocId:      "post1",
-				Doc:        post1,
-				ClientId:   "userXXXX",
-				Db:         &query.DbWrapper{QueryExecutor: &query.QueryExecutor{StorageEngine: engine}},
-			}
-			result := permission.CanView(params)
-			assert.False(t, result)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				params := query.CanViewParams{
+					Collection: "postMetas",
+					DocId:      "post1",
+					Doc:        post1,
+					ClientId:   tt.clientId,
+					Db:         &query.DbWrapper{QueryExecutor: &query.QueryExecutor{StorageEngine: engine}},
+				}
+				result := permission.CanView(params)
+				assert.Equal(t, tt.want, result)
+			})
 		}
-
-		cleanupEngine(t, engine)
 	})
 }
 
@@ -71,7 +83,13 @@ func setupEngine(t *testing.T) *storage_engine.StorageEngine {
 	user1Map := user1.GetMap("data")
 	user1Map.InsertString("id", "user1")
 	user1Map.InsertString("username", "Alice")
-	user1Map.InsertString("role", "admin")
+	user1Map.InsertString("role", "normal")
+
+	user2 := loro.NewLoroDoc()
+	user2Map := user2.GetMap("data")
+	user2Map.InsertString("id", "user2")
+	user2Map.InsertString("username", "Bob")
+	user2Map.InsertString("role", "admin")
 
 	postMeta1 := loro.NewLoroDoc()
 	postMeta1Map := postMeta1.GetMap("data")
@@ -88,6 +106,11 @@ func setupEngine(t *testing.T) *storage_engine.StorageEngine {
 				Collection: "users",
 				DocID:      "user1",
 				Snapshot:   user1.ExportSnapshot().Bytes(),
+			},
+			storage_engine.InsertOp{
+				Collection: "users",
+				DocID:      "user2",
+				Snapshot:   user2.ExportSnapshot().Bytes(),
 			},
 			storage_engine.InsertOp{
 				Collection: "postMetas",

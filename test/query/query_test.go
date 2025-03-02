@@ -69,7 +69,7 @@ func TestQueryFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := query.NewQuery()
+			query := query.NewFindOneQuery()
 			query.SetFilter(tt.filter)
 
 			matched, err := query.Match(tt.doc)
@@ -120,7 +120,7 @@ func TestQuerySort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := query.NewQuery()
+			query := query.NewFindOneQuery()
 			for _, sort := range tt.sorts {
 				query.AddSort(sort.Field, sort.Order)
 			}
@@ -134,7 +134,7 @@ func TestQuerySort(t *testing.T) {
 
 // 测试分页参数
 func TestQueryPagination(t *testing.T) {
-	query := query.NewQuery()
+	query := query.NewFindOneQuery()
 
 	// 测试有效的分页参数
 	err := query.SetSkip(10)
@@ -157,7 +157,7 @@ func TestQueryPagination(t *testing.T) {
 
 // 测试 JSON 序列化和反序列化
 func TestQuerySerialization(t *testing.T) {
-	q := query.NewQuery()
+	q := query.NewFindOneQuery()
 
 	// 设置过滤条件
 	q.SetFilter(&qfe.GtExpr{
@@ -178,7 +178,7 @@ func TestQuerySerialization(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 反序列化
-	query2 := query.NewQuery()
+	query2 := query.NewFindOneQuery()
 	err = query2.UnmarshalJSON(data)
 	assert.NoError(t, err)
 

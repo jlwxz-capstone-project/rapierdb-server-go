@@ -233,13 +233,11 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 // updateCache: 是否更新缓存
 func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCache bool) (map[string]*loro.LoroDoc, error) {
 	lowerbound, err := CalcCollectionLowerBound(collectionName)
-	fmt.Println("lowerbound", util.Bytes2String(lowerbound))
 	if err != nil {
 		return nil, err
 	}
 
 	upperbound, err := CalcCollectionUpperBound(collectionName)
-	fmt.Println("upperbound", util.Bytes2String(upperbound))
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +259,6 @@ func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCac
 		snapshot := iter.Value()
 		doc := loro.NewLoroDoc()
 		doc.Import(snapshot)
-		fmt.Println("key", util.Bytes2String(key))
 		docId := GetDocIdFromKey(key)
 		result[docId] = doc
 

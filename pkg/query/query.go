@@ -23,36 +23,50 @@ type SortField struct {
 	Order SortOrder `json:"order"` // 排序顺序
 }
 
-// Query 表示一个完整的查询
-type Query struct {
+// FindOneQuery 表示一个仅用于查询单个文档的查询
+//
+//	Filter: 过滤条件
+type FindOneQuery struct {
+	Filter qfe.QueryFilterExpr `json:"filter,omitempty"` // 过滤条件
+}
+
+// FindManyQuery 表示一个仅用于查询多个文档的查询
+//
+//	Filter: 过滤条件
+//	Sort: 排序规则
+//	Skip: 跳过的文档数量
+//	Limit: 返回的最大文档数量
+type FindManyQuery struct {
 	Filter qfe.QueryFilterExpr `json:"filter,omitempty"` // 过滤条件
 	Sort   []SortField         `json:"sort,omitempty"`   // 排序规则
 	Skip   int64               `json:"skip,omitempty"`   // 跳过的文档数量
 	Limit  int64               `json:"limit,omitempty"`  // 返回的最大文档数量
 }
 
-// NewQuery 创建一个新的查询
-func NewQuery() *Query {
-	return &Query{
-		Sort: make([]SortField, 0),
-	}
+func NewFindOneQuery() *FindOneQuery {
+	return &FindOneQuery{}
 }
 
-// SetFilter 设置过滤条件
-func (q *Query) SetFilter(filter qfe.QueryFilterExpr) {
+func NewFindManyQuery() *FindManyQuery {
+	return &FindManyQuery{}
+}
+
+func (q *FindOneQuery) SetFilter(filter qfe.QueryFilterExpr) {
 	q.Filter = filter
 }
 
-// AddSort 添加排序规则
-func (q *Query) AddSort(field string, order SortOrder) {
+func (q *FindManyQuery) SetFilter(filter qfe.QueryFilterExpr) {
+	q.Filter = filter
+}
+
+func (q *FindManyQuery) AddSort(field string, order SortOrder) {
 	q.Sort = append(q.Sort, SortField{
 		Field: field,
 		Order: order,
 	})
 }
 
-// SetSkip 设置跳过的文档数量
-func (q *Query) SetSkip(skip int64) error {
+func (q *FindManyQuery) SetSkip(skip int64) error {
 	if skip < 0 {
 		return fmt.Errorf("skip must be non-negative")
 	}
@@ -60,8 +74,7 @@ func (q *Query) SetSkip(skip int64) error {
 	return nil
 }
 
-// SetLimit 设置返回的最大文档数量
-func (q *Query) SetLimit(limit int64) error {
+func (q *FindManyQuery) SetLimit(limit int64) error {
 	if limit < 0 {
 		return fmt.Errorf("limit must be non-negative")
 	}
@@ -69,8 +82,25 @@ func (q *Query) SetLimit(limit int64) error {
 	return nil
 }
 
-// Match 检查文档是否匹配查询条件
-func (q *Query) Match(doc *loro.LoroDoc) (bool, error) {
+func (q *FindOneQuery) Match(doc *loro.LoroDoc) (bool, error) {
+	if q.Filter == nil {
+		return true, nil
+	}
+
+	result, err := q.Filter.Eval(doc)
+	if err != nil {
+		return false, fmt.Errorf("evaluating filter: %v", err)
+	}
+
+	matched, ok := result.Value.(bool)
+	if !ok {
+		return false, fmt.Errorf("filter result must be boolean, got %T", result.Value)
+	}
+
+	return matched, nil
+}
+
+func (q *FindManyQuery) Match(doc *loro.LoroDoc) (bool, error) {
 	if q.Filter == nil {
 		return true, nil
 	}
@@ -93,7 +123,7 @@ func (q *Query) Match(doc *loro.LoroDoc) (bool, error) {
 //   - 如果 doc1 < doc2，返回 -1
 //   - 如果 doc1 = doc2，返回 0
 //   - 如果 doc1 > doc2，返回 1
-func (q *Query) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
+func (q *FindManyQuery) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 	for _, sort := range q.Sort {
 		// 获取字段值
 		field1 := doc1.GetMap("root").Get(sort.Field)
@@ -129,9 +159,8 @@ func (q *Query) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 	return 0, nil
 }
 
-// MarshalJSON 实现 json.Marshaler 接口
-func (q *Query) MarshalJSON() ([]byte, error) {
-	type Alias Query
+func (q *FindOneQuery) MarshalJSON() ([]byte, error) {
+	type Alias FindOneQuery
 	return json.Marshal(&struct {
 		*Alias
 	}{
@@ -139,9 +168,39 @@ func (q *Query) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// UnmarshalJSON 实现 json.Unmarshaler 接口
-func (q *Query) UnmarshalJSON(data []byte) error {
-	// 创建一个临时结构体来存储原始数据
+func (q *FindOneQuery) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Filter json.RawMessage `json:"filter,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// 反序列化 Filter
+	if raw.Filter != nil {
+		filter, err := qfe.UnmarshalQueryFilterExpr(raw.Filter)
+		if err != nil {
+			return fmt.Errorf("unmarshaling filter: %v", err)
+		}
+		q.Filter = filter
+	}
+
+	return nil
+}
+
+// FindManyQuery 的序列化方法
+func (q *FindManyQuery) MarshalJSON() ([]byte, error) {
+	type Alias FindManyQuery
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(q),
+	})
+}
+
+// FindManyQuery 的反序列化方法
+func (q *FindManyQuery) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Filter json.RawMessage `json:"filter,omitempty"`
 		Sort   []SortField     `json:"sort,omitempty"`

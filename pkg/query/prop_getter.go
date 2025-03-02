@@ -9,14 +9,18 @@ import (
 )
 
 func LoroDocAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
-	if doc, ok := obj.(*loro.LoroDoc); ok {
+	if doc, ok := obj.(*loro.LoroDoc); ok && doc != nil {
 		if !access.IsCall {
 			if prop, ok := access.Prop.(string); ok {
-				a, err := doc.GetByPath(prop).Unwrap()
+				a := doc.GetByPath(prop)
+				if a == nil {
+					return nil, nil
+				}
+				b, err := a.Unwrap()
 				if err != nil {
 					return nil, err
 				}
-				return a, nil
+				return b, nil
 			}
 			return nil, transpiler.ErrPropNotSupport
 		}
@@ -30,7 +34,7 @@ func LoroDocAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 //	text.toString() // 转为字符串
 //	text[index] // 返回字符串的第 index 个字符（自动转为字符串）
 func LoroTextAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
-	if text, ok := obj.(*loro.LoroText); ok {
+	if text, ok := obj.(*loro.LoroText); ok && text != nil {
 		switch prop := access.Prop.(type) {
 		case string:
 			if !access.IsCall {
@@ -68,14 +72,18 @@ func LoroTextAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 
 // LoroMapAccessHandler 处理 LoroMap 的属性访问
 func LoroMapAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
-	if lm, ok := obj.(*loro.LoroMap); ok {
+	if lm, ok := obj.(*loro.LoroMap); ok && lm != nil {
 		if !access.IsCall {
 			if prop, ok := access.Prop.(string); ok {
-				a, err := lm.Get(prop).Unwrap()
+				a := lm.Get(prop)
+				if a == nil {
+					return nil, nil
+				}
+				b, err := a.Unwrap()
 				if err != nil {
 					return nil, err
 				}
-				return a, nil
+				return b, nil
 			}
 		}
 	}
@@ -83,7 +91,7 @@ func LoroMapAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 }
 
 func LoroListAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
-	if ll, ok := obj.(*loro.LoroList); ok {
+	if ll, ok := obj.(*loro.LoroList); ok && ll != nil {
 		if !access.IsCall {
 			switch prop := access.Prop.(type) {
 			case string:
@@ -117,7 +125,7 @@ func LoroListAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 }
 
 func LoroMovableListAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
-	if lm, ok := obj.(*loro.LoroMovableList); ok {
+	if lm, ok := obj.(*loro.LoroMovableList); ok && lm != nil {
 		if !access.IsCall {
 			switch prop := access.Prop.(type) {
 			case string:
