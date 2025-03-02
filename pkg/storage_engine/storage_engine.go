@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	pe "github.com/pkg/errors"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -216,7 +218,7 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 	// 从存储加载文档
 	snapshot, _, err := e.pebbleDB.Get(keyBytes)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(fmt.Errorf("failed to load doc %s from collection %s: %w", docID, collectionName, err))
 	}
 
 	doc := loro.NewLoroDoc()

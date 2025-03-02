@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
+	pe "github.com/pkg/errors"
+
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/parser"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/token"
@@ -12,8 +14,8 @@ import (
 )
 
 var (
-	ErrPropNotSupport = errors.New("property not supported")
-	ErrInCall         = errors.New("error in function call")
+	ErrPropNotSupport = pe.WithStack(errors.New("property not supported"))
+	ErrInCall         = pe.WithStack(errors.New("error in function call"))
 )
 
 // toInt 辅助函数，将值转换为 int
@@ -42,7 +44,7 @@ func Execute(js string, ctx *Scope) (any, error) {
 
 	program, err := parser.ParseFile(js)
 	if err != nil {
-		return nil, fmt.Errorf("parse error: %v", err)
+		return nil, pe.WithStack(fmt.Errorf("parse error: %v", err))
 	}
 
 	// 执行所有语句，但不返回值
@@ -58,7 +60,7 @@ func Execute(js string, ctx *Scope) (any, error) {
 }
 
 // TranspileJsAstToGoFunc 将 JavaScript 函数表达式 AST 编译为 Go 可执行函数
-func TranspileJsAstToGoFunc(ast ast.Expr, ctx *Scope) (func(...any) any, error) {
+func TranspileJsAstToGoFunc(ast ast.Expr, ctx *Scope) (func(...any) (any, error), error) {
 	// TODO check ast type
 
 	// 将泛型类型转换为 ast.Expr 接口类型
@@ -68,9 +70,9 @@ func TranspileJsAstToGoFunc(ast ast.Expr, ctx *Scope) (func(...any) any, error) 
 	}
 
 	// 类型断言确保返回函数类型
-	goFunc, ok := fn.(func(...any) any)
+	goFunc, ok := fn.(func(...any) (any, error))
 	if !ok {
-		return nil, errors.New("compiled result is not a function")
+		return nil, pe.WithStack(errors.New("compiled result is not a function"))
 	}
 
 	return goFunc, nil
@@ -78,7 +80,7 @@ func TranspileJsAstToGoFunc(ast ast.Expr, ctx *Scope) (func(...any) any, error) 
 
 // TranspileJsScriptToGoFunc 将 JavaScript 函数编译为 Go 可执行函数
 // 输入应为单个箭头函数或匿名函数表达式
-func TranspileJsScriptToGoFunc(jsScript string, ctx *Scope) (func(...any) any, error) {
+func TranspileJsScriptToGoFunc(jsScript string, ctx *Scope) (func(...any) (any, error), error) {
 	if ctx == nil {
 		ctx = NewScope(nil, ctx.PropGetter, ctx.PropMutator)
 	}
@@ -89,22 +91,22 @@ func TranspileJsScriptToGoFunc(jsScript string, ctx *Scope) (func(...any) any, e
 	// 解析为完整程序
 	program, err := parser.ParseFile(wrappedJS)
 	if err != nil {
-		return nil, fmt.Errorf("parse error: %v", err)
+		return nil, pe.WithStack(fmt.Errorf("parse error: %v", err))
 	}
 
 	// 提取函数表达式
 	if len(program.Body) != 1 {
-		return nil, errors.New("input should be a single function expression")
+		return nil, pe.WithStack(errors.New("input should be a single function expression"))
 	}
 
 	decl, ok := program.Body[0].Stmt.(*ast.VariableDeclaration)
 	if !ok || len(decl.List) != 1 {
-		return nil, errors.New("invalid function expression format")
+		return nil, pe.WithStack(errors.New("invalid function expression format"))
 	}
 
 	init := decl.List[0].Initializer
 	if init == nil {
-		return nil, errors.New("missing function initializer")
+		return nil, pe.WithStack(errors.New("missing function initializer"))
 	}
 
 	// 验证函数类型
@@ -115,7 +117,7 @@ func TranspileJsScriptToGoFunc(jsScript string, ctx *Scope) (func(...any) any, e
 	case *ast.FunctionLiteral:
 		fnExpr = expr
 	default:
-		return nil, errors.New("input is not a function expression")
+		return nil, pe.WithStack(errors.New("input is not a function expression"))
 	}
 
 	return TranspileJsAstToGoFunc(fnExpr, ctx)
@@ -216,7 +218,7 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 					}
 				}
 			default:
-				return nil, fmt.Errorf("unsupported variable declaration target: %T", decl.Target.Target)
+				return nil, pe.WithStack(fmt.Errorf("unsupported variable declaration target: %T", decl.Target.Target))
 			}
 		}
 		return nil, nil
@@ -235,7 +237,7 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 				}
 			}
 		}
-		return nil, fmt.Errorf("unsupported label statement: %v", s.Label.Name)
+		return nil, pe.WithStack(fmt.Errorf("unsupported label statement: %v", s.Label.Name))
 
 	case *ast.FunctionDeclaration:
 		// 处理函数声明
@@ -318,7 +320,7 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 		return nil, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported statement type: %T", stmt)
+		return nil, pe.WithStack(fmt.Errorf("unsupported statement type: %T", stmt))
 	}
 }
 
@@ -329,10 +331,10 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 	case *ast.StringLiteral:
 		return e.Value, nil
 	case *ast.Identifier:
-		if val, ok := ctx.Vars[e.Name]; ok {
+		if val, ok := ctx.GetVar(e.Name); ok {
 			return val, nil
 		}
-		return nil, fmt.Errorf("undefined identifier: %s", e.Name)
+		return nil, pe.WithStack(fmt.Errorf("undefined identifier: %s", e.Name))
 
 	case *ast.ObjectLiteral:
 		// 创建一个新的对象
@@ -361,7 +363,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 				default:
 					// 对于复杂对象作为键，返回错误
 					if _, ok := k.(map[string]any); ok {
-						return nil, fmt.Errorf("object cannot be used as key: %T", k)
+						return nil, pe.WithStack(fmt.Errorf("object cannot be used as key: %T", k))
 					}
 					key = fmt.Sprint(k)
 				}
@@ -378,16 +380,19 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			case *ast.PropertyShort:
 				// 短语法形式：{a} 等价于 {a: a}
 				key := p.Name.Name
-				var value any
 				if p.Initializer != nil {
-					_, err := executeExpression(p.Initializer.Expr, ctx)
+					value, err := executeExpression(p.Initializer.Expr, ctx)
 					if err != nil {
 						return nil, err
 					}
+					obj[key] = value
 				} else {
-					value = ctx.Vars[key]
+					value, ok := ctx.GetVar(key)
+					if !ok {
+						return nil, pe.WithStack(fmt.Errorf("undefined identifier in object literal: %s", key))
+					}
+					obj[key] = value
 				}
-				obj[key] = value
 
 			case *ast.SpreadElement:
 				// 展开运算符 {...obj}
@@ -400,11 +405,11 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 						obj[k] = v
 					}
 				} else {
-					return nil, fmt.Errorf("spread operator only supports objects: %T", value)
+					return nil, pe.WithStack(fmt.Errorf("spread operator only supports objects: %T", value))
 				}
 
 			default:
-				return nil, fmt.Errorf("unsupported object property type: %T", prop.Prop)
+				return nil, pe.WithStack(fmt.Errorf("unsupported object property type: %T", prop.Prop))
 			}
 		}
 		return obj, nil
@@ -435,7 +440,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 					case int, int16, int32, int64, uint, uint16, uint32, uint64, float32, float64:
 						access.Prop = util.ToInt(prop)
 					default:
-						return nil, fmt.Errorf("unsupported property type: %T", prop)
+						return nil, pe.WithStack(fmt.Errorf("unsupported property type: %T", prop))
 					}
 				}
 
@@ -540,7 +545,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 		// 调用函数
 		fn := reflect.ValueOf(callee)
 		if !fn.IsValid() || fn.Kind() != reflect.Func {
-			return nil, fmt.Errorf("not a callable function: %v", callee)
+			return nil, pe.WithStack(fmt.Errorf("not a callable function: %v", callee))
 		}
 
 		results := fn.Call(args)
@@ -611,7 +616,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			lv, lok := toFloat64(left)
 			rv, rok := toFloat64(right)
 			if !lok || !rok {
-				return nil, fmt.Errorf("invalid numeric operation: %v + %v", left, right)
+				return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: %v + %v", left, right))
 			}
 			return lv + rv, nil
 
@@ -619,7 +624,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			lv, lok := toFloat64(left)
 			rv, rok := toFloat64(right)
 			if !lok || !rok {
-				return nil, fmt.Errorf("invalid numeric operation: %v - %v", left, right)
+				return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: %v - %v", left, right))
 			}
 			return lv - rv, nil
 
@@ -627,7 +632,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			lv, lok := toFloat64(left)
 			rv, rok := toFloat64(right)
 			if !lok || !rok {
-				return nil, fmt.Errorf("invalid numeric operation: %v * %v", left, right)
+				return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: %v * %v", left, right))
 			}
 			return lv * rv, nil
 
@@ -635,10 +640,10 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			lv, lok := toFloat64(left)
 			rv, rok := toFloat64(right)
 			if !lok || !rok {
-				return nil, fmt.Errorf("invalid numeric operation: %v / %v", left, right)
+				return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: %v / %v", left, right))
 			}
 			if rv == 0 {
-				return nil, fmt.Errorf("division by zero")
+				return nil, pe.WithStack(fmt.Errorf("division by zero"))
 			}
 			return lv / rv, nil
 
@@ -646,10 +651,10 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			lv, lok := toFloat64(left)
 			rv, rok := toFloat64(right)
 			if !lok || !rok {
-				return nil, fmt.Errorf("invalid numeric operation: %v %% %v", left, right)
+				return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: %v %% %v", left, right))
 			}
 			if rv == 0 {
-				return nil, fmt.Errorf("division by zero")
+				return nil, pe.WithStack(fmt.Errorf("division by zero"))
 			}
 			return float64(int64(lv) % int64(rv)), nil
 
@@ -690,7 +695,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			}
 			return cmp <= 0, nil
 		default:
-			return nil, fmt.Errorf("unsupported operator: %v", e.Operator)
+			return nil, pe.WithStack(fmt.Errorf("unsupported operator: %v", e.Operator))
 		}
 
 	case *ast.UnaryExpression:
@@ -706,14 +711,14 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			if val, ok := toFloat64(operand); ok {
 				return -val, nil
 			}
-			return nil, fmt.Errorf("invalid numeric operation: -%v", operand)
+			return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: -%v", operand))
 		case token.Plus: // +
 			if val, ok := toFloat64(operand); ok {
 				return val, nil
 			}
-			return nil, fmt.Errorf("invalid numeric operation: +%v", operand)
+			return nil, pe.WithStack(fmt.Errorf("invalid numeric operation: +%v", operand))
 		default:
-			return nil, fmt.Errorf("unsupported unary operator: %v", e.Operator)
+			return nil, pe.WithStack(fmt.Errorf("unsupported unary operator: %v", e.Operator))
 		}
 
 	case *ast.ConditionalExpression:
@@ -810,10 +815,10 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 					propName = util.ToInt(val)
 				default:
-					return nil, fmt.Errorf("unsupported property type: %T", val)
+					return nil, pe.WithStack(fmt.Errorf("unsupported property type: %T", val))
 				}
 			default:
-				return nil, fmt.Errorf("unsupported property type: %T", prop)
+				return nil, pe.WithStack(fmt.Errorf("unsupported property type: %T", prop))
 			}
 
 			// 使用 PropMutator 设置属性值
@@ -824,7 +829,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			return right, nil
 
 		default:
-			return nil, fmt.Errorf("invalid assignment target: %T", target)
+			return nil, pe.WithStack(fmt.Errorf("invalid assignment target: %T", target))
 		}
 
 	case *ast.ArrayLiteral:
@@ -841,7 +846,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 		return arr, nil
 
 	case *ast.FunctionLiteral:
-		return func(args ...any) any {
+		return func(args ...any) (any, error) {
 			childCtx := NewScope(ctx, ctx.PropGetter, ctx.PropMutator)
 
 			for i, param := range e.ParameterList.List {
@@ -920,15 +925,17 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 
 			var result any
 			for _, stmt := range e.Body.List {
-				if ret, err := executeStatement(stmt.Stmt, childCtx); err == nil {
-					result = ret
+				ret, err := executeStatement(stmt.Stmt, childCtx)
+				if err != nil {
+					return nil, err
 				}
+				result = ret
 			}
-			return result
+			return result, nil
 		}, nil
 
 	case *ast.ArrowFunctionLiteral:
-		return func(args ...any) any {
+		return func(args ...any) (any, error) {
 			childCtx := NewScope(ctx, ctx.PropGetter, ctx.PropMutator)
 
 			params := e.ParameterList.List
@@ -961,7 +968,7 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 							switch p := prop.Prop.(type) {
 							case *ast.PropertyShort:
 								propName := p.Name.Name
-								value, err := ctx.PropGetter([]PropAccess{{Prop: propName}}, objArg)
+								value, err := ctx.PropGetter([]PropAccess{{Prop: propName, IsCall: false}}, objArg)
 								if err != nil {
 									continue
 								}
@@ -1017,16 +1024,19 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 					if err == nil && ret != nil {
 						lastResult = ret
 					}
+					if err != nil {
+						return nil, err
+					}
 				}
-				return lastResult
+				return lastResult, nil
 			case *ast.Expression:
 				result, err := executeExpression(body.Expr, childCtx)
 				if err != nil {
-					return nil
+					return nil, err
 				}
-				return result
+				return result, nil
 			}
-			return nil
+			return nil, nil
 		}, nil
 
 	default:

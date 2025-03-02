@@ -5,6 +5,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
+	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 )
 
 type DbWrapper struct {
@@ -50,4 +51,42 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 		}
 	}
 	return nil, transpiler.ErrPropNotSupport
+}
+
+func ToQueryFilterExpr(v any) (qfe.QueryFilterExpr, error) {
+	switch val := v.(type) {
+	case qfe.QueryFilterExpr:
+		return val, nil
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, string, nil:
+		return &qfe.ValueExpr{Value: val}, nil
+	case []interface{}:
+		return &qfe.ValueExpr{Value: val}, nil
+	case map[string]interface{}:
+		return &qfe.ValueExpr{Value: val}, nil
+	default:
+		return nil, errors.WithStack(fmt.Errorf("unsupported value type: %T", v))
+	}
+}
+
+// 说明！下面的 Wrapper 函数在出错时会直接 panic！！！！！
+
+func EqWrapper(o1 any, o2 any) qfe.QueryFilterExpr {
+	o1_, err := ToQueryFilterExpr(o1)
+	if err != nil {
+		panic(err)
+	}
+	o2_, err := ToQueryFilterExpr(o2)
+	if err != nil {
+		panic(err)
+	}
+	return &qfe.EqExpr{
+		O1: o1_,
+		O2: o2_,
+	}
+}
+
+func FieldWrapper(field string) qfe.QueryFilterExpr {
+	return &qfe.FieldValueExpr{
+		Path: field,
+	}
 }

@@ -19,7 +19,7 @@ Permission.create({
           skip: 0,
           limit: 1,
         });
-        return doc.data.owner === clientId || client.role === "admin";
+        return doc.data.owner === clientId;
       },
       /**
        * 用于判断 ID 为 clientId 的客户端能否创建一个文档

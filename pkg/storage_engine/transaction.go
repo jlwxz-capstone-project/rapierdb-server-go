@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	pe "github.com/pkg/errors"
+
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -54,19 +56,28 @@ type TransactionOp interface {
 
 func EnsureTransactionValid(tr *Transaction) error {
 	if len(tr.TxID) != 36 {
-		return fmt.Errorf("%w: invalid tx_id = \"%s\"", ErrTransactionInvalid, tr.TxID)
+		return pe.WithStack(fmt.Errorf("%w: invalid tx_id = \"%s\"", ErrTransactionInvalid, tr.TxID))
 	}
 
 	if tr.TargetDatabase == "" {
-		return fmt.Errorf("%w: invalid target_database = \"%s\"", ErrTransactionInvalid, tr.TargetDatabase)
+		return pe.WithStack(fmt.Errorf("%w: invalid target_database = \"%s\"", ErrTransactionInvalid, tr.TargetDatabase))
 	}
 
 	if tr.Committer == "" {
-		return fmt.Errorf("%w: invalid committer = \"%s\"", ErrTransactionInvalid, tr.Committer)
+		return pe.WithStack(fmt.Errorf("%w: invalid committer = \"%s\"", ErrTransactionInvalid, tr.Committer))
 	}
 
 	if len(tr.Operations) == 0 {
-		return fmt.Errorf("%w: empty operations", ErrTransactionInvalid)
+		return pe.WithStack(fmt.Errorf("%w: empty operations", ErrTransactionInvalid))
+	}
+
+	for _, op := range tr.Operations {
+		switch op := op.(type) {
+		case InsertOp, UpdateOp, DeleteOp:
+			continue
+		default:
+			return pe.WithStack(fmt.Errorf("%w: invalid operation type = %T", ErrTransactionInvalid, op))
+		}
 	}
 
 	return nil
@@ -77,19 +88,19 @@ func (op *InsertOp) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := util.WriteVarUint(buf, uint64(OP_INSERT))
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, op.Collection)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, op.DocID)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteBytes(buf, op.Snapshot)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	return buf.Bytes(), nil
 }
@@ -99,19 +110,19 @@ func (op *UpdateOp) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := util.WriteVarUint(buf, uint64(OP_UPDATE))
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, op.Collection)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, op.DocID)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteBytes(buf, op.Update)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	return buf.Bytes(), nil
 }
@@ -121,15 +132,15 @@ func (op *DeleteOp) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := util.WriteVarUint(buf, uint64(OP_DELETE))
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, op.Collection)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, op.DocID)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	return buf.Bytes(), nil
 }
@@ -139,19 +150,19 @@ func (tr *Transaction) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := util.WriteVarString(buf, tr.TxID)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, tr.TargetDatabase)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarString(buf, tr.Committer)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	err = util.WriteVarUint(buf, uint64(len(tr.Operations)))
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	for _, op := range tr.Operations {
 		var opBytes []byte
@@ -159,22 +170,22 @@ func (tr *Transaction) Encode() ([]byte, error) {
 		case *InsertOp:
 			opBytes, err = op.Encode()
 			if err != nil {
-				return nil, err
+				return nil, pe.WithStack(err)
 			}
 		case *UpdateOp:
 			opBytes, err = op.Encode()
 			if err != nil {
-				return nil, err
+				return nil, pe.WithStack(err)
 			}
 		case *DeleteOp:
 			opBytes, err = op.Encode()
 			if err != nil {
-				return nil, err
+				return nil, pe.WithStack(err)
 			}
 		}
 		err = util.WriteBytes(buf, opBytes)
 		if err != nil {
-			return nil, err
+			return nil, pe.WithStack(err)
 		}
 	}
 	return buf.Bytes(), nil
@@ -185,7 +196,7 @@ func DecodeOperation(data []byte) (any, error) {
 	buf := bytes.NewBuffer(data)
 	opType, err := util.ReadVarUint(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 
 	remainingData := buf.Bytes()
@@ -197,7 +208,7 @@ func DecodeOperation(data []byte) (any, error) {
 	case OP_DELETE:
 		return DecodeDeleteOp(remainingData)
 	default:
-		return nil, fmt.Errorf("%w: unknown operation type %d", ErrTransactionInvalid, opType)
+		return nil, pe.WithStack(fmt.Errorf("%w: unknown operation type %d", ErrTransactionInvalid, opType))
 	}
 }
 
@@ -206,15 +217,15 @@ func DecodeInsertOp(data []byte) (*InsertOp, error) {
 	buf := bytes.NewBuffer(data)
 	collection, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	docID, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	snapshot, err := util.ReadBytes(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	return &InsertOp{
 		Collection: collection,
@@ -228,15 +239,15 @@ func DecodeUpdateOp(data []byte) (*UpdateOp, error) {
 	buf := bytes.NewBuffer(data)
 	collection, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	docID, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	update, err := util.ReadBytes(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	return &UpdateOp{
 		Collection: collection,
@@ -250,11 +261,11 @@ func DecodeDeleteOp(data []byte) (*DeleteOp, error) {
 	buf := bytes.NewBuffer(data)
 	collection, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	docID, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	return &DeleteOp{
 		Collection: collection,
@@ -267,19 +278,19 @@ func DecodeTransaction(data []byte) (*Transaction, error) {
 	buf := bytes.NewBuffer(data)
 	txID, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	targetDatabase, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	committer, err := util.ReadVarString(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 	opCount, err := util.ReadVarUint(buf)
 	if err != nil {
-		return nil, err
+		return nil, pe.WithStack(err)
 	}
 
 	tr := &Transaction{
@@ -292,11 +303,11 @@ func DecodeTransaction(data []byte) (*Transaction, error) {
 	for i := uint64(0); i < opCount; i++ {
 		opBytes, err := util.ReadBytes(buf)
 		if err != nil {
-			return nil, err
+			return nil, pe.WithStack(err)
 		}
 		op, err := DecodeOperation(opBytes)
 		if err != nil {
-			return nil, err
+			return nil, pe.WithStack(err)
 		}
 		tr.Operations = append(tr.Operations, op)
 	}

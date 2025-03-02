@@ -2,6 +2,7 @@ package query
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/parser"
@@ -20,7 +21,7 @@ type Permissions struct {
 	JsDef string
 }
 
-type CollectionRuleFunc = func(...any) any
+type CollectionRuleFunc = func(...any) (any, error)
 
 type CollectionRule struct {
 	CanView   CollectionRuleFunc
@@ -29,13 +30,25 @@ type CollectionRule struct {
 	CanDelete CollectionRuleFunc
 }
 
+type CanViewParams struct {
+	Collection string
+	DocId      string
+	Doc        *loro.LoroDoc
+	ClientId   string
+	Db         *DbWrapper
+}
+
 // CanView 检查客户端是否有权限查看指定集合中的指定文档
-func (p *Permissions) CanView(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
-	rule, ok := p.Rules[collection]
+func (p *Permissions) CanView(params CanViewParams) bool {
+	rule, ok := p.Rules[params.Collection]
 	if !ok {
 		return false
 	}
-	ret := rule.CanView(docId, doc, clientId)
+	ret, err := rule.CanView(params)
+	if err != nil {
+		fmt.Printf("can view error: %v", err)
+		return false
+	}
 	if b, ok := ret.(bool); ok {
 		return b
 	}
@@ -48,7 +61,11 @@ func (p *Permissions) CanCreate(collection string, docId string, doc *loro.LoroD
 	if !ok {
 		return false
 	}
-	ret := rule.CanCreate(docId, doc, clientId)
+	ret, err := rule.CanCreate(docId, doc, clientId)
+	if err != nil {
+		fmt.Printf("can create error: %+v\n", err)
+		return false
+	}
 	if b, ok := ret.(bool); ok {
 		return b
 	}
@@ -61,7 +78,11 @@ func (p *Permissions) CanUpdate(collection string, docId string, doc *loro.LoroD
 	if !ok {
 		return false
 	}
-	ret := rule.CanUpdate(docId, doc, clientId)
+	ret, err := rule.CanUpdate(docId, doc, clientId)
+	if err != nil {
+		fmt.Printf("can update error: %v", err)
+		return false
+	}
 	if b, ok := ret.(bool); ok {
 		return b
 	}
@@ -74,7 +95,11 @@ func (p *Permissions) CanDelete(collection string, docId string, doc *loro.LoroD
 	if !ok {
 		return false
 	}
-	ret := rule.CanDelete(docId, doc, clientId)
+	ret, err := rule.CanDelete(docId, doc, clientId)
+	if err != nil {
+		fmt.Printf("can delete error: %v", err)
+		return false
+	}
 	if b, ok := ret.(bool); ok {
 		return b
 	}
@@ -94,6 +119,27 @@ func (cr *CollectionRule) SetValidator(name string, fn CollectionRuleFunc) {
 	default:
 		panic("invalid rule name")
 	}
+}
+
+func NewPermissionFuncScope() *transpiler.Scope {
+	propGetter := transpiler.NewPropGetter(
+		DbWrapperAccessHandler,
+		CollectionWrapperAccessHandler,
+		LoroDocAccessHandler,
+		LoroTextAccessHandler,
+		LoroMapAccessHandler,
+		LoroListAccessHandler,
+		LoroMovableListAccessHandler,
+		transpiler.StringPropAccessHandler,
+		transpiler.ArrayPropAccessHandler,
+		transpiler.DataFieldAccessHandler,
+		transpiler.MethodCallHandler,
+	)
+	propMutator := transpiler.DefaultPropSetter
+	scope := transpiler.NewScope(nil, propGetter, propMutator)
+	scope.Vars["eq"] = EqWrapper
+	scope.Vars["field"] = FieldWrapper
+	return scope
 }
 
 // NewPermissionFromJs 从 Js 权限定义中生成 Go 权限定义
@@ -235,22 +281,7 @@ func NewPermissionFromJs(js string) (*Permissions, error) {
 			default:
 				return nil, ErrInvalidPermissionDefinition
 			}
-			propGetter := transpiler.NewPropGetter(
-				DbWrapperAccessHandler,
-				CollectionWrapperAccessHandler,
-				LoroDocAccessHandler,
-				LoroTextAccessHandler,
-				LoroMapAccessHandler,
-				LoroListAccessHandler,
-				LoroMovableListAccessHandler,
-				transpiler.StringPropAccessHandler,
-				transpiler.ArrayPropAccessHandler,
-				transpiler.DataFieldAccessHandler,
-				transpiler.MethodCallHandler,
-			)
-			propMutator := transpiler.DefaultPropSetter
-			scope := transpiler.NewScope(nil, propGetter, propMutator)
-			transpiler.PrintNode(ruleFuncExpr, 0, "ruleFuncExpr")
+			scope := NewPermissionFuncScope()
 			goFunc, err := transpiler.TranspileJsAstToGoFunc(ruleFuncExpr, scope)
 			if err != nil {
 				return nil, err

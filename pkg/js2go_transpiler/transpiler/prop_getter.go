@@ -49,9 +49,15 @@ func NewPropGetter(propAccessHandlers ...PropAccessHandler) PropGetter {
 					result = resultNew
 					break
 				}
+				// 如果错误是 ErrPropNotSupport，则继续尝试下一个处理器
+				if errors.Is(err, ErrPropNotSupport) {
+					continue
+				}
+				// 如果错误不是 ErrPropNotSupport，则直接返回错误
+				return nil, err
 			}
 			if !success {
-				return nil, ErrPropNotSupport
+				return nil, fmt.Errorf("%w: unsupported property access: %v", ErrPropNotSupport, access)
 			}
 		}
 		return result, nil
@@ -94,7 +100,12 @@ func GetField(obj any, fieldKey string) any {
 		// 对于结构体，使用反射获得字段值
 		field := val.FieldByName(fieldKey)
 		if !field.IsValid() {
-			return nil
+			// 尝试转换为大写后再获取
+			fieldKey = strings.ToUpper(fieldKey[:1]) + fieldKey[1:]
+			field = val.FieldByName(fieldKey)
+			if !field.IsValid() {
+				return nil
+			}
 		}
 		return field.Interface()
 	}
