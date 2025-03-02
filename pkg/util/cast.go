@@ -50,6 +50,10 @@ func ToInt64(v interface{}) int64 {
 		return int64(v)
 	case uint64:
 		return int64(v)
+	case float32:
+		return int64(v)
+	case float64:
+		return int64(v)
 	}
 	panic(fmt.Sprintf("unsupported type: %T", v))
 }

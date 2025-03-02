@@ -6,6 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 type DbWrapper struct {
@@ -36,7 +37,7 @@ type CollectionWrapper struct {
 }
 
 func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
-	if _, ok := obj.(*CollectionWrapper); ok {
+	if cw, ok := obj.(*CollectionWrapper); ok {
 		if access.IsCall {
 			if access.Prop == "query" {
 				if len(access.Args) != 1 {
@@ -46,7 +47,54 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 				sort := transpiler.GetField(access.Args[0], "sort")
 				skip := transpiler.GetField(access.Args[0], "skip")
 				limit := transpiler.GetField(access.Args[0], "limit")
-				fmt.Println(filter, sort, skip, limit)
+
+				query := &Query{}
+
+				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
+					query.Filter = filter
+				} else {
+					return nil, errors.WithStack(fmt.Errorf("invalid query: filter must be a QueryFilterExpr"))
+				}
+
+				if sort != nil {
+					if sortAnyArray, ok := sort.([]any); ok {
+						sortArray := make([]SortField, len(sortAnyArray))
+						for i, v := range sortAnyArray {
+							if sortField, ok := v.(SortField); ok {
+								sortArray[i] = sortField
+							} else {
+								return nil, errors.WithStack(fmt.Errorf("invalid query: sort must be a []SortField"))
+							}
+						}
+					} else {
+						return nil, errors.WithStack(fmt.Errorf("invalid query: sort must be a []SortField"))
+					}
+				}
+
+				if skip != nil {
+					switch v := skip.(type) {
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+						query.Skip = util.ToInt64(v)
+					default:
+						return nil, errors.WithStack(fmt.Errorf("invalid query: skip must be an int-like value"))
+					}
+				}
+
+				if limit != nil {
+					switch v := limit.(type) {
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+						query.Limit = util.ToInt64(v)
+					default:
+						return nil, errors.WithStack(fmt.Errorf("invalid query: limit must be an int-like value"))
+					}
+				}
+
+				docs, err := cw.QueryExecutor.Execute(cw.Collection, query)
+				if err != nil {
+					return nil, errors.WithStack(err)
+				}
+
+				return docs, nil
 			}
 		}
 	}
@@ -88,5 +136,19 @@ func EqWrapper(o1 any, o2 any) qfe.QueryFilterExpr {
 func FieldWrapper(field string) qfe.QueryFilterExpr {
 	return &qfe.FieldValueExpr{
 		Path: field,
+	}
+}
+
+func SortAscWrapper(path string) SortField {
+	return SortField{
+		Field: path,
+		Order: SortOrderAsc,
+	}
+}
+
+func SortDescWrapper(path string) SortField {
+	return SortField{
+		Field: path,
+		Order: SortOrderDesc,
 	}
 }

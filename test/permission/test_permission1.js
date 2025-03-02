@@ -14,12 +14,13 @@ Permission.create({
       canView: ({ docId, doc, clientId, db }) => {
         // 只允许文档的 owner 或者角色为 admin 的客户端查看
         const client = db.users.query({
-          filter: eq(field("id"), clientId),
-          sort: [],
+          filter: eq(field("data/id"), clientId),
+          sort: [asc("data/id")],
           skip: 0,
           limit: 1,
         });
-        return doc.data.owner === clientId;
+        if (!client) return false;
+        return doc.data.owner === clientId || client.role === "admin";
       },
       /**
        * 用于判断 ID 为 clientId 的客户端能否创建一个文档

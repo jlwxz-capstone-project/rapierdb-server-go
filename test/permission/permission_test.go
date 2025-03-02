@@ -26,20 +26,31 @@ func TestPermissionFromJs(t *testing.T) {
 
 		post1, err := engine.LoadDoc("postMetas", "post1")
 		assert.NoError(t, err)
-		params := query.CanViewParams{
-			Collection: "postMetas",
-			DocId:      "post1",
-			Doc:        post1,
-			ClientId:   "user1",
-			Db:         &query.DbWrapper{QueryExecutor: &query.QueryExecutor{StorageEngine: engine}},
+		{
+			params := query.CanViewParams{
+				Collection: "postMetas",
+				DocId:      "post1",
+				Doc:        post1,
+				ClientId:   "user1",
+				Db:         &query.DbWrapper{QueryExecutor: &query.QueryExecutor{StorageEngine: engine}},
+			}
+			result := permission.CanView(params)
+			assert.True(t, result)
 		}
-		permission.CanView(params)
-		cleanupEngine(t, engine)
-		// assert.True(t, result)
 
-		// // 2. 当 doc.owner !== clientId 时，应该返回 false
-		// result = permission.CanView("users", "doc1", mockDoc1, "user2")
-		// assert.False(t, result)
+		{
+			params := query.CanViewParams{
+				Collection: "postMetas",
+				DocId:      "post1",
+				Doc:        post1,
+				ClientId:   "userXXXX",
+				Db:         &query.DbWrapper{QueryExecutor: &query.QueryExecutor{StorageEngine: engine}},
+			}
+			result := permission.CanView(params)
+			assert.False(t, result)
+		}
+
+		cleanupEngine(t, engine)
 	})
 }
 

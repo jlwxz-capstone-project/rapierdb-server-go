@@ -139,6 +139,8 @@ func NewPermissionFuncScope() *transpiler.Scope {
 	scope := transpiler.NewScope(nil, propGetter, propMutator)
 	scope.Vars["eq"] = EqWrapper
 	scope.Vars["field"] = FieldWrapper
+	scope.Vars["asc"] = SortAscWrapper
+	scope.Vars["desc"] = SortDescWrapper
 	return scope
 }
 
