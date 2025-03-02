@@ -48,7 +48,7 @@ func isDigit(chr rune, base int) bool {
 	return digitValue(chr) < base
 }
 
-// Fast path for checking “start” of an identifier.
+// Fast path for checking "start" of an identifier.
 func isIdentifierStart(chr rune) bool {
 	// 0) Invalid path
 	if chr == -1 {
@@ -63,7 +63,7 @@ func isIdentifierStart(chr rune) bool {
 	return unicodeid.IsIDStartUnicode(chr)
 }
 
-// Fast path for checking “continuation” of an identifier.
+// Fast path for checking "continuation" of an identifier.
 func isIdentifierPart(chr rune) bool {
 	// 0) Invalid path
 	if chr == -1 {
@@ -996,9 +996,8 @@ func parseStringLiteral(literal string, length int, unicode, strict bool) (strin
 	var sb strings.Builder
 	var chars []uint16
 	if unicode {
-		chars = make([]uint16, 1, length+1)
-		// BOM
-		chars[0] = 0xFEFF
+		// 不再添加BOM头
+		chars = make([]uint16, 0, length)
 	} else {
 		sb.Grow(length)
 	}
@@ -1167,7 +1166,7 @@ func parseStringLiteral(literal string, length int, unicode, strict bool) (strin
 	}
 
 	if unicode {
-		if len(chars) != length+1 {
+		if len(chars) != length {
 			panic(fmt.Errorf("unexpected unicode length while parsing '%s'", literal))
 		}
 		return string(utf16.Decode(chars)), ""

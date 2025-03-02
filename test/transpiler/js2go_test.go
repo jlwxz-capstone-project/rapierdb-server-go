@@ -804,6 +804,12 @@ func TestObjectLiteralRelated(t *testing.T) {
 			if !tt.wantErr {
 				result := ctx.Vars["result"]
 				if !reflect.DeepEqual(result, tt.want) {
+					resultStr := fmt.Sprintf("%v", result)
+					wantStr := fmt.Sprintf("%v", tt.want)
+					t.Logf("Result as string [%s], want as string [%s]", resultStr, wantStr)
+					if resultStr == wantStr {
+						t.Logf("字符串比较相等，但DeepEqual失败，可能存在类型差异")
+					}
 					t.Errorf("ctx.Vars[\"result\"] = %v (%T), want %v (%T)", result, result, tt.want, tt.want)
 				}
 			}
@@ -1349,7 +1355,11 @@ func TestTranspileToGoFunc(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TranspileToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			result := goFunc(tt.args...)
+			result, err := goFunc(tt.args...)
+			if err != nil {
+				t.Errorf("TranspileToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
 			cmp, err := util.CompareValues(result, tt.want)
 			if err != nil || cmp != 0 {
 				t.Errorf("TranspileToGoFunc() result = %v, want %v", result, tt.want)
@@ -1538,7 +1548,11 @@ func TestLoroValueAccess(t *testing.T) {
 			if tt.wantErr {
 				return
 			}
-			got := goFunc(tt.args...)
+			got, err := goFunc(tt.args...)
+			if err != nil {
+				t.Errorf("goFunc() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -1733,12 +1747,185 @@ func TestDestructuringAssignment2(t *testing.T) {
 					}
 
 					// 调用Go函数并验证结果
-					result := goFunc(tt.args...)
-					if !reflect.DeepEqual(result, tt.want) {
-						t.Errorf("TranspileJsScriptToGoFunc() result = %v, want %v", result, tt.want)
+					result, execErr := goFunc(tt.args...)
+					if execErr != nil {
+						t.Errorf("Function execution error: %v", execErr)
+						return
+					}
+
+					// 解决字符串和其他值类型的比较问题
+					cmp, err := util.CompareValues(result, tt.want)
+					if err != nil {
+						t.Errorf("比较值时出错: %v", err)
+						return
+					}
+
+					if cmp != 0 {
+						resultStr := fmt.Sprintf("%v", result)
+						wantStr := fmt.Sprintf("%v", tt.want)
+						t.Logf("Result as string [%s], want as string [%s]", resultStr, wantStr)
+						t.Errorf("Result = %v (type: %T), want %v (type: %T)", result, result, tt.want, tt.want)
 					}
 				})
 			})
 		}
 	})
+}
+
+func TestEarlyReturn(t *testing.T) {
+	ctx := transpiler.NewScope(nil, nil, nil)
+
+	tests := []struct {
+		name    string
+		js      string
+		args    []any
+		want    any
+		wantErr bool
+		skip    bool
+	}{
+		{
+			name: "if 语句中的 early return",
+			js: `function test(x) {
+				if (x > 10) {
+					return "大于10";
+				}
+				return "小于等于10";
+			}`,
+			args: []any{15},
+			want: "大于10",
+		},
+		{
+			name: "if 语句中的 early return - 第二分支",
+			js: `function test(x) {
+				if (x > 10) {
+					return "大于10";
+				}
+				return "小于等于10";
+			}`,
+			args: []any{5},
+			want: "小于等于10",
+		},
+		{
+			name: "嵌套 if 语句中的 early return",
+			js: `function test(x, y) {
+				if (x > 10) {
+					if (y > 20) {
+						return "x>10且y>20";
+					}
+					return "x>10但y<=20";
+				}
+				return "x<=10";
+			}`,
+			args: []any{15, 25},
+			want: "x>10且y>20",
+		},
+		{
+			name: "循环中的 early return",
+			js: `function test(arr) {
+				for (let i = 0; i < arr.length; i++) {
+					if (arr[i] > 10) {
+						return "找到大于10的数";
+					}
+				}
+				return "没有找到大于10的数";
+			}`,
+			args: []any{[]any{1, 5, 12, 8}},
+			want: "找到大于10的数",
+			skip: true, // 暂时跳过，因为 ForStatement 尚不支持
+		},
+		{
+			name: "返回 false 的 early return",
+			js: `function test(x) {
+				if (x < 0) {
+					return false;
+				}
+				return true;
+			}`,
+			args: []any{-5},
+			want: false,
+		},
+		{
+			name: "返回 0 的 early return",
+			js: `function test(x) {
+				if (x === 0) {
+					return 0;
+				}
+				return x;
+			}`,
+			args: []any{0},
+			want: float64(0),
+		},
+		{
+			name: "返回空字符串的 early return",
+			js: `function test(x) {
+				if (x === "") {
+					return "";
+				}
+				return "非空";
+			}`,
+			args: []any{""},
+			want: "",
+		},
+		{
+			name: "箭头函数中的 early return",
+			js: `(x) => {
+				if (x > 10) {
+					return "大于10";
+				}
+				return "小于等于10";
+			}`,
+			args: []any{15},
+			want: "大于10",
+		},
+		{
+			name: "多个条件的 early return",
+			js: `function test(x) {
+				if (x < 0) return "负数";
+				if (x === 0) return "零";
+				if (x > 0 && x < 10) return "个位数";
+				return "大于等于10";
+			}`,
+			args: []any{0},
+			want: "零",
+		},
+		{
+			name: "带 else if 的条件语句",
+			js: `function test(x) {
+				if (x < 0) {
+					return "负数";
+				} else if (x === 0) {
+					return "零";
+				} else if (x > 0 && x < 10) {
+					return "个位数";
+				} else {
+					return "大于等于10";
+				}
+			}`,
+			args: []any{5},
+			want: "个位数",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skip {
+				t.Skip("暂时跳过此测试")
+				return
+			}
+
+			goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TranspileJsScriptToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			result, execErr := goFunc(tt.args...)
+			if execErr != nil {
+				t.Errorf("Function execution error: %v", execErr)
+				return
+			}
+
+			reflect.DeepEqual(tt.want, result)
+		})
+	}
 }

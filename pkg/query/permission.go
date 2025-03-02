@@ -55,13 +55,21 @@ func (p *Permissions) CanView(params CanViewParams) bool {
 	return false
 }
 
+type CanCreateParams struct {
+	Collection string
+	DocId      string
+	NewDoc     *loro.LoroDoc
+	ClientId   string
+	Db         *DbWrapper
+}
+
 // CanCreate 检查客户端是否有权限创建指定集合中的文档
-func (p *Permissions) CanCreate(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
-	rule, ok := p.Rules[collection]
+func (p *Permissions) CanCreate(params CanCreateParams) bool {
+	rule, ok := p.Rules[params.Collection]
 	if !ok {
 		return false
 	}
-	ret, err := rule.CanCreate(docId, doc, clientId)
+	ret, err := rule.CanCreate(params)
 	if err != nil {
 		fmt.Printf("can create error: %+v\n", err)
 		return false
@@ -72,13 +80,22 @@ func (p *Permissions) CanCreate(collection string, docId string, doc *loro.LoroD
 	return false
 }
 
+type CanUpdateParams struct {
+	Collection string
+	DocId      string
+	NewDoc     *loro.LoroDoc
+	OldDoc     *loro.LoroDoc
+	ClientId   string
+	Db         *DbWrapper
+}
+
 // CanUpdate 检查客户端是否有权限更新指定集合中的指定文档
-func (p *Permissions) CanUpdate(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
-	rule, ok := p.Rules[collection]
+func (p *Permissions) CanUpdate(params CanUpdateParams) bool {
+	rule, ok := p.Rules[params.Collection]
 	if !ok {
 		return false
 	}
-	ret, err := rule.CanUpdate(docId, doc, clientId)
+	ret, err := rule.CanUpdate(params)
 	if err != nil {
 		fmt.Printf("can update error: %v", err)
 		return false
@@ -89,13 +106,21 @@ func (p *Permissions) CanUpdate(collection string, docId string, doc *loro.LoroD
 	return false
 }
 
+type CanDeleteParams struct {
+	Collection string
+	DocId      string
+	Doc        *loro.LoroDoc
+	ClientId   string
+	Db         *DbWrapper
+}
+
 // CanDelete 检查客户端是否有权限删除指定集合中的指定文档
-func (p *Permissions) CanDelete(collection string, docId string, doc *loro.LoroDoc, clientId string) bool {
-	rule, ok := p.Rules[collection]
+func (p *Permissions) CanDelete(params CanDeleteParams) bool {
+	rule, ok := p.Rules[params.Collection]
 	if !ok {
 		return false
 	}
-	ret, err := rule.CanDelete(docId, doc, clientId)
+	ret, err := rule.CanDelete(params)
 	if err != nil {
 		fmt.Printf("can delete error: %v", err)
 		return false
@@ -107,6 +132,7 @@ func (p *Permissions) CanDelete(collection string, docId string, doc *loro.LoroD
 }
 
 func (cr *CollectionRule) SetValidator(name string, fn CollectionRuleFunc) {
+	fmt.Printf("SetValidator called with name: %s, fn: %v\n", name, fn)
 	switch name {
 	case "canView":
 		cr.CanView = fn

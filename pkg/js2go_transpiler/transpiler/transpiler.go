@@ -137,11 +137,20 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 		return nil, err
 
 	case *ast.BlockStatement:
-		// 执行块中的每个语句，但不返回值
+		// 执行块中的每个语句，并检查是否有返回值
 		for _, stmt := range s.List {
-			_, err := executeStatement(stmt.Stmt, ctx)
+			result, err := executeStatement(stmt.Stmt, ctx)
 			if err != nil {
 				return nil, err
+			}
+			// 对于 return 语句，需要特殊处理，我们需要传播所有返回值，包括 nil 和 false
+			if _, isReturn := stmt.Stmt.(*ast.ReturnStatement); isReturn {
+				return result, nil
+			}
+
+			// 对于其他可能生成返回值的语句（如 IfStatement 内部包含 return），检查 result
+			if result != nil {
+				return result, nil
 			}
 		}
 		return nil, nil
@@ -153,13 +162,13 @@ func executeStatement(stmt ast.Stmt, ctx *Scope) (any, error) {
 			return nil, err
 		}
 
-		// 根据条件执行相应分支，但不返回值
+		// 根据条件执行相应分支，并传递返回值
 		if isTruthy(condition) {
-			_, err = executeStatement(s.Consequent.Stmt, ctx)
+			return executeStatement(s.Consequent.Stmt, ctx)
 		} else if s.Alternate != nil {
-			_, err = executeStatement(s.Alternate.Stmt, ctx)
+			return executeStatement(s.Alternate.Stmt, ctx)
 		}
-		return nil, err
+		return nil, nil
 
 	case *ast.VariableDeclaration:
 		// 执行每个变量声明
@@ -923,15 +932,18 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 				}
 			}
 
-			var result any
+			// 修改函数体执行逻辑，支持 early return
 			for _, stmt := range e.Body.List {
 				ret, err := executeStatement(stmt.Stmt, childCtx)
 				if err != nil {
 					return nil, err
 				}
-				result = ret
+				// 如果语句产生了非 nil 返回值（例如 return 语句），立即返回
+				if _, isReturn := stmt.Stmt.(*ast.ReturnStatement); isReturn || ret != nil {
+					return ret, nil
+				}
 			}
-			return result, nil
+			return nil, nil
 		}, nil
 
 	case *ast.ArrowFunctionLiteral:
@@ -1016,26 +1028,27 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 				}
 			}
 
+			// 处理函数体，检查 ConciseBody 的具体类型
 			switch body := e.Body.Body.(type) {
 			case *ast.BlockStatement:
-				var lastResult any
+				// 使用代码块的箭头函数
 				for _, stmt := range body.List {
 					ret, err := executeStatement(stmt.Stmt, childCtx)
-					if err == nil && ret != nil {
-						lastResult = ret
-					}
 					if err != nil {
 						return nil, err
 					}
+					// 如果语句产生了非 nil 返回值（例如 return 语句），立即返回
+					if ret != nil {
+						return ret, nil
+					}
 				}
-				return lastResult, nil
+				return nil, nil
 			case *ast.Expression:
-				result, err := executeExpression(body.Expr, childCtx)
-				if err != nil {
-					return nil, err
-				}
-				return result, nil
+				// 表达式体箭头函数
+				ret, err := executeExpression(body.Expr, childCtx)
+				return ret, err
 			}
+
 			return nil, nil
 		}, nil
 
