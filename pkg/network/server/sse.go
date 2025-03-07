@@ -1,4 +1,4 @@
-package network
+package network_server
 
 import (
 	"bytes"

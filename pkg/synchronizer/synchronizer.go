@@ -7,7 +7,7 @@ import (
 	"log"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network"
+	network_server "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/server"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -32,7 +32,7 @@ type SynchronizerConfig struct {
 type Synchronizer struct {
 	storageEngine           *storage_engine.StorageEngine
 	storageEngineEvents     *StorageEngineEvents
-	channel                 network.Channel
+	channel                 network_server.Channel
 	cancel                  context.CancelFunc
 	config                  SynchronizerConfig
 	permission              *query.Permissions
@@ -45,7 +45,7 @@ type StorageEngineEvents struct {
 	RollbackedCh <-chan any
 }
 
-func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel network.Channel, config *SynchronizerConfig) *Synchronizer {
+func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel network_server.Channel, config *SynchronizerConfig) *Synchronizer {
 	// 使用默认配置
 	if config == nil {
 		config = &SynchronizerConfig{}
@@ -223,7 +223,13 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				}
 
 				// 检查客户端是否有权限查看此文档
-				canView := s.permission.CanView(operation.Collection, operation.DocID, doc, clientId)
+				canViewParams := query.CanViewParams{
+					Collection: operation.Collection,
+					DocId:      operation.DocID,
+					Doc:        doc,
+					ClientId:   clientId,
+				}
+				canView := s.permission.CanView(canViewParams)
 				if !canView {
 					continue
 				}
@@ -252,7 +258,13 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				}
 
 				// 检查客户端是否有权限查看此文档
-				canView := s.permission.CanView(operation.Collection, operation.DocID, doc, clientId)
+				canViewParams := query.CanViewParams{
+					Collection: operation.Collection,
+					DocId:      operation.DocID,
+					Doc:        doc,
+					ClientId:   clientId,
+				}
+				canView := s.permission.CanView(canViewParams)
 				if !canView {
 					continue
 				}

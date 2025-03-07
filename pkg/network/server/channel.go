@@ -1,7 +1,6 @@
-package network
+package network_server
 
-// Channel 定义了一个通用的通信通道接口
-// CONN 是一个泛型参数,表示连接的具体类型
+// Channel 定义了一个服务端通用的通信通道接口
 type Channel interface {
 	// Setup 初始化通道
 	Setup() error

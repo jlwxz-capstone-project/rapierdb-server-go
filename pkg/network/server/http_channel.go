@@ -1,9 +1,15 @@
-package network
+package network_server
 
 import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	pe "github.com/pkg/errors"
+)
+
+var (
+	ErrClientNotFound = pe.New("client not found")
 )
 
 type HTTPChannel struct {
@@ -44,7 +50,7 @@ func (c *HTTPChannel) Close(clientId string) error {
 	defer c.mu.Unlock()
 
 	if _, exists := c.clients[clientId]; !exists {
-		return fmt.Errorf("client %s not found", clientId)
+		return pe.WithStack(fmt.Errorf("%w: 未知客户端 %s", ErrClientNotFound, clientId))
 	}
 
 	delete(c.clients, clientId)
@@ -65,14 +71,14 @@ func (c *HTTPChannel) Send(clientId string, msg []byte) error {
 	c.mu.RUnlock()
 
 	if !exists {
-		return fmt.Errorf("client %s not found", clientId)
+		return pe.WithStack(fmt.Errorf("%w: 未知客户端 %s", ErrClientNotFound, clientId))
 	}
 
 	// 消息按 SSE 格式编码
 	encoded := EncodeSSE(msg, nil)
 	_, err := client.Write(encoded)
 	if err != nil {
-		return err
+		return pe.WithStack(err)
 	}
 
 	client.(http.Flusher).Flush()
@@ -84,9 +90,11 @@ func (c *HTTPChannel) Broadcast(msg []byte) error {
 	defer c.mu.RUnlock()
 
 	for clientId, client := range c.clients {
-		_, err := fmt.Fprintf(client, "data: %s\n\n", msg)
+		// 使用 EncodeSSE 函数来正确格式化 SSE 消息
+		encoded := EncodeSSE(msg, nil)
+		_, err := client.Write(encoded)
 		if err != nil {
-			return fmt.Errorf("failed to broadcast to client %s: %v", clientId, err)
+			return pe.WithStack(fmt.Errorf("发送消息给 %s 失败: %v", clientId, err))
 		}
 		client.(http.Flusher).Flush()
 	}
