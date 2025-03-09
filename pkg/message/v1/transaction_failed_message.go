@@ -14,9 +14,14 @@ type TransactionFailedMessageV1 struct {
 	Reason error
 }
 
+var _ Message = &TransactionFailedMessageV1{}
+
+func (m *TransactionFailedMessageV1) isMessage() {}
+
 // Encode 将 TransactionFailedMessageV1 编码为 []byte
 func (m *TransactionFailedMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
+	util.WriteVarUint(buf, m.Type())
 	err := util.WriteVarString(buf, m.TxID)
 	if err != nil {
 		return nil, err
@@ -30,7 +35,7 @@ func (m *TransactionFailedMessageV1) Encode() ([]byte, error) {
 
 // DecodeTransactionFailedMessageV1 从 bytes.Buffer 中解码得到 TransactionFailedMessageV1
 // 如果解码失败，返回 nil
-func DecodeTransactionFailedMessageV1(b *bytes.Buffer) (*TransactionFailedMessageV1, error) {
+func decodeTransactionFailedMessageV1Body(b *bytes.Buffer) (*TransactionFailedMessageV1, error) {
 	txID, err := util.ReadVarString(b)
 	if err != nil {
 		return nil, err
@@ -43,4 +48,8 @@ func DecodeTransactionFailedMessageV1(b *bytes.Buffer) (*TransactionFailedMessag
 		TxID:   txID,
 		Reason: errors.New(reason),
 	}, nil
+}
+
+func (m *TransactionFailedMessageV1) Type() uint64 {
+	return MSG_TYPE_TRANSACTION_FAILED_V1
 }

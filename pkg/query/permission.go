@@ -132,7 +132,6 @@ func (p *Permissions) CanDelete(params CanDeleteParams) bool {
 }
 
 func (cr *CollectionRule) SetValidator(name string, fn CollectionRuleFunc) {
-	fmt.Printf("SetValidator called with name: %s, fn: %v\n", name, fn)
 	switch name {
 	case "canView":
 		cr.CanView = fn

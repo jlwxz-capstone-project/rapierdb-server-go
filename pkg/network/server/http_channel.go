@@ -102,6 +102,17 @@ func (c *HTTPChannel) Broadcast(msg []byte) error {
 	return nil
 }
 
+func (c *HTTPChannel) GetAllConnectedClientIds() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	ids := make([]string, 0, len(c.clients))
+	for id := range c.clients {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 func (c *HTTPChannel) SetMsgHandler(handler func(clientId string, msg []byte)) {
 	c.mu.Lock()
 	c.handler = handler

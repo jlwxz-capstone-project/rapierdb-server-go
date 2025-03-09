@@ -11,8 +11,13 @@ type SubscriptionUpdateMessageV1 struct {
 	Removed []string
 }
 
+var _ Message = &SubscriptionUpdateMessageV1{}
+
+func (m *SubscriptionUpdateMessageV1) isMessage() {}
+
 func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
+	util.WriteVarUint(buf, m.Type())
 	util.WriteVarUint(buf, uint64(len(m.Added)))
 	for _, sub := range m.Added {
 		util.WriteVarString(buf, sub)
@@ -24,7 +29,7 @@ func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func DecodeSubscriptionUpdateMessageV1(b *bytes.Buffer) (*SubscriptionUpdateMessageV1, error) {
+func decodeSubscriptionUpdateMessageV1Body(b *bytes.Buffer) (*SubscriptionUpdateMessageV1, error) {
 	addedLen, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -57,4 +62,8 @@ func DecodeSubscriptionUpdateMessageV1(b *bytes.Buffer) (*SubscriptionUpdateMess
 		Added:   added,
 		Removed: removed,
 	}, nil
+}
+
+func (m *SubscriptionUpdateMessageV1) Type() uint64 {
+	return MSG_TYPE_SUBSCRIPTION_UPDATE_V1
 }

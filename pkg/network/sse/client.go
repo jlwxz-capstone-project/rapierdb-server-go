@@ -22,26 +22,26 @@ var (
 	headerRetry = []byte("retry:")
 )
 
-func ClientMaxBufferSize(s int) func(c *Client) {
-	return func(c *Client) {
+func ClientMaxBufferSize(s int) func(c *SseClient) {
+	return func(c *SseClient) {
 		c.maxBufferSize = s
 	}
 }
 
 // ConnCallback 定义了在特定连接事件上调用的函数
-type ConnCallback func(c *Client)
+type ConnCallback func(c *SseClient)
 
 // ResponseValidator 验证响应
-type ResponseValidator func(c *Client, resp *http.Response) error
+type ResponseValidator func(c *SseClient, resp *http.Response) error
 
-// Client 处理传入的服务器端发送事件(SSE)流
+// SseClient 处理传入的服务器端发送事件(SSE)流
 // 它提供了连接到 SSE 服务器、订阅事件流、处理重连以及管理多个订阅的功能。
 // 使用方法:
 // 1. 使用 NewClient 创建客户端实例
 // 2. 可选择性配置 Headers、重连策略等
 // 3. 调用 Subscribe 或 SubscribeChan 方法订阅事件流
 // 4. 使用 Unsubscribe 方法取消订阅
-type Client struct {
+type SseClient struct {
 	Retry             time.Time                        // 重试连接的时间点
 	ReconnectStrategy backoff.BackOff                  // 重连策略，定义了重连的间隔和次数
 	disconnectcb      ConnCallback                     // 断开连接时的回调函数
@@ -59,9 +59,9 @@ type Client struct {
 	Connected         bool                             // 当前连接状态
 }
 
-// NewClient 创建一个新的 Sse 客户端
-func NewClient(url string, opts ...func(c *Client)) *Client {
-	c := &Client{
+// NewSseClient 创建一个新的 Sse 客户端
+func NewSseClient(url string, opts ...func(c *SseClient)) *SseClient {
+	c := &SseClient{
 		URL:           url,
 		Connection:    &http.Client{},
 		Headers:       make(map[string]string),
@@ -77,12 +77,12 @@ func NewClient(url string, opts ...func(c *Client)) *Client {
 }
 
 // Subscribe 订阅 SSE 端点
-func (c *Client) Subscribe(handler func(msg *SseEvent)) error {
+func (c *SseClient) Subscribe(handler func(msg *SseEvent)) error {
 	return c.SubscribeWithContext(context.Background(), handler)
 }
 
 // SubscribeWithContext 使用上下文订阅 SSE 端点
-func (c *Client) SubscribeWithContext(ctx context.Context, handler func(msg *SseEvent)) error {
+func (c *SseClient) SubscribeWithContext(ctx context.Context, handler func(msg *SseEvent)) error {
 	operation := func() (struct{}, error) {
 		resp, err := c.request(ctx)
 		if err != nil {
@@ -133,12 +133,12 @@ func (c *Client) SubscribeWithContext(ctx context.Context, handler func(msg *Sse
 }
 
 // SubscribeChan 将所有事件发送到提供的通道
-func (c *Client) SubscribeChan(ch chan *SseEvent) error {
+func (c *SseClient) SubscribeChan(ch chan *SseEvent) error {
 	return c.SubscribeChanWithContext(context.Background(), ch)
 }
 
 // SubscribeChanWithContext 使用上下文将所有事件发送到提供的通道
-func (c *Client) SubscribeChanWithContext(ctx context.Context, ch chan *SseEvent) error {
+func (c *SseClient) SubscribeChanWithContext(ctx context.Context, ch chan *SseEvent) error {
 	var connected bool
 	errch := make(chan error)
 	c.mu.Lock()
@@ -222,14 +222,14 @@ func (c *Client) SubscribeChanWithContext(ctx context.Context, ch chan *SseEvent
 	return err
 }
 
-func (c *Client) startReadLoop(reader *EventStreamReader) (chan *SseEvent, chan error) {
+func (c *SseClient) startReadLoop(reader *EventStreamReader) (chan *SseEvent, chan error) {
 	outCh := make(chan *SseEvent)
 	erChan := make(chan error)
 	go c.readLoop(reader, outCh, erChan)
 	return outCh, erChan
 }
 
-func (c *Client) readLoop(reader *EventStreamReader, outCh chan *SseEvent, erChan chan error) {
+func (c *SseClient) readLoop(reader *EventStreamReader, outCh chan *SseEvent, erChan chan error) {
 	for {
 		// 读取每个新行并处理事件类型
 		event, err := reader.ReadEvent()
@@ -270,7 +270,7 @@ func (c *Client) readLoop(reader *EventStreamReader, outCh chan *SseEvent, erCha
 }
 
 // Unsubscribe 取消订阅通道
-func (c *Client) Unsubscribe(ch chan *SseEvent) {
+func (c *SseClient) Unsubscribe(ch chan *SseEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -280,16 +280,16 @@ func (c *Client) Unsubscribe(ch chan *SseEvent) {
 }
 
 // OnDisconnect 指定连接断开时运行的函数
-func (c *Client) OnDisconnect(fn ConnCallback) {
+func (c *SseClient) OnDisconnect(fn ConnCallback) {
 	c.disconnectcb = fn
 }
 
 // OnConnect 指定连接成功时运行的函数
-func (c *Client) OnConnect(fn ConnCallback) {
+func (c *SseClient) OnConnect(fn ConnCallback) {
 	c.connectedcb = fn
 }
 
-func (c *Client) request(ctx context.Context) (*http.Response, error) {
+func (c *SseClient) request(ctx context.Context) (*http.Response, error) {
 	req, err := http.NewRequest("GET", c.URL, nil)
 	if err != nil {
 		return nil, err
@@ -315,7 +315,7 @@ func (c *Client) request(ctx context.Context) (*http.Response, error) {
 	return c.Connection.Do(req)
 }
 
-func (c *Client) processEvent(msg []byte) (event *SseEvent, err error) {
+func (c *SseClient) processEvent(msg []byte) (event *SseEvent, err error) {
 	var e SseEvent
 
 	if len(msg) < 1 {
@@ -359,7 +359,7 @@ func (c *Client) processEvent(msg []byte) (event *SseEvent, err error) {
 	return &e, err
 }
 
-func (c *Client) cleanup(ch chan *SseEvent) {
+func (c *SseClient) cleanup(ch chan *SseEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

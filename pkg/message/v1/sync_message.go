@@ -13,8 +13,13 @@ type SyncMessageV1 struct {
 	Delete []string
 }
 
+var _ Message = &SyncMessageV1{}
+
+func (m *SyncMessageV1) isMessage() {}
+
 func (m *SyncMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
+	util.WriteVarUint(buf, m.Type())
 	err := util.WriteVarUint(buf, uint64(len(m.Upsert)))
 	if err != nil {
 		return nil, err
@@ -42,7 +47,7 @@ func (m *SyncMessageV1) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func DecodeSyncMessageV1(b *bytes.Buffer) (*SyncMessageV1, error) {
+func decodeSyncMessageV1Body(b *bytes.Buffer) (*SyncMessageV1, error) {
 	upsertLen, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -79,4 +84,8 @@ func DecodeSyncMessageV1(b *bytes.Buffer) (*SyncMessageV1, error) {
 		Upsert: upsert,
 		Delete: delete,
 	}, nil
+}
+
+func (m *SyncMessageV1) Type() uint64 {
+	return MSG_TYPE_SYNC_V1
 }
