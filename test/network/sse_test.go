@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/auth"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
 	network_server "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/server"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/sse"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
@@ -130,18 +128,18 @@ func TestBasicCURD(t *testing.T) {
 		}
 	}()
 
-	apiUrl := "http://localhost:8080/api?client_id=test_client"
-	msg1 := message.SubscriptionUpdateMessageV1{
-		Added:   []string{"users"},
-		Removed: []string{},
-	}
-	msg1Bytes, err := msg1.Encode()
-	if err != nil {
-		log.Terrorf(t, "编码失败: %v", err)
-		return
-	}
-	log.Info("客户端发送消息要求更新订阅")
-	http.Post(apiUrl, "", bytes.NewReader(msg1Bytes))
+	// apiUrl := "http://localhost:8080/api?client_id=test_client"
+	// msg1 := message.SubscriptionUpdateMessageV1{
+	// 	Added:   []string{"users"},
+	// 	Removed: []string{},
+	// }
+	// msg1Bytes, err := msg1.Encode()
+	// if err != nil {
+	// 	log.Terrorf(t, "编码失败: %v", err)
+	// 	return
+	// }
+	// log.Info("客户端发送消息要求更新订阅")
+	// http.Post(apiUrl, "", bytes.NewReader(msg1Bytes))
 
 	// 处理接收到的事件
 	go func() {

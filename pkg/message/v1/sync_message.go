@@ -6,18 +6,18 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
-// SyncMessage 由服务端发送给客户端
+// PostDocMessageV1 由服务端发送给客户端
 // 携带有客户端需要同步的数据
-type SyncMessageV1 struct {
+type PostDocMessageV1 struct {
 	Upsert map[string][]byte
 	Delete []string
 }
 
-var _ Message = &SyncMessageV1{}
+var _ Message = &PostDocMessageV1{}
 
-func (m *SyncMessageV1) isMessage() {}
+func (m *PostDocMessageV1) isMessage() {}
 
-func (m *SyncMessageV1) Encode() ([]byte, error) {
+func (m *PostDocMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteVarUint(buf, m.Type())
 	err := util.WriteVarUint(buf, uint64(len(m.Upsert)))
@@ -47,7 +47,7 @@ func (m *SyncMessageV1) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodeSyncMessageV1Body(b *bytes.Buffer) (*SyncMessageV1, error) {
+func decodeSyncMessageV1Body(b *bytes.Buffer) (*PostDocMessageV1, error) {
 	upsertLen, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -80,12 +80,12 @@ func decodeSyncMessageV1Body(b *bytes.Buffer) (*SyncMessageV1, error) {
 		delete = append(delete, key)
 	}
 
-	return &SyncMessageV1{
+	return &PostDocMessageV1{
 		Upsert: upsert,
 		Delete: delete,
 	}, nil
 }
 
-func (m *SyncMessageV1) Type() uint64 {
-	return MSG_TYPE_SYNC_V1
+func (m *PostDocMessageV1) Type() uint64 {
+	return MSG_TYPE_POST_DOC_V1
 }

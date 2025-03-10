@@ -18,7 +18,7 @@ var (
 type RapierDbHTTPServer struct {
 	channel      *HTTPChannel
 	server       *http.Server
-	authProvider auth.AuthProvider[*http.Request]
+	authProvider auth.Authenticator[*http.Request]
 }
 
 type RapierDbHTTPServerOption struct {
@@ -58,7 +58,7 @@ func (s *RapierDbHTTPServer) Stop() error {
 	return s.server.Close()
 }
 
-func (s *RapierDbHTTPServer) SetAuthProvider(authProvider auth.AuthProvider[*http.Request]) {
+func (s *RapierDbHTTPServer) SetAuthProvider(authProvider auth.Authenticator[*http.Request]) {
 	s.authProvider = authProvider
 }
 
@@ -77,7 +77,7 @@ func (s *RapierDbHTTPServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 从 AuthProvider 获取客户端 ID
-	authResult := <-s.authProvider.GetClientId(r)
+	authResult := <-s.authProvider.Authenticate(r)
 	if authResult.Err != nil {
 		http.Error(w, "认证失败", http.StatusUnauthorized)
 		log.Printf("SSE 请求认证失败，错误为 %v", authResult.Err)
@@ -107,7 +107,7 @@ func (s *RapierDbHTTPServer) handleApi(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 从 AuthProvider 获取客户端 ID
-	authResult := <-s.authProvider.GetClientId(r)
+	authResult := <-s.authProvider.Authenticate(r)
 	if authResult.Err != nil {
 		http.Error(w, "认证失败", http.StatusUnauthorized)
 		log.Printf("API 请求认证失败，错误为 %v", authResult.Err)

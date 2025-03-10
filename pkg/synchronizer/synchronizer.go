@@ -1,4 +1,4 @@
-package db
+package synchronizer
 
 import (
 	"bytes"
@@ -21,13 +21,13 @@ type SynchronizerConfig struct {
 }
 
 type Synchronizer struct {
-	storageEngine           *storage_engine.StorageEngine
-	storageEngineEvents     *StorageEngineEvents
-	channel                 network_server.Channel
-	cancel                  context.CancelFunc
-	config                  SynchronizerConfig
-	permission              *query.Permissions
-	collectionSubscriptions map[string]map[string]struct{}
+	storageEngine       *storage_engine.StorageEngine
+	storageEngineEvents *StorageEngineEvents
+	channel             network_server.Channel
+	cancel              context.CancelFunc
+	config              SynchronizerConfig
+	permission          *query.Permissions
+	activeSet           *ActiveSet
 }
 
 type StorageEngineEvents struct {
@@ -49,13 +49,13 @@ func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel networ
 	}
 
 	synchronizer := &Synchronizer{
-		storageEngine:           storageEngine,
-		storageEngineEvents:     &StorageEngineEvents{},
-		channel:                 channel,
-		cancel:                  nil,
-		config:                  *config,
-		permission:              permission,
-		collectionSubscriptions: make(map[string]map[string]struct{}),
+		storageEngine:       storageEngine,
+		storageEngineEvents: &StorageEngineEvents{},
+		channel:             channel,
+		cancel:              nil,
+		config:              *config,
+		permission:          permission,
+		activeSet:           NewActiveSet(),
 	}
 	log.Debugf("NewSynchronizer: 同步器创建成功")
 	return synchronizer
@@ -125,15 +125,21 @@ func (s *Synchronizer) Start() error {
 		case *message.SubscriptionUpdateMessageV1:
 			log.Debugf("msgHandler: 收到 SubscriptionUpdateMessageV1 %+v 来自 %s", msg, clientId)
 			// 处理添加的订阅
-			for _, collection := range msg.Added {
-				log.Debugf("msgHandler: 客户端 %s 订阅集合 %s", clientId, collection)
-				s.Subscribe(clientId, collection)
+			for _, query := range msg.Added {
+				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, query)
+				err := s.activeSet.AddSubscription(clientId, query)
+				if err != nil {
+					log.Errorf("msgHandler: 添加订阅失败: %v", err)
+				}
 			}
 
 			// 处理移除的订阅
-			for _, collection := range msg.Removed {
-				log.Debugf("msgHandler: 客户端 %s 取消订阅集合 %s", clientId, collection)
-				s.Unsubscribe(clientId, collection)
+			for _, query := range msg.Removed {
+				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, query)
+				err := s.activeSet.RemoveSubscription(clientId, query)
+				if err != nil {
+					log.Errorf("msgHandler: 移除订阅失败: %v", err)
+				}
 			}
 		}
 	}
@@ -141,26 +147,6 @@ func (s *Synchronizer) Start() error {
 	log.Debugf("Synchronizer.Start: 同步器启动完成")
 
 	return nil
-}
-
-func (s *Synchronizer) Subscribe(clientId string, collection string) {
-	log.Debugf("Synchronizer.Subscribe: 客户端 %s 订阅集合 %s", clientId, collection)
-	if _, ok := s.collectionSubscriptions[clientId]; !ok {
-		s.collectionSubscriptions[clientId] = make(map[string]struct{})
-	}
-	s.collectionSubscriptions[clientId][collection] = struct{}{}
-}
-
-func (s *Synchronizer) Unsubscribe(clientId string, collection string) {
-	log.Debugf("Synchronizer.Unsubscribe: 客户端 %s 取消订阅集合 %s", clientId, collection)
-	if subscriptions, ok := s.collectionSubscriptions[clientId]; ok {
-		delete(subscriptions, collection)
-		// 如果该客户端没有订阅任何集合了,删除该客户端的记录
-		if len(subscriptions) == 0 {
-			log.Debugf("Synchronizer.Unsubscribe: 客户端 %s 没有任何订阅，移除客户端记录", clientId)
-			delete(s.collectionSubscriptions, clientId)
-		}
-	}
 }
 
 // handleTransactionCommitted 处理事务提交事件
@@ -199,12 +185,18 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 		}
 
 		// 获取客户端订阅的集合
-		subscriptions, ok := s.collectionSubscriptions[clientId]
-		if !ok || len(subscriptions) == 0 {
-			log.Debugf("handleTransactionCommitted: 客户端 %s 没有订阅任何集合", clientId)
-			continue // 该客户端没有订阅任何集合
+		queries := s.activeSet.GetSubscriptions(clientId)
+		// TODO: 这里之后应该采用 Event Reduce 算法
+		// 现在暂时找出订阅的查询涉及的所有集合
+		collections := make(map[string]struct{})
+		for _, q := range queries {
+			switch q := q.(type) {
+			case *query.FindManyQuery:
+				collections[q.Collection] = struct{}{}
+			case *query.FindOneQuery:
+				collections[q.Collection] = struct{}{}
+			}
 		}
-		log.Debugf("handleTransactionCommitted: 客户端 %s 订阅了 %d 个集合", clientId, len(subscriptions))
 
 		// 遍历事务中的所有操作，查找修改的文档
 		upsertDocs := make(map[string][]byte)
@@ -214,7 +206,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 			switch operation := op.(type) {
 			case storage_engine.InsertOp:
 				// 检查该集合是否被订阅
-				if _, subscribed := subscriptions[operation.Collection]; !subscribed {
+				if _, subscribed := collections[operation.Collection]; !subscribed {
 					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
 					continue
 				}
@@ -254,7 +246,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 
 			case storage_engine.UpdateOp:
 				// 检查该集合是否被订阅
-				if _, subscribed := subscriptions[operation.Collection]; !subscribed {
+				if _, subscribed := collections[operation.Collection]; !subscribed {
 					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
 					continue
 				}
@@ -295,7 +287,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 
 			case storage_engine.DeleteOp:
 				// 检查该集合是否被订阅
-				if _, subscribed := subscriptions[operation.Collection]; !subscribed {
+				if _, subscribed := collections[operation.Collection]; !subscribed {
 					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
 					continue
 				}
@@ -318,7 +310,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 		if len(upsertDocs) > 0 || len(deleteDocs) > 0 {
 			log.Debugf("handleTransactionCommitted: 向客户端 %s 发送同步消息，upsert: %d, delete: %d",
 				clientId, len(upsertDocs), len(deleteDocs))
-			syncMsg := message.SyncMessageV1{
+			syncMsg := message.PostDocMessageV1{
 				Upsert: upsertDocs,
 				Delete: deleteDocs,
 			}

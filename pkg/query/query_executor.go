@@ -17,9 +17,9 @@ func NewQueryExecutor(storageEngine *storage_engine.StorageEngine) *QueryExecuto
 	}
 }
 
-func (q *QueryExecutor) FindOne(collection string, query *FindOneQuery) (*loro.LoroDoc, error) {
-	// 全部载入内存有问题
-	docs, err := q.StorageEngine.LoadAllDocsInCollection(collection, true)
+func (q *QueryExecutor) FindOne(query *FindOneQuery) (*loro.LoroDoc, error) {
+	// TODO: 全部载入内存有问题
+	docs, err := q.StorageEngine.LoadAllDocsInCollection(query.Collection, true)
 	if err != nil {
 		return nil, err
 	}
@@ -36,8 +36,9 @@ func (q *QueryExecutor) FindOne(collection string, query *FindOneQuery) (*loro.L
 	return nil, nil
 }
 
-func (q *QueryExecutor) FindMany(collection string, query *FindManyQuery) ([]*loro.LoroDoc, error) {
-	docs, err := q.StorageEngine.LoadAllDocsInCollection(collection, true)
+func (q *QueryExecutor) FindMany(query *FindManyQuery) ([]*loro.LoroDoc, error) {
+	// TODO: 全部载入内存有问题
+	docs, err := q.StorageEngine.LoadAllDocsInCollection(query.Collection, true)
 	if err != nil {
 		return nil, err
 	}

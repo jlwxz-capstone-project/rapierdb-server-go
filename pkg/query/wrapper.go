@@ -48,7 +48,9 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 				skip := transpiler.GetField(access.Args[0], "skip")
 				limit := transpiler.GetField(access.Args[0], "limit")
 
-				query := &FindManyQuery{}
+				query := &FindManyQuery{
+					Collection: cw.Collection,
+				}
 
 				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
 					query.Filter = filter
@@ -89,7 +91,7 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 					}
 				}
 
-				docs, err := cw.QueryExecutor.FindMany(cw.Collection, query)
+				docs, err := cw.QueryExecutor.FindMany(query)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
@@ -100,7 +102,9 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 					return nil, errors.WithStack(fmt.Errorf("query expects 1 argument"))
 				}
 
-				query := &FindOneQuery{}
+				query := &FindOneQuery{
+					Collection: cw.Collection,
+				}
 				filter := transpiler.GetField(access.Args[0], "filter")
 				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
 					query.Filter = filter
@@ -108,7 +112,7 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 					return nil, errors.WithStack(fmt.Errorf("invalid query: filter must be a QueryFilterExpr"))
 				}
 
-				doc, err := cw.QueryExecutor.FindOne(cw.Collection, query)
+				doc, err := cw.QueryExecutor.FindOne(query)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}

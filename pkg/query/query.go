@@ -1,12 +1,19 @@
 package query
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	pe "github.com/pkg/errors"
+)
+
+const (
+	FIND_MANY_QUERY_TYPE uint64 = 1
+	FIND_ONE_QUERY_TYPE  uint64 = 2
 )
 
 // SortOrder 表示排序顺序
@@ -23,25 +30,42 @@ type SortField struct {
 	Order SortOrder `json:"order"` // 排序顺序
 }
 
+type Query interface {
+	isQuery()
+	Encode() ([]byte, error)
+}
+
 // FindOneQuery 表示一个仅用于查询单个文档的查询
 //
+//	Collection: 集合名称
 //	Filter: 过滤条件
 type FindOneQuery struct {
-	Filter qfe.QueryFilterExpr `json:"filter,omitempty"` // 过滤条件
+	Collection string              `json:"collection"`       // 集合名称
+	Filter     qfe.QueryFilterExpr `json:"filter,omitempty"` // 过滤条件
 }
+
+var _ Query = &FindOneQuery{}
+
+func (q *FindOneQuery) isQuery() {}
 
 // FindManyQuery 表示一个仅用于查询多个文档的查询
 //
+//	Collection: 集合名称
 //	Filter: 过滤条件
 //	Sort: 排序规则
 //	Skip: 跳过的文档数量
 //	Limit: 返回的最大文档数量
 type FindManyQuery struct {
-	Filter qfe.QueryFilterExpr `json:"filter,omitempty"` // 过滤条件
-	Sort   []SortField         `json:"sort,omitempty"`   // 排序规则
-	Skip   int64               `json:"skip,omitempty"`   // 跳过的文档数量
-	Limit  int64               `json:"limit,omitempty"`  // 返回的最大文档数量
+	Collection string              `json:"collection"`       // 集合名称
+	Filter     qfe.QueryFilterExpr `json:"filter,omitempty"` // 过滤条件
+	Sort       []SortField         `json:"sort,omitempty"`   // 排序规则
+	Skip       int64               `json:"skip,omitempty"`   // 跳过的文档数量
+	Limit      int64               `json:"limit,omitempty"`  // 返回的最大文档数量
 }
+
+var _ Query = &FindManyQuery{}
+
+func (q *FindManyQuery) isQuery() {}
 
 func NewFindOneQuery() *FindOneQuery {
 	return &FindOneQuery{}
@@ -227,4 +251,89 @@ func (q *FindManyQuery) UnmarshalJSON(data []byte) error {
 	q.Limit = raw.Limit
 
 	return nil
+}
+
+func (q *FindOneQuery) Encode() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	util.WriteVarUint(buf, FIND_ONE_QUERY_TYPE)
+	json, err := q.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	util.WriteBytes(buf, json)
+	return buf.Bytes(), nil
+}
+
+func (q *FindManyQuery) Encode() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	util.WriteVarUint(buf, FIND_MANY_QUERY_TYPE)
+	json, err := q.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	util.WriteBytes(buf, json)
+	return buf.Bytes(), nil
+}
+
+func decodeFindOneQueryBody(data []byte) (*FindOneQuery, error) {
+	query := NewFindOneQuery()
+	err := query.UnmarshalJSON(data)
+	if err != nil {
+		return nil, err
+	}
+	return query, nil
+}
+
+func decodeFindManyQueryBody(data []byte) (*FindManyQuery, error) {
+	query := NewFindManyQuery()
+	err := query.UnmarshalJSON(data)
+	if err != nil {
+		return nil, err
+	}
+	return query, nil
+}
+
+func DecodeQuery(data []byte) (Query, error) {
+	buf := bytes.NewBuffer(data)
+	queryType, err := util.ReadVarUint(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, err := util.ReadBytes(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	if queryType == FIND_ONE_QUERY_TYPE {
+		return decodeFindOneQueryBody(bodyBytes)
+	} else if queryType == FIND_MANY_QUERY_TYPE {
+		return decodeFindManyQueryBody(bodyBytes)
+	} else {
+		return nil, pe.WithStack(fmt.Errorf("invalid query type: %d", queryType))
+	}
+}
+
+func DecodeFindOneQuery(data []byte) (*FindOneQuery, error) {
+	query, err := DecodeQuery(data)
+	if err != nil {
+		return nil, err
+	}
+	findOneQuery, ok := query.(*FindOneQuery)
+	if !ok {
+		return nil, pe.WithStack(fmt.Errorf("invalid query type: %T", query))
+	}
+	return findOneQuery, nil
+}
+
+func DecodeFindManyQuery(data []byte) (*FindManyQuery, error) {
+	query, err := DecodeQuery(data)
+	if err != nil {
+		return nil, err
+	}
+	findManyQuery, ok := query.(*FindManyQuery)
+	if !ok {
+		return nil, pe.WithStack(fmt.Errorf("invalid query type: %T", query))
+	}
+	return findManyQuery, nil
 }

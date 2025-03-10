@@ -17,9 +17,11 @@ type Message interface {
 const (
 	MSG_TYPE_POST_TRANSACTION_V1    uint64 = 1
 	MSG_TYPE_SUBSCRIPTION_UPDATE_V1 uint64 = 2
-	MSG_TYPE_SYNC_V1                uint64 = 3
+	MSG_TYPE_POST_DOC_V1            uint64 = 3
 	MSG_TYPE_ACK_TRANSACTION_V1     uint64 = 4
 	MSG_TYPE_TRANSACTION_FAILED_V1  uint64 = 5
+	MSG_TYPE_VERSION_QUERY_V1       uint64 = 6
+	MSG_TYPE_VERSION_QUERY_RESP_V1  uint64 = 7
 )
 
 func DecodeMessage(b *bytes.Buffer) (Message, error) {
@@ -37,8 +39,12 @@ func DecodeMessage(b *bytes.Buffer) (Message, error) {
 		return decodeTransactionFailedMessageV1Body(b)
 	case MSG_TYPE_POST_TRANSACTION_V1:
 		return decodePostTransactionMessageV1Body(b)
-	case MSG_TYPE_SYNC_V1:
+	case MSG_TYPE_POST_DOC_V1:
 		return decodeSyncMessageV1Body(b)
+	case MSG_TYPE_VERSION_QUERY_V1:
+		return decodeVersionQueryMessageV1Body(b)
+	case MSG_TYPE_VERSION_QUERY_RESP_V1:
+		return decodeVersionQueryRespMessageV1Body(b)
 	default:
 		return nil, errors.New("未知的消息类型")
 	}

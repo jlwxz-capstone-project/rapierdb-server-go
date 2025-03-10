@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -132,11 +134,9 @@ func TestQuerySort(t *testing.T) {
 	}
 }
 
-// 测试分页参数
 func TestQueryPagination(t *testing.T) {
 	query := query.NewFindManyQuery()
 
-	// 测试有效的分页参数
 	err := query.SetSkip(10)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), query.Skip)
@@ -145,7 +145,6 @@ func TestQueryPagination(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(20), query.Limit)
 
-	// 测试无效的分页参数
 	err = query.SetSkip(-1)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "skip must be non-negative")
@@ -155,39 +154,133 @@ func TestQueryPagination(t *testing.T) {
 	assert.Contains(t, err.Error(), "limit must be non-negative")
 }
 
-// 测试 JSON 序列化和反序列化
-func TestQuerySerialization(t *testing.T) {
-	q := query.NewFindManyQuery()
+func TestQueryEncodeDecode(t *testing.T) {
+	t.Run("FindOneQuery", func(t *testing.T) {
+		query1 := query.NewFindOneQuery()
 
-	// 设置过滤条件
-	q.SetFilter(&qfe.GtExpr{
-		O1: &qfe.FieldValueExpr{Path: "root/age"},
-		O2: &qfe.ValueExpr{Value: int64(25)},
+		fieldExpr := &qfe.FieldValueExpr{Path: "name"}
+		valueExpr := &qfe.ValueExpr{Value: "张三"}
+		eqExpr := &qfe.EqExpr{O1: fieldExpr, O2: valueExpr}
+
+		query1.SetFilter(eqExpr)
+
+		encoded, err := query1.Encode()
+		assert.NoError(t, err)
+		assert.NotNil(t, encoded)
+
+		decoded, err := query.DecodeFindOneQuery(encoded)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+
+		reEncoded, err := decoded.Encode()
+		assert.NoError(t, err)
+		assert.Equal(t, encoded, reEncoded)
 	})
 
-	// 添加排序规则
-	q.AddSort("root/age", query.SortOrderAsc)
-	q.AddSort("root/score", query.SortOrderDesc)
+	t.Run("FindManyQuery", func(t *testing.T) {
+		query1 := query.NewFindManyQuery()
 
-	// 设置分页参数
-	q.SetSkip(10)
-	q.SetLimit(20)
+		fieldExpr := &qfe.FieldValueExpr{Path: "age"}
+		valueExpr := &qfe.ValueExpr{Value: int64(18)}
+		gtExpr := &qfe.GtExpr{O1: fieldExpr, O2: valueExpr}
 
-	// 序列化
-	data, err := q.MarshalJSON()
-	assert.NoError(t, err)
+		query1.SetFilter(gtExpr)
 
-	// 反序列化
-	query2 := query.NewFindManyQuery()
-	err = query2.UnmarshalJSON(data)
-	assert.NoError(t, err)
+		query1.AddSort("age", query.SortOrderDesc)
+		query1.AddSort("name", query.SortOrderAsc)
 
-	// 验证反序列化后的结果
-	assert.Equal(t, q.Skip, query2.Skip)
-	assert.Equal(t, q.Limit, query2.Limit)
-	assert.Equal(t, len(q.Sort), len(query2.Sort))
-	for i := range q.Sort {
-		assert.Equal(t, q.Sort[i].Field, query2.Sort[i].Field)
-		assert.Equal(t, q.Sort[i].Order, query2.Sort[i].Order)
-	}
+		err := query1.SetSkip(10)
+		assert.NoError(t, err)
+
+		err = query1.SetLimit(20)
+		assert.NoError(t, err)
+
+		encoded, err := query1.Encode()
+		assert.NoError(t, err)
+		assert.NotNil(t, encoded)
+
+		decoded, err := query.DecodeFindManyQuery(encoded)
+		assert.NoError(t, err)
+		assert.NotNil(t, decoded)
+
+		reEncoded, err := decoded.Encode()
+		assert.NoError(t, err)
+		assert.Equal(t, encoded, reEncoded)
+
+		assert.Equal(t, int64(10), decoded.Skip)
+		assert.Equal(t, int64(20), decoded.Limit)
+		assert.Equal(t, 2, len(decoded.Sort))
+		assert.Equal(t, "age", decoded.Sort[0].Field)
+		assert.Equal(t, query.SortOrderDesc, decoded.Sort[0].Order)
+		assert.Equal(t, "name", decoded.Sort[1].Field)
+		assert.Equal(t, query.SortOrderAsc, decoded.Sort[1].Order)
+	})
+
+	t.Run("InvalidQueryType", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		util.WriteVarUint(buf, uint64(999))
+		util.WriteBytes(buf, []byte("{}"))
+
+		_, err := query.DecodeFindOneQuery(buf.Bytes())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid query type")
+
+		_, err = query.DecodeFindManyQuery(buf.Bytes())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid query type")
+	})
+}
+
+func TestStableStringify(t *testing.T) {
+	t.Run("FindOneQuery", func(t *testing.T) {
+		query1 := query.NewFindOneQuery()
+
+		fieldExpr := &qfe.FieldValueExpr{Path: "name"}
+		valueExpr := &qfe.ValueExpr{Value: "张三"}
+		eqExpr := &qfe.EqExpr{O1: fieldExpr, O2: valueExpr}
+
+		query1.SetFilter(eqExpr)
+
+		str1, err := query.StableStringify(query1)
+		assert.NoError(t, err)
+
+		query2 := query.NewFindOneQuery()
+		query2.SetFilter(eqExpr)
+
+		str2, err := query.StableStringify(query2)
+		assert.NoError(t, err)
+
+		assert.Equal(t, str1, str2)
+	})
+
+	t.Run("FindManyQuery", func(t *testing.T) {
+		query1 := query.NewFindManyQuery()
+
+		fieldExpr := &qfe.FieldValueExpr{Path: "age"}
+		valueExpr := &qfe.ValueExpr{Value: int64(18)}
+		gtExpr := &qfe.GtExpr{O1: fieldExpr, O2: valueExpr}
+
+		query1.SetFilter(gtExpr)
+
+		query1.AddSort("age", query.SortOrderDesc)
+		query1.AddSort("name", query.SortOrderAsc)
+
+		query1.SetSkip(10)
+		query1.SetLimit(20)
+
+		str1, err := query.StableStringify(query1)
+		assert.NoError(t, err)
+
+		query2 := query.NewFindManyQuery()
+		query2.SetLimit(20)
+		query2.AddSort("name", query.SortOrderAsc)
+		query2.SetFilter(gtExpr)
+		query2.SetSkip(10)
+		query2.AddSort("age", query.SortOrderDesc)
+
+		str2, err := query.StableStringify(query2)
+		assert.NoError(t, err)
+
+		assert.Equal(t, str1, str2)
+	})
 }
