@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 var (
@@ -33,6 +34,19 @@ type ConnCallback func(c *SseClient)
 
 // ResponseValidator 验证响应
 type ResponseValidator func(c *SseClient, resp *http.Response) error
+
+// 客户端状态常量
+const (
+	ClientStatusDisconnected = "disconnected"
+	ClientStatusConnecting   = "connecting"
+	ClientStatusConnected    = "connected"
+	ClientStatusClosing      = "closing"
+)
+
+// 客户端状态事件主题
+const (
+	ClientEventStatusChanged = "client_status_changed"
+)
 
 // SseClient 处理传入的服务器端发送事件(SSE)流
 // 它提供了连接到 SSE 服务器、订阅事件流、处理重连以及管理多个订阅的功能。
@@ -57,6 +71,11 @@ type SseClient struct {
 	mu                sync.Mutex                       // 保护并发访问的互斥锁
 	EncodingBase64    bool                             // 是否使用Base64编码解码事件数据
 	Connected         bool                             // 当前连接状态
+
+	// 状态相关字段
+	status     string
+	statusLock sync.RWMutex
+	eventBus   *util.EventBus
 }
 
 // NewSseClient 创建一个新的 Sse 客户端
@@ -67,6 +86,8 @@ func NewSseClient(url string, opts ...func(c *SseClient)) *SseClient {
 		Headers:       make(map[string]string),
 		subscribed:    make(map[chan *SseEvent]chan struct{}),
 		maxBufferSize: 1 << 16, // 默认缓冲区大小为64KB
+		status:        ClientStatusDisconnected,
+		eventBus:      util.NewEventBus(),
 	}
 
 	for _, opt := range opts {
@@ -76,6 +97,47 @@ func NewSseClient(url string, opts ...func(c *SseClient)) *SseClient {
 	return c
 }
 
+// GetStatus 获取客户端当前状态
+func (c *SseClient) GetStatus() string {
+	c.statusLock.RLock()
+	defer c.statusLock.RUnlock()
+	return c.status
+}
+
+// setStatus 设置客户端状态并通知订阅者
+func (c *SseClient) setStatus(status string) {
+	c.statusLock.Lock()
+	oldStatus := c.status
+	c.status = status
+	c.statusLock.Unlock()
+
+	// 只有状态发生变化时才发布事件
+	if oldStatus != status {
+		// 通过事件总线发布状态变更事件
+		c.eventBus.Publish(ClientEventStatusChanged, status)
+	}
+}
+
+// SubscribeStatusChange 订阅状态变更事件
+func (c *SseClient) SubscribeStatusChange() <-chan any {
+	return c.eventBus.Subscribe(ClientEventStatusChanged)
+}
+
+// UnsubscribeStatusChange 取消订阅状态变更事件
+func (c *SseClient) UnsubscribeStatusChange(ch <-chan any) {
+	c.eventBus.Unsubscribe(ClientEventStatusChanged, ch)
+}
+
+// WaitForStatus 等待客户端达到指定状态，返回一个通道，当达到目标状态时会收到通知
+// timeout为等待超时时间，如果为0则永不超时
+func (c *SseClient) WaitForStatus(targetStatus string, timeout time.Duration) <-chan struct{} {
+	statusCh := c.SubscribeStatusChange()
+	cleanup := func() {
+		c.UnsubscribeStatusChange(statusCh)
+	}
+	return util.WaitForStatus(c.GetStatus, targetStatus, statusCh, cleanup, timeout)
+}
+
 // Subscribe 订阅 SSE 端点
 func (c *SseClient) Subscribe(handler func(msg *SseEvent)) error {
 	return c.SubscribeWithContext(context.Background(), handler)
@@ -83,21 +145,36 @@ func (c *SseClient) Subscribe(handler func(msg *SseEvent)) error {
 
 // SubscribeWithContext 使用上下文订阅 SSE 端点
 func (c *SseClient) SubscribeWithContext(ctx context.Context, handler func(msg *SseEvent)) error {
+	c.setStatus(ClientStatusConnecting)
+
 	operation := func() (struct{}, error) {
 		resp, err := c.request(ctx)
 		if err != nil {
+			c.setStatus(ClientStatusDisconnected)
 			return struct{}{}, err
 		}
 		if validator := c.ResponseValidator; validator != nil {
 			err = validator(c, resp)
 			if err != nil {
+				resp.Body.Close()
+				c.setStatus(ClientStatusDisconnected)
 				return struct{}{}, err
 			}
 		} else if resp.StatusCode != 200 {
 			resp.Body.Close()
+			c.setStatus(ClientStatusDisconnected)
 			return struct{}{}, fmt.Errorf("could not connect to endpoint: %s", http.StatusText(resp.StatusCode))
 		}
 		defer resp.Body.Close()
+
+		// 连接成功，更新状态
+		c.Connected = true
+		c.setStatus(ClientStatusConnected)
+
+		// 如果有连接回调，则执行
+		if c.connectedcb != nil {
+			c.connectedcb(c)
+		}
 
 		reader := NewEventStreamReader(resp.Body, c.maxBufferSize)
 		eventChan, errorChan := c.startReadLoop(reader)
@@ -105,6 +182,8 @@ func (c *SseClient) SubscribeWithContext(ctx context.Context, handler func(msg *
 		for {
 			select {
 			case err = <-errorChan:
+				c.Connected = false
+				c.setStatus(ClientStatusDisconnected)
 				return struct{}{}, err
 			case msg := <-eventChan:
 				handler(msg)
@@ -112,7 +191,7 @@ func (c *SseClient) SubscribeWithContext(ctx context.Context, handler func(msg *
 		}
 	}
 
-	// 应用重连策略
+	// 应用重试策略
 	var err error
 	if c.ReconnectStrategy != nil {
 		_, err = backoff.Retry(
@@ -129,6 +208,10 @@ func (c *SseClient) SubscribeWithContext(ctx context.Context, handler func(msg *
 			backoff.WithBackOff(backoff.NewExponentialBackOff()),
 		)
 	}
+
+	if err != nil {
+		c.setStatus(ClientStatusDisconnected)
+	}
 	return err
 }
 
@@ -139,8 +222,10 @@ func (c *SseClient) SubscribeChan(ch chan *SseEvent) error {
 
 // SubscribeChanWithContext 使用上下文将所有事件发送到提供的通道
 func (c *SseClient) SubscribeChanWithContext(ctx context.Context, ch chan *SseEvent) error {
+	c.setStatus(ClientStatusConnecting)
+
 	var connected bool
-	errch := make(chan error)
+	errch := make(chan error, 1)
 	c.mu.Lock()
 	c.subscribed[ch] = make(chan struct{})
 	c.mu.Unlock()
@@ -148,78 +233,94 @@ func (c *SseClient) SubscribeChanWithContext(ctx context.Context, ch chan *SseEv
 	operation := func() (struct{}, error) {
 		resp, err := c.request(ctx)
 		if err != nil {
+			c.setStatus(ClientStatusDisconnected)
+			select {
+			case errch <- err:
+			default:
+			}
 			return struct{}{}, err
 		}
+
 		if validator := c.ResponseValidator; validator != nil {
 			err = validator(c, resp)
 			if err != nil {
+				resp.Body.Close()
+				c.setStatus(ClientStatusDisconnected)
+				select {
+				case errch <- err:
+				default:
+				}
 				return struct{}{}, err
 			}
 		} else if resp.StatusCode != 200 {
 			resp.Body.Close()
-			return struct{}{}, fmt.Errorf("could not connect to endpoint: %s", http.StatusText(resp.StatusCode))
+			err = fmt.Errorf("could not connect to endpoint: %s", http.StatusText(resp.StatusCode))
+			c.setStatus(ClientStatusDisconnected)
+			select {
+			case errch <- err:
+			default:
+			}
+			return struct{}{}, err
 		}
+
 		defer resp.Body.Close()
 
+		// 连接成功，更新状态
 		if !connected {
 			errch <- nil
 			connected = true
+			c.Connected = true
+			c.setStatus(ClientStatusConnected)
+
+			// 如果有连接回调，则执行
+			if c.connectedcb != nil {
+				c.connectedcb(c)
+			}
 		}
 
 		reader := NewEventStreamReader(resp.Body, c.maxBufferSize)
 		eventChan, errorChan := c.startReadLoop(reader)
 
+		c.mu.Lock()
+		done, ok := c.subscribed[ch]
+		c.mu.Unlock()
+
+		if !ok {
+			return struct{}{}, nil
+		}
+
 		for {
 			var msg *SseEvent
-			// 等待消息到达或退出
+
 			select {
-			case <-c.subscribed[ch]:
+			case <-done:
 				return struct{}{}, nil
 			case err = <-errorChan:
 				return struct{}{}, err
 			case msg = <-eventChan:
 			}
 
-			// 等待消息被发送或退出
-			if msg != nil {
-				select {
-				case <-c.subscribed[ch]:
-					return struct{}{}, nil
-				case ch <- msg:
-					// 消息已发送
-				}
+			select {
+			case <-done:
+				return struct{}{}, nil
+			case ch <- msg:
 			}
 		}
 	}
 
 	go func() {
-		defer c.cleanup(ch)
-		// 应用用户指定的重连策略或默认使用标准的NewExponentialBackOff()重连方法
-		var err error
-		if c.ReconnectStrategy != nil {
-			_, err = backoff.Retry(
-				ctx,
-				operation,
-				backoff.WithNotify(c.ReconnectNotify),
-				backoff.WithBackOff(c.ReconnectStrategy),
-			)
-		} else {
-			_, err = backoff.Retry(
-				ctx,
-				operation,
-				backoff.WithNotify(c.ReconnectNotify),
-				backoff.WithBackOff(backoff.NewExponentialBackOff()),
-			)
-		}
-
-		// 一旦连接，通道关闭
-		if err != nil && !connected {
-			errch <- err
+		_, err := backoff.Retry(
+			ctx,
+			operation,
+			backoff.WithNotify(c.ReconnectNotify),
+			backoff.WithBackOff(backoff.NewExponentialBackOff()),
+		)
+		if err != nil {
+			// 处理错误
 		}
 	}()
-	err := <-errch
-	close(errch)
-	return err
+
+	return <-errch
 }
 
 func (c *SseClient) startReadLoop(reader *EventStreamReader) (chan *SseEvent, chan error) {
@@ -385,4 +486,33 @@ func trimHeader(size int, data []byte) []byte {
 		data = data[:len(data)-1]
 	}
 	return data
+}
+
+// Close 关闭SSE客户端，取消所有活跃的订阅，并清理资源
+func (c *SseClient) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.setStatus(ClientStatusClosing)
+
+	// 取消所有活跃的订阅
+	for ch, done := range c.subscribed {
+		select {
+		case done <- struct{}{}:
+			// 发送关闭信号
+		default:
+			// 通道可能已阻塞，直接关闭
+		}
+		close(done)
+		delete(c.subscribed, ch)
+	}
+
+	// 标记连接状态为断开
+	c.Connected = false
+	c.setStatus(ClientStatusDisconnected)
+
+	// 如果有断开连接回调，则执行
+	if c.disconnectcb != nil {
+		c.disconnectcb(c)
+	}
 }

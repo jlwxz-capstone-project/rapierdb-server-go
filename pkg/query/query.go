@@ -226,10 +226,11 @@ func (q *FindManyQuery) MarshalJSON() ([]byte, error) {
 // FindManyQuery 的反序列化方法
 func (q *FindManyQuery) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Filter json.RawMessage `json:"filter,omitempty"`
-		Sort   []SortField     `json:"sort,omitempty"`
-		Skip   int64           `json:"skip,omitempty"`
-		Limit  int64           `json:"limit,omitempty"`
+		Collection string          `json:"collection"`
+		Filter     json.RawMessage `json:"filter,omitempty"`
+		Sort       []SortField     `json:"sort,omitempty"`
+		Skip       int64           `json:"skip,omitempty"`
+		Limit      int64           `json:"limit,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -246,6 +247,7 @@ func (q *FindManyQuery) UnmarshalJSON(data []byte) error {
 	}
 
 	// 反序列化其他字段
+	q.Collection = raw.Collection
 	q.Sort = raw.Sort
 	q.Skip = raw.Skip
 	q.Limit = raw.Limit

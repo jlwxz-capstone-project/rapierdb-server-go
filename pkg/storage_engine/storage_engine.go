@@ -50,14 +50,20 @@ var (
 	ErrDocIDTooLarge = errors.New("doc id too large")
 )
 
-// 存储引擎事件类型
+// 存储引擎事件主题
 const (
-	// 事务被取消时触发
-	STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED = "storage_engine_event_transaction_canceled"
-	// 事务提交成功时触发
-	STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED = "storage_engine_event_transaction_committed"
-	// 事务回滚时触发
-	STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED = "storage_engine_event_transaction_rollbacked"
+	STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED  = "transaction_committed"
+	STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED   = "transaction_canceled"
+	STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED = "transaction_rollbacked"
+	STORAGE_ENGINE_EVENT_STATUS_CHANGED         = "storage_engine_status_changed"
+)
+
+// 存储引擎状态常量
+const (
+	StorageEngineStatusClosed  = "closed"
+	StorageEngineStatusOpening = "opening"
+	StorageEngineStatusOpen    = "open"
+	StorageEngineStatusClosing = "closing"
 )
 
 type TransactionCanceledEvent struct {
@@ -88,6 +94,10 @@ type StorageEngine struct {
 	eb        *util.EventBus        // 事件总线
 	hooks     *StorageEngineHooks   // 存储引擎钩子
 	opts      *StorageEngineOptions // 存储引擎选项
+
+	// 状态相关字段
+	status     string
+	statusLock sync.RWMutex
 }
 
 // StorageEngineHooks 定义了存储引擎的钩子函数
@@ -137,26 +147,37 @@ func CreateNewDatabase(path string, schema *DatabaseSchema, permissions string) 
 // path: 存储路径
 // options: 存储引擎选项
 func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
+	engine := &StorageEngine{
+		hooks:  &StorageEngineHooks{},
+		opts:   opts,
+		eb:     util.NewEventBus(),
+		status: StorageEngineStatusClosed,
+	}
+
+	engine.setStatus(StorageEngineStatusOpening)
+
 	pebbleOpts := opts.GetPebbleOpts()
 	pebbleDB, err := pebble.Open(opts.Path, pebbleOpts)
 	if err != nil {
+		engine.setStatus(StorageEngineStatusClosed)
 		return nil, err
 	}
+	engine.pebbleDB = pebbleDB
 
-	databaseMeta, err := loadDatabaseMeta(pebbleDB)
+	// 加载数据库元数据
+	meta, err := loadDatabaseMeta(pebbleDB)
 	if err != nil {
+		pebbleDB.Close()
+		engine.setStatus(StorageEngineStatusClosed)
 		return nil, err
 	}
+	engine.meta = meta
 
-	return &StorageEngine{
-		mu:        sync.RWMutex{},
-		pebbleDB:  pebbleDB,
-		docsCache: NewEmptyDocsCache(),
-		meta:      databaseMeta,
-		eb:        util.NewEventBus(),
-		hooks:     &StorageEngineHooks{},
-		opts:      opts,
-	}, nil
+	// 初始化文档缓存
+	engine.docsCache = NewEmptyDocsCache()
+
+	engine.setStatus(StorageEngineStatusOpen)
+	return engine, nil
 }
 
 // loadDatabaseMeta 加载数据库元数据
@@ -454,6 +475,47 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 	return err
 }
 
+// GetStatus 获取存储引擎当前状态
+func (e *StorageEngine) GetStatus() string {
+	e.statusLock.RLock()
+	defer e.statusLock.RUnlock()
+	return e.status
+}
+
+// setStatus 设置存储引擎状态并通知订阅者
+func (e *StorageEngine) setStatus(status string) {
+	e.statusLock.Lock()
+	oldStatus := e.status
+	e.status = status
+	e.statusLock.Unlock()
+
+	// 只有状态发生变化时才发布事件
+	if oldStatus != status {
+		// 通过事件总线发布状态变更事件
+		e.eb.Publish(STORAGE_ENGINE_EVENT_STATUS_CHANGED, status)
+	}
+}
+
+// SubscribeStatusChange 订阅状态变更事件
+func (e *StorageEngine) SubscribeStatusChange() <-chan any {
+	return e.eb.Subscribe(STORAGE_ENGINE_EVENT_STATUS_CHANGED)
+}
+
+// UnsubscribeStatusChange 取消订阅状态变更事件
+func (e *StorageEngine) UnsubscribeStatusChange(ch <-chan any) {
+	e.eb.Unsubscribe(STORAGE_ENGINE_EVENT_STATUS_CHANGED, ch)
+}
+
+// WaitForStatus 等待存储引擎达到指定状态，返回一个通道，当达到目标状态时会收到通知
+// timeout为等待超时时间，如果为0则永不超时
+func (e *StorageEngine) WaitForStatus(targetStatus string, timeout time.Duration) <-chan struct{} {
+	statusCh := e.SubscribeStatusChange()
+	cleanup := func() {
+		e.UnsubscribeStatusChange(statusCh)
+	}
+	return util.WaitForStatus(e.GetStatus, targetStatus, statusCh, cleanup, timeout)
+}
+
 // IsClosed 检查存储引擎是否已关闭
 func (e *StorageEngine) IsClosed() bool {
 	e.mu.RLock()
@@ -465,6 +527,9 @@ func (e *StorageEngine) IsClosed() bool {
 func (e *StorageEngine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	e.setStatus(StorageEngineStatusClosing)
+
 	err := e.pebbleDB.Close()
 	if err != nil {
 		return err
@@ -472,6 +537,8 @@ func (e *StorageEngine) Close() error {
 	e.pebbleDB = nil
 	e.meta = nil
 	e.docsCache = nil
+
+	e.setStatus(StorageEngineStatusClosed)
 	return nil
 }
 

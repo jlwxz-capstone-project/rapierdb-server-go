@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
@@ -17,6 +20,19 @@ var (
 	ErrInvalidStorageEvent = errors.New("invalid storage event")
 )
 
+// 同步器状态常量
+const (
+	SynchronizerStatusStopped  = "stopped"
+	SynchronizerStatusStarting = "starting"
+	SynchronizerStatusRunning  = "running"
+	SynchronizerStatusStopping = "stopping"
+)
+
+// 同步器状态事件主题
+const (
+	SynchronizerEventStatusChanged = "synchronizer_status_changed"
+)
+
 type SynchronizerConfig struct {
 }
 
@@ -28,6 +44,11 @@ type Synchronizer struct {
 	config              SynchronizerConfig
 	permission          *query.Permissions
 	activeSet           *ActiveSet
+
+	// 状态相关字段
+	status     string
+	statusLock sync.RWMutex
+	eventBus   *util.EventBus
 }
 
 type StorageEngineEvents struct {
@@ -56,13 +77,58 @@ func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel networ
 		config:              *config,
 		permission:          permission,
 		activeSet:           NewActiveSet(),
+		status:              SynchronizerStatusStopped,
+		eventBus:            util.NewEventBus(),
 	}
 	log.Debugf("NewSynchronizer: 同步器创建成功")
 	return synchronizer
 }
 
+// GetStatus 获取同步器当前状态
+func (s *Synchronizer) GetStatus() string {
+	s.statusLock.RLock()
+	defer s.statusLock.RUnlock()
+	return s.status
+}
+
+// setStatus 设置同步器状态并通知订阅者
+func (s *Synchronizer) setStatus(status string) {
+	s.statusLock.Lock()
+	oldStatus := s.status
+	s.status = status
+	s.statusLock.Unlock()
+
+	// 只有状态发生变化时才发布事件
+	if oldStatus != status {
+		// 通过事件总线发布状态变更事件
+		s.eventBus.Publish(SynchronizerEventStatusChanged, status)
+	}
+}
+
+// SubscribeStatusChange 订阅状态变更事件
+func (s *Synchronizer) SubscribeStatusChange() <-chan any {
+	return s.eventBus.Subscribe(SynchronizerEventStatusChanged)
+}
+
+// UnsubscribeStatusChange 取消订阅状态变更事件
+func (s *Synchronizer) UnsubscribeStatusChange(ch <-chan any) {
+	s.eventBus.Unsubscribe(SynchronizerEventStatusChanged, ch)
+}
+
+// WaitForStatus 等待同步器达到指定状态，返回一个通道，当达到目标状态时会收到通知
+// timeout为等待超时时间，如果为0则永不超时
+func (s *Synchronizer) WaitForStatus(targetStatus string, timeout time.Duration) <-chan struct{} {
+	statusCh := s.SubscribeStatusChange()
+	cleanup := func() {
+		s.UnsubscribeStatusChange(statusCh)
+	}
+	return util.WaitForStatus(s.GetStatus, targetStatus, statusCh, cleanup, timeout)
+}
+
 func (s *Synchronizer) Start() error {
 	log.Debugf("Synchronizer.Start: 正在启动同步器")
+	s.setStatus(SynchronizerStatusStarting)
+
 	// 订阅存储引擎事件
 	committedCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
 	canceledCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
@@ -124,26 +190,72 @@ func (s *Synchronizer) Start() error {
 
 		case *message.SubscriptionUpdateMessageV1:
 			log.Debugf("msgHandler: 收到 SubscriptionUpdateMessageV1 %+v 来自 %s", msg, clientId)
-			// 处理添加的订阅
-			for _, query := range msg.Added {
-				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, query)
-				err := s.activeSet.AddSubscription(clientId, query)
-				if err != nil {
-					log.Errorf("msgHandler: 添加订阅失败: %v", err)
-				}
-			}
-
 			// 处理移除的订阅
-			for _, query := range msg.Removed {
-				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, query)
-				err := s.activeSet.RemoveSubscription(clientId, query)
+			for _, q := range msg.Removed {
+				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q)
+				err := s.activeSet.RemoveSubscription(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 移除订阅失败: %v", err)
 				}
 			}
+
+			// 处理添加的订阅
+			vqm := message.NewVersionQueryMessageV1()
+			for _, q := range msg.Added {
+				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q)
+				err := s.activeSet.AddSubscription(clientId, q)
+				if err != nil {
+					log.Errorf("msgHandler: 添加订阅失败: %v", err)
+				}
+
+				var queryCollection string
+				switch q := q.(type) {
+				case *query.FindManyQuery:
+					queryCollection = q.Collection
+				case *query.FindOneQuery:
+					queryCollection = q.Collection
+				}
+
+				// TODO: 按理说这里应该只将查询结果中包含的文档放入 vqm 中
+				// 但简单起见，这里将查询对应集合里的所有文档都放入 vqm 中
+				if !vqm.ContainsCollection(queryCollection) {
+					docs, err := s.storageEngine.LoadAllDocsInCollection(queryCollection, true)
+					if err != nil {
+						log.Errorf("msgHandler: 获取集合 %s 所有文档失败: %v", queryCollection, err)
+						continue
+					}
+					for docId := range docs {
+						vqm.AddDoc(queryCollection, docId)
+					}
+				}
+			}
+
+			vqmBytes, err := vqm.Encode()
+			if err != nil {
+				log.Errorf("msgHandler: 编码版本查询消息失败: %v", err)
+				return
+			}
+
+			var queryInfo string
+			for collection, docIds := range vqm.Queries {
+				docIdList := make([]string, 0, len(docIds))
+				for docId := range docIds {
+					docIdList = append(docIdList, docId)
+				}
+				queryInfo += "集合 " + collection + " 中的文档 " + strings.Join(docIdList, ", ") + "; "
+			}
+			log.Debugf("msgHandler: 向客户端 %s 发送版本查询消息，要求: %s 的版本信息", clientId, queryInfo)
+			s.channel.Send(clientId, vqmBytes)
+
+		case *message.VersionQueryRespMessageV1:
+			log.Debugf("msgHandler: 收到 VersionQueryRespMessageV1 %+v 来自 %s", msg, clientId)
+
 		}
 	}
 	s.channel.SetMsgHandler(msgHandler)
+
+	// 设置状态为运行中
+	s.setStatus(SynchronizerStatusRunning)
 	log.Debugf("Synchronizer.Start: 同步器启动完成")
 
 	return nil
@@ -400,6 +512,8 @@ func (s *Synchronizer) handleTransactionRollbacked(event any) {
 
 func (s *Synchronizer) Stop() {
 	log.Debugf("Synchronizer.Stop: 正在停止同步器")
+	s.setStatus(SynchronizerStatusStopping)
+
 	// 发送取消信号
 	if s.cancel != nil {
 		log.Debugf("Synchronizer.Stop: 发送取消信号")
@@ -422,5 +536,7 @@ func (s *Synchronizer) Stop() {
 	// 关闭所有连接
 	log.Debugf("Synchronizer.Stop: 关闭所有连接")
 	s.channel.CloseAll()
+
+	s.setStatus(SynchronizerStatusStopped)
 	log.Debugf("Synchronizer.Stop: 同步器已停止")
 }
