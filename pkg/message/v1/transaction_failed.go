@@ -3,6 +3,7 @@ package message
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -17,6 +18,10 @@ type TransactionFailedMessageV1 struct {
 var _ Message = &TransactionFailedMessageV1{}
 
 func (m *TransactionFailedMessageV1) isMessage() {}
+
+func (m *TransactionFailedMessageV1) DebugPrint() string {
+	return fmt.Sprintf("TransactionFailedMessageV1{TxID: %s, Reason: %v}", m.TxID, m.Reason)
+}
 
 // Encode 将 TransactionFailedMessageV1 编码为 []byte
 func (m *TransactionFailedMessageV1) Encode() ([]byte, error) {

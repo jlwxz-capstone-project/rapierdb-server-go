@@ -2,6 +2,7 @@ package message
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -15,6 +16,10 @@ type AckTransactionMessageV1 struct {
 var _ Message = &AckTransactionMessageV1{}
 
 func (m *AckTransactionMessageV1) isMessage() {}
+
+func (m *AckTransactionMessageV1) DebugPrint() string {
+	return fmt.Sprintf("AckTransactionMessageV1{TxID: %s}", m.TxID)
+}
 
 // DecodeAckTransactionMessageV1 从 bytes.Buffer 中解码得到 DecodeTransactionMessage
 // 如果解码失败，返回 nil

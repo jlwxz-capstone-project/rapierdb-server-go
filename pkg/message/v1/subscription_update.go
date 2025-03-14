@@ -2,6 +2,8 @@ package message
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -15,6 +17,20 @@ type SubscriptionUpdateMessageV1 struct {
 var _ Message = &SubscriptionUpdateMessageV1{}
 
 func (m *SubscriptionUpdateMessageV1) isMessage() {}
+
+func (m *SubscriptionUpdateMessageV1) DebugPrint() string {
+	addedStrs := make([]string, len(m.Added))
+	for i, sub := range m.Added {
+		addedStrs[i] = sub.DebugPrint()
+	}
+	addedStr := strings.Join(addedStrs, ", ")
+	removedStrs := make([]string, len(m.Removed))
+	for i, sub := range m.Removed {
+		removedStrs[i] = sub.DebugPrint()
+	}
+	removedStr := strings.Join(removedStrs, ", ")
+	return fmt.Sprintf("SubscriptionUpdateMessageV1{Added: [%s], Removed: [%s]}", addedStr, removedStr)
+}
 
 func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}

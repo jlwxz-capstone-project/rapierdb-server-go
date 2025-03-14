@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
@@ -178,7 +177,7 @@ func (s *Synchronizer) Start() error {
 		case *message.PostTransactionMessageV1:
 			// 提交事务到存储引擎
 			// 为事务设置提交者ID
-			log.Debugf("msgHandler: 收到 PostTransactionMessageV1 %+v 来自 %s", msg, clientId)
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
 			msg.Transaction.Committer = clientId
 			log.Debugf("msgHandler: 正在提交事务 %s 到存储引擎", msg.Transaction.TxID)
 			err = s.storageEngine.Commit(msg.Transaction)
@@ -189,10 +188,10 @@ func (s *Synchronizer) Start() error {
 			log.Debugf("msgHandler: 事务 %s 提交成功", msg.Transaction.TxID)
 
 		case *message.SubscriptionUpdateMessageV1:
-			log.Debugf("msgHandler: 收到 SubscriptionUpdateMessageV1 %+v 来自 %s", msg, clientId)
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
 			// 处理移除的订阅
 			for _, q := range msg.Removed {
-				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q)
+				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q.DebugPrint())
 				err := s.activeSet.RemoveSubscription(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 移除订阅失败: %v", err)
@@ -202,7 +201,7 @@ func (s *Synchronizer) Start() error {
 			// 处理添加的订阅
 			vqm := message.NewVersionQueryMessageV1()
 			for _, q := range msg.Added {
-				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q)
+				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q.DebugPrint())
 				err := s.activeSet.AddSubscription(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 添加订阅失败: %v", err)
@@ -236,19 +235,11 @@ func (s *Synchronizer) Start() error {
 				return
 			}
 
-			var queryInfo string
-			for collection, docIds := range vqm.Queries {
-				docIdList := make([]string, 0, len(docIds))
-				for docId := range docIds {
-					docIdList = append(docIdList, docId)
-				}
-				queryInfo += "集合 " + collection + " 中的文档 " + strings.Join(docIdList, ", ") + "; "
-			}
-			log.Debugf("msgHandler: 向客户端 %s 发送版本查询消息，要求: %s 的版本信息", clientId, queryInfo)
+			log.Debugf("msgHandler: 向客户端 %s 发送版本查询消息 %s", clientId, vqm.DebugPrint())
 			s.channel.Send(clientId, vqmBytes)
 
 		case *message.VersionQueryRespMessageV1:
-			log.Debugf("msgHandler: 收到 VersionQueryRespMessageV1 %+v 来自 %s", msg, clientId)
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
 
 		}
 	}

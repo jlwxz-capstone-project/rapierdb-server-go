@@ -2,6 +2,7 @@ package message
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -16,6 +17,10 @@ type PostTransactionMessageV1 struct {
 var _ Message = &PostTransactionMessageV1{}
 
 func (m *PostTransactionMessageV1) isMessage() {}
+
+func (m *PostTransactionMessageV1) DebugPrint() string {
+	return fmt.Sprintf("PostTransactionMessageV1{Transaction: %v}", m.Transaction)
+}
 
 func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}

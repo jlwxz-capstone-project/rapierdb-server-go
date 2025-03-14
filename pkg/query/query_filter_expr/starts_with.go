@@ -14,6 +14,10 @@ type StartsWithExpr struct {
 	Prefix QueryFilterExpr
 }
 
+func (e *StartsWithExpr) DebugPrint() string {
+	return fmt.Sprintf("StartsWithExpr{Field: %s, Prefix: %s}", e.Field.DebugPrint(), e.Prefix.DebugPrint())
+}
+
 func (e *StartsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
 	field, err := e.Field.Eval(doc)

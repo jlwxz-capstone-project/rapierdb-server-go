@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"errors"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 type Message interface {
+	log.DebugPrintable
 	isMessage()
 	Type() uint64
 	Encode() ([]byte, error)

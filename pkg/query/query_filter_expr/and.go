@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
@@ -11,6 +12,14 @@ import (
 // AndExpr 逻辑与
 type AndExpr struct {
 	Exprs []QueryFilterExpr
+}
+
+func (e *AndExpr) DebugPrint() string {
+	exprs := make([]string, len(e.Exprs))
+	for i, expr := range e.Exprs {
+		exprs[i] = expr.DebugPrint()
+	}
+	return fmt.Sprintf("AndExpr{Exprs: %s}", strings.Join(exprs, " && "))
 }
 
 func (e *AndExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

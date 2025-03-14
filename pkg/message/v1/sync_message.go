@@ -2,6 +2,8 @@ package message
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -16,6 +18,18 @@ type PostDocMessageV1 struct {
 var _ Message = &PostDocMessageV1{}
 
 func (m *PostDocMessageV1) isMessage() {}
+
+func (m *PostDocMessageV1) DebugPrint() string {
+	upsertStrs := make([]string, len(m.Upsert))
+	i := 0
+	for key := range m.Upsert {
+		upsertStrs[i] = key
+		i++
+	}
+	upsertStr := strings.Join(upsertStrs, ", ")
+	deleteStr := strings.Join(m.Delete, ", ")
+	return fmt.Sprintf("PostDocMessageV1{Upsert: [%s], Delete: [%s]}", upsertStr, deleteStr)
+}
 
 func (m *PostDocMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}

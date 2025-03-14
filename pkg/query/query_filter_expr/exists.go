@@ -12,6 +12,10 @@ type ExistsExpr struct {
 	Field QueryFilterExpr
 }
 
+func (e *ExistsExpr) DebugPrint() string {
+	return fmt.Sprintf("ExistsExpr{Field: %s}", e.Field.DebugPrint())
+}
+
 func (e *ExistsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 获取字段路径
 	pathExpr, ok := e.Field.(*FieldValueExpr)

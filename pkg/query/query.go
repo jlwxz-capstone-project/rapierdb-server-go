@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -30,7 +32,16 @@ type SortField struct {
 	Order SortOrder `json:"order"` // 排序顺序
 }
 
+func (s *SortField) DebugPrint() string {
+	orderStr := "asc"
+	if s.Order == SortOrderDesc {
+		orderStr = "desc"
+	}
+	return fmt.Sprintf("SortField{Field: %s, Order: %s}", s.Field, orderStr)
+}
+
 type Query interface {
+	log.DebugPrintable
 	isQuery()
 	Encode() ([]byte, error)
 }
@@ -47,6 +58,10 @@ type FindOneQuery struct {
 var _ Query = &FindOneQuery{}
 
 func (q *FindOneQuery) isQuery() {}
+
+func (q *FindOneQuery) DebugPrint() string {
+	return fmt.Sprintf("FindOneQuery{Collection: %s, Filter: %s}", q.Collection, q.Filter.DebugPrint())
+}
 
 // FindManyQuery 表示一个仅用于查询多个文档的查询
 //
@@ -66,6 +81,15 @@ type FindManyQuery struct {
 var _ Query = &FindManyQuery{}
 
 func (q *FindManyQuery) isQuery() {}
+
+func (q *FindManyQuery) DebugPrint() string {
+	filterStr := q.Filter.DebugPrint()
+	sortStr := make([]string, len(q.Sort))
+	for i, sort := range q.Sort {
+		sortStr[i] = sort.DebugPrint()
+	}
+	return fmt.Sprintf("FindManyQuery{Collection: %s, Filter: %s, Sort: [%s], Skip: %d, Limit: %d}", q.Collection, filterStr, strings.Join(sortStr, ", "), q.Skip, q.Limit)
+}
 
 func NewFindOneQuery() *FindOneQuery {
 	return &FindOneQuery{}

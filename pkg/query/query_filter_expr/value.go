@@ -22,6 +22,10 @@ type ValueExpr struct {
 	Value any
 }
 
+func (e *ValueExpr) DebugPrint() string {
+	return fmt.Sprintf("ValueExpr{Value: %v}", e.Value)
+}
+
 func (e *ValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return e, nil
 }

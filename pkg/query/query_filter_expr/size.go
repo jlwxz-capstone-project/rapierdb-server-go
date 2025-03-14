@@ -13,6 +13,10 @@ type SizeExpr struct {
 	Size  QueryFilterExpr
 }
 
+func (e *SizeExpr) DebugPrint() string {
+	return fmt.Sprintf("SizeExpr{Field: %s, Size: %s}", e.Field.DebugPrint(), e.Size.DebugPrint())
+}
+
 func (e *SizeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
 	field, err := e.Field.Eval(doc)

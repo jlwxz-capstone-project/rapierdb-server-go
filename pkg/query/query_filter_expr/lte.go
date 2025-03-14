@@ -14,6 +14,10 @@ type LteExpr struct {
 	O2 QueryFilterExpr
 }
 
+func (e *LteExpr) DebugPrint() string {
+	return fmt.Sprintf("LteExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+}
+
 func (e *LteExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	o1, err := e.O1.Eval(doc)
 	if err != nil {

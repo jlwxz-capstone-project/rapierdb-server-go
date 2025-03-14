@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -13,6 +14,15 @@ import (
 type AllExpr struct {
 	Field QueryFilterExpr
 	Items []QueryFilterExpr
+}
+
+func (e *AllExpr) DebugPrint() string {
+	items := make([]string, len(e.Items))
+	for i, item := range e.Items {
+		items[i] = item.DebugPrint()
+	}
+	itemsStr := fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	return fmt.Sprintf("AllExpr{Field: %s, Items: %s}", e.Field.DebugPrint(), itemsStr)
 }
 
 func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

@@ -2,6 +2,8 @@ package message
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -16,6 +18,24 @@ type VersionQueryRespMessageV1 struct {
 var _ Message = &VersionQueryRespMessageV1{}
 
 func (m *VersionQueryRespMessageV1) isMessage() {}
+
+func (m *VersionQueryRespMessageV1) DebugPrint() string {
+	responsesStrs := make([]string, len(m.Responses))
+	i := 0
+	for collection, docs := range m.Responses {
+		docsStrs := make([]string, len(docs))
+		j := 0
+		for docId, version := range docs {
+			docsStrs[j] = fmt.Sprintf("%s: %s", docId, version)
+			j++
+		}
+		docsStr := strings.Join(docsStrs, ", ")
+		responsesStrs[i] = fmt.Sprintf("%s: {%s}", collection, docsStr)
+		i++
+	}
+	responsesStr := strings.Join(responsesStrs, ", ")
+	return fmt.Sprintf("VersionQueryRespMessageV1{Responses: {%s}}", responsesStr)
+}
 
 // decodeVersionQueryRespMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryRespMessageV1
 // 如果解码失败，返回 nil

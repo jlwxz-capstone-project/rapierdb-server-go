@@ -2,6 +2,8 @@ package message
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -15,6 +17,22 @@ type VersionQueryMessageV1 struct {
 var _ Message = &VersionQueryMessageV1{}
 
 func (m *VersionQueryMessageV1) isMessage() {}
+
+func (m *VersionQueryMessageV1) DebugPrint() string {
+	queriesStrs := make([]string, len(m.Queries))
+	i := 0
+	for collection, docs := range m.Queries {
+		docIds := make([]string, 0, len(docs))
+		for docId := range docs {
+			docIds = append(docIds, docId)
+		}
+		docsStr := strings.Join(docIds, ", ")
+		queriesStrs[i] = fmt.Sprintf("%s: {%s}", collection, docsStr)
+		i++
+	}
+	queriesStr := strings.Join(queriesStrs, ", ")
+	return fmt.Sprintf("VersionQueryMessageV1{Queries: {%s}}", queriesStr)
+}
 
 func NewVersionQueryMessageV1() *VersionQueryMessageV1 {
 	return &VersionQueryMessageV1{

@@ -14,6 +14,10 @@ type RegexExpr struct {
 	Regex string
 }
 
+func (e *RegexExpr) DebugPrint() string {
+	return fmt.Sprintf("RegexExpr{O1: %s, Regex: %s}", e.O1.DebugPrint(), e.Regex)
+}
+
 func (e *RegexExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	o1, err := e.O1.Eval(doc)
 	if err != nil {

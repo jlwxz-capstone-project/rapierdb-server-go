@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
@@ -11,6 +12,14 @@ import (
 // OrExpr 逻辑或
 type OrExpr struct {
 	Exprs []QueryFilterExpr
+}
+
+func (e *OrExpr) DebugPrint() string {
+	exprs := make([]string, len(e.Exprs))
+	for i, expr := range e.Exprs {
+		exprs[i] = expr.DebugPrint()
+	}
+	return fmt.Sprintf("OrExpr{Exprs: %s}", strings.Join(exprs, " || "))
 }
 
 func (e *OrExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

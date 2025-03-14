@@ -12,6 +12,10 @@ type FieldValueExpr struct {
 	Path string
 }
 
+func (e *FieldValueExpr) DebugPrint() string {
+	return fmt.Sprintf("FieldValueExpr{Path: %s}", e.Path)
+}
+
 func (e *FieldValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	if e.Path == "" {
 		return nil, fmt.Errorf("%w: empty path", ErrFieldError)

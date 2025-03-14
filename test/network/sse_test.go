@@ -186,41 +186,7 @@ func TestBasicCURD(t *testing.T) {
 
 	log.Info("服务器和客户端已准备就绪")
 
-	// 创建查询
-	query1 := query.FindManyQuery{
-		Collection: "users",
-		Filter: &query_filter_expr.ValueExpr{
-			Value: true,
-		},
-	}
-
-	// 创建订阅更新消息
-	apiUrl := "http://localhost:8080/api?client_id=test_client"
-	msg1 := message.SubscriptionUpdateMessageV1{
-		Added:   []query.Query{&query1},
-		Removed: []query.Query{},
-	}
-	msg1Bytes, err := msg1.Encode()
-	if err != nil {
-		log.Terrorf(t, "编码失败: %v", err)
-		return
-	}
-
-	// 发送订阅请求
-	log.Info("客户端发送消息要求更新订阅")
-	resp, err := http.Post(apiUrl, "application/octet-stream", bytes.NewReader(msg1Bytes))
-	if err != nil {
-		log.Terrorf(t, "发送订阅请求失败: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Terrorf(t, "订阅请求返回非200状态码: %d", resp.StatusCode)
-		return
-	}
-
-	log.Info("测试完成，开始清理资源")
+	time.Sleep(5 * time.Second)
 
 	// 通过取消上下文来触发所有组件的优雅关闭
 	cancel()
@@ -399,9 +365,49 @@ func startSseClient(t *testing.T, ctx context.Context, clientReadyCh chan<- stru
 	// 处理接收到的事件
 	go func() {
 		for event := range eventCh {
-			log.Infof("客户端接收到事件: %s\n", event.Data)
+			buf := bytes.NewBuffer(event.Data)
+			msg, err := message.DecodeMessage(buf)
+			if err != nil {
+				log.Terrorf(t, "解码失败: %v", err)
+				return
+			}
+			log.Infof("客户端接收到消息: %s", msg.DebugPrint())
 		}
 	}()
+
+	// 创建查询
+	query1 := query.FindManyQuery{
+		Collection: "users",
+		Filter: &query_filter_expr.ValueExpr{
+			Value: true,
+		},
+	}
+
+	// 创建订阅更新消息
+	apiUrl := "http://localhost:8080/api?client_id=test_client"
+	msg1 := message.SubscriptionUpdateMessageV1{
+		Added:   []query.Query{&query1},
+		Removed: []query.Query{},
+	}
+	msg1Bytes, err := msg1.Encode()
+	if err != nil {
+		log.Terrorf(t, "编码失败: %v", err)
+		return
+	}
+
+	// 发送订阅请求
+	log.Info("客户端发送消息要求更新订阅")
+	resp, err := http.Post(apiUrl, "application/octet-stream", bytes.NewReader(msg1Bytes))
+	if err != nil {
+		log.Terrorf(t, "发送订阅请求失败: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Terrorf(t, "订阅请求返回非200状态码: %d", resp.StatusCode)
+		return
+	}
 
 	// 接收到关闭信号时，优雅关闭
 	<-ctx.Done()

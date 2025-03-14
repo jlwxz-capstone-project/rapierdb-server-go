@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
 
@@ -36,6 +37,7 @@ const (
 
 // QueryFilterExpr 定义查询表达式接口
 type QueryFilterExpr interface {
+	log.DebugPrintable
 	Eval(doc *loro.LoroDoc) (*ValueExpr, error)
 	MarshalJSON() ([]byte, error)
 	UnmarshalJSON(data []byte) error

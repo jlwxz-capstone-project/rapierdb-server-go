@@ -14,6 +14,10 @@ type ContainsExpr struct {
 	Substr QueryFilterExpr
 }
 
+func (e *ContainsExpr) DebugPrint() string {
+	return fmt.Sprintf("ContainsExpr{Field: %s, Substr: %s}", e.Field.DebugPrint(), e.Substr.DebugPrint())
+}
+
 func (e *ContainsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
 	field, err := e.Field.Eval(doc)

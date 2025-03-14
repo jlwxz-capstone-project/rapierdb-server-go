@@ -14,6 +14,10 @@ type NeExpr struct {
 	O2 QueryFilterExpr
 }
 
+func (e *NeExpr) DebugPrint() string {
+	return fmt.Sprintf("NeExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+}
+
 func (e *NeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	o1, err := e.O1.Eval(doc)
 	if err != nil {

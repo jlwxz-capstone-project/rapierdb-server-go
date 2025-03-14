@@ -13,6 +13,10 @@ type NotExpr struct {
 	Expr QueryFilterExpr
 }
 
+func (e *NotExpr) DebugPrint() string {
+	return fmt.Sprintf("NotExpr{Expr: %s}", e.Expr.DebugPrint())
+}
+
 func (e *NotExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	result, err := e.Expr.Eval(doc)
 	if err != nil {

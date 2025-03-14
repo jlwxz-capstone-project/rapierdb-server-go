@@ -3,6 +3,7 @@ package query_filter_expr
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -12,6 +13,15 @@ import (
 type InExpr struct {
 	O1 QueryFilterExpr
 	O2 []QueryFilterExpr
+}
+
+func (e *InExpr) DebugPrint() string {
+	o2 := make([]string, len(e.O2))
+	for i, expr := range e.O2 {
+		o2[i] = expr.DebugPrint()
+	}
+	o2Str := fmt.Sprintf("[%s]", strings.Join(o2, ", "))
+	return fmt.Sprintf("InExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), o2Str)
 }
 
 func (e *InExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

@@ -14,6 +14,10 @@ type EqExpr struct {
 	O2 QueryFilterExpr
 }
 
+func (e *EqExpr) DebugPrint() string {
+	return fmt.Sprintf("EqExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+}
+
 func (e *EqExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	o1, err := e.O1.Eval(doc)
 	if err != nil {

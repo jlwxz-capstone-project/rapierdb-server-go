@@ -14,6 +14,10 @@ type EndsWithExpr struct {
 	Suffix QueryFilterExpr
 }
 
+func (e *EndsWithExpr) DebugPrint() string {
+	return fmt.Sprintf("EndsWithExpr{Field: %s, Suffix: %s}", e.Field.DebugPrint(), e.Suffix.DebugPrint())
+}
+
 func (e *EndsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
 	field, err := e.Field.Eval(doc)
