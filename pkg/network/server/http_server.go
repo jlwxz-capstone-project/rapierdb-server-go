@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/auth"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
@@ -19,16 +18,13 @@ var (
 )
 
 // 服务器状态常量
-const (
-	ServerStatusStopped  = "stopped"
-	ServerStatusStarting = "starting"
-	ServerStatusRunning  = "running"
-	ServerStatusStopping = "stopping"
-)
+type ServerStatus string
 
-// 服务器状态事件主题
 const (
-	ServerEventStatusChanged = "server_status_changed"
+	ServerStatusStopped  ServerStatus = "stopped"
+	ServerStatusStarting ServerStatus = "starting"
+	ServerStatusRunning  ServerStatus = "running"
+	ServerStatusStopping ServerStatus = "stopping"
 )
 
 type RapierDbHTTPServer struct {
@@ -37,9 +33,9 @@ type RapierDbHTTPServer struct {
 	authProvider auth.Authenticator[*http.Request]
 
 	// 状态相关字段
-	status     string
+	status     ServerStatus
 	statusLock sync.RWMutex
-	eventBus   *util.EventBus
+	statusEb   *util.EventBus[ServerStatus]
 }
 
 type RapierDbHTTPServerOption struct {
@@ -53,7 +49,7 @@ func NewRapierDbHTTPServer(opt *RapierDbHTTPServerOption) *RapierDbHTTPServer {
 	server := &RapierDbHTTPServer{
 		channel:  channel,
 		status:   ServerStatusStopped,
-		eventBus: util.NewEventBus(),
+		statusEb: util.NewEventBus[ServerStatus](),
 	}
 
 	// 创建路由
@@ -71,14 +67,14 @@ func NewRapierDbHTTPServer(opt *RapierDbHTTPServerOption) *RapierDbHTTPServer {
 }
 
 // GetStatus 获取服务器当前状态
-func (s *RapierDbHTTPServer) GetStatus() string {
+func (s *RapierDbHTTPServer) GetStatus() ServerStatus {
 	s.statusLock.RLock()
 	defer s.statusLock.RUnlock()
 	return s.status
 }
 
 // setStatus 设置服务器状态并通知订阅者
-func (s *RapierDbHTTPServer) setStatus(status string) {
+func (s *RapierDbHTTPServer) setStatus(status ServerStatus) {
 	s.statusLock.Lock()
 	oldStatus := s.status
 	s.status = status
@@ -87,28 +83,27 @@ func (s *RapierDbHTTPServer) setStatus(status string) {
 	// 只有状态发生变化时才发布事件
 	if oldStatus != status {
 		// 通过事件总线发布状态变更事件
-		s.eventBus.Publish(ServerEventStatusChanged, status)
+		s.statusEb.Publish(status)
 	}
 }
 
 // SubscribeStatusChange 订阅状态变更事件
-func (s *RapierDbHTTPServer) SubscribeStatusChange() <-chan any {
-	return s.eventBus.Subscribe(ServerEventStatusChanged)
+func (s *RapierDbHTTPServer) SubscribeStatusChange() <-chan ServerStatus {
+	return s.statusEb.Subscribe()
 }
 
 // UnsubscribeStatusChange 取消订阅状态变更事件
-func (s *RapierDbHTTPServer) UnsubscribeStatusChange(ch <-chan any) {
-	s.eventBus.Unsubscribe(ServerEventStatusChanged, ch)
+func (s *RapierDbHTTPServer) UnsubscribeStatusChange(ch <-chan ServerStatus) {
+	s.statusEb.Unsubscribe(ch)
 }
 
 // WaitForStatus 等待服务器达到指定状态，返回一个通道，当达到目标状态时会收到通知
-// timeout为等待超时时间，如果为0则永不超时
-func (s *RapierDbHTTPServer) WaitForStatus(targetStatus string, timeout time.Duration) <-chan struct{} {
+func (s *RapierDbHTTPServer) WaitForStatus(targetStatus ServerStatus) <-chan struct{} {
 	statusCh := s.SubscribeStatusChange()
 	cleanup := func() {
 		s.UnsubscribeStatusChange(statusCh)
 	}
-	return util.WaitForStatus(s.GetStatus, targetStatus, statusCh, cleanup, timeout)
+	return util.WaitForStatus(s.GetStatus, targetStatus, statusCh, cleanup, 0)
 }
 
 func (s *RapierDbHTTPServer) Start() error {

@@ -59,11 +59,13 @@ const (
 )
 
 // 存储引擎状态常量
+type StorageEngineStatus string
+
 const (
-	StorageEngineStatusClosed  = "closed"
-	StorageEngineStatusOpening = "opening"
-	StorageEngineStatusOpen    = "open"
-	StorageEngineStatusClosing = "closing"
+	StorageEngineStatusClosed  StorageEngineStatus = "closed"
+	StorageEngineStatusOpening StorageEngineStatus = "opening"
+	StorageEngineStatusOpen    StorageEngineStatus = "open"
+	StorageEngineStatusClosing StorageEngineStatus = "closing"
 )
 
 type TransactionCanceledEvent struct {
@@ -91,13 +93,18 @@ type StorageEngine struct {
 	pebbleDB  *pebble.DB            // 底层的 PebbleDB 实例
 	docsCache *DocsCache            // 文档缓存
 	meta      *DatabaseMeta         // 存储引擎元数据
-	eb        *util.EventBus        // 事件总线
 	hooks     *StorageEngineHooks   // 存储引擎钩子
 	opts      *StorageEngineOptions // 存储引擎选项
 
+	// 每类事件对应的消息总线
+	committedEb  *util.EventBus[*TransactionCommittedEvent]
+	canceledEb   *util.EventBus[*TransactionCanceledEvent]
+	rollbackedEb *util.EventBus[*TransactionRollbackedEvent]
+
 	// 状态相关字段
-	status     string
+	status     StorageEngineStatus
 	statusLock sync.RWMutex
+	statusEb   *util.EventBus[StorageEngineStatus]
 }
 
 // StorageEngineHooks 定义了存储引擎的钩子函数
@@ -148,10 +155,20 @@ func CreateNewDatabase(path string, schema *DatabaseSchema, permissions string) 
 // options: 存储引擎选项
 func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
 	engine := &StorageEngine{
-		hooks:  &StorageEngineHooks{},
-		opts:   opts,
-		eb:     util.NewEventBus(),
-		status: StorageEngineStatusClosed,
+		mu:        sync.RWMutex{},
+		pebbleDB:  nil, // 下面初始化
+		docsCache: nil, // 下面初始化
+		meta:      nil, // 下面初始化
+		hooks:     &StorageEngineHooks{},
+		opts:      opts,
+
+		committedEb:  util.NewEventBus[*TransactionCommittedEvent](),
+		canceledEb:   util.NewEventBus[*TransactionCanceledEvent](),
+		rollbackedEb: util.NewEventBus[*TransactionRollbackedEvent](),
+
+		status:     StorageEngineStatusClosed,
+		statusLock: sync.RWMutex{},
+		statusEb:   util.NewEventBus[StorageEngineStatus](),
 	}
 
 	engine.setStatus(StorageEngineStatusOpening)
@@ -310,7 +327,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				Reason:      err,
 				Transaction: tr,
 			}
-			e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, event)
+			e.canceledEb.Publish(event)
 			return fmt.Errorf("%w: %v", ErrTransactionCancelled, err)
 		}
 	}
@@ -452,7 +469,7 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 			Committer:   tr.Committer,
 			Transaction: tr,
 		}
-		e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, event)
+		e.committedEb.Publish(event)
 		return nil
 	} else if !errors.Is(err, ErrTransactionCancelled) {
 		// 提交失败，执行回滚
@@ -470,20 +487,20 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 			Reason:      err,
 			Transaction: tr,
 		}
-		e.eb.Publish(STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, event)
+		e.rollbackedEb.Publish(event)
 	}
 	return err
 }
 
 // GetStatus 获取存储引擎当前状态
-func (e *StorageEngine) GetStatus() string {
+func (e *StorageEngine) GetStatus() StorageEngineStatus {
 	e.statusLock.RLock()
 	defer e.statusLock.RUnlock()
 	return e.status
 }
 
 // setStatus 设置存储引擎状态并通知订阅者
-func (e *StorageEngine) setStatus(status string) {
+func (e *StorageEngine) setStatus(status StorageEngineStatus) {
 	e.statusLock.Lock()
 	oldStatus := e.status
 	e.status = status
@@ -492,28 +509,27 @@ func (e *StorageEngine) setStatus(status string) {
 	// 只有状态发生变化时才发布事件
 	if oldStatus != status {
 		// 通过事件总线发布状态变更事件
-		e.eb.Publish(STORAGE_ENGINE_EVENT_STATUS_CHANGED, status)
+		e.statusEb.Publish(status)
 	}
 }
 
 // SubscribeStatusChange 订阅状态变更事件
-func (e *StorageEngine) SubscribeStatusChange() <-chan any {
-	return e.eb.Subscribe(STORAGE_ENGINE_EVENT_STATUS_CHANGED)
+func (e *StorageEngine) SubscribeStatusChange() <-chan StorageEngineStatus {
+	return e.statusEb.Subscribe()
 }
 
 // UnsubscribeStatusChange 取消订阅状态变更事件
-func (e *StorageEngine) UnsubscribeStatusChange(ch <-chan any) {
-	e.eb.Unsubscribe(STORAGE_ENGINE_EVENT_STATUS_CHANGED, ch)
+func (e *StorageEngine) UnsubscribeStatusChange(ch <-chan StorageEngineStatus) {
+	e.statusEb.Unsubscribe(ch)
 }
 
 // WaitForStatus 等待存储引擎达到指定状态，返回一个通道，当达到目标状态时会收到通知
-// timeout为等待超时时间，如果为0则永不超时
-func (e *StorageEngine) WaitForStatus(targetStatus string, timeout time.Duration) <-chan struct{} {
+func (e *StorageEngine) WaitForStatus(targetStatus StorageEngineStatus) <-chan struct{} {
 	statusCh := e.SubscribeStatusChange()
 	cleanup := func() {
 		e.UnsubscribeStatusChange(statusCh)
 	}
-	return util.WaitForStatus(e.GetStatus, targetStatus, statusCh, cleanup, timeout)
+	return util.WaitForStatus(e.GetStatus, targetStatus, statusCh, cleanup, 0)
 }
 
 // IsClosed 检查存储引擎是否已关闭
@@ -552,14 +568,34 @@ func (e *StorageEngine) SetBeforeTransactionHook(hook *func(tr *Transaction) err
 	e.hooks.BeforeTransaction = hook
 }
 
-// Subscribe 订阅指定主题的事件
-func (e *StorageEngine) Subscribe(topic string) <-chan any {
-	return e.eb.Subscribe(topic)
+// SubscribeCommitted 订阅事务提交事件
+func (e *StorageEngine) SubscribeCommitted() <-chan *TransactionCommittedEvent {
+	return e.committedEb.Subscribe()
 }
 
-// Unsubscribe 取消订阅指定主题的事件
-func (e *StorageEngine) Unsubscribe(topic string, ch <-chan any) {
-	e.eb.Unsubscribe(topic, ch)
+// UnsubscribeCommitted 取消订阅事务提交事件
+func (e *StorageEngine) UnsubscribeCommitted(ch <-chan *TransactionCommittedEvent) {
+	e.committedEb.Unsubscribe(ch)
+}
+
+// SubscribeCanceled 订阅事务取消事件
+func (e *StorageEngine) SubscribeCanceled() <-chan *TransactionCanceledEvent {
+	return e.canceledEb.Subscribe()
+}
+
+// UnsubscribeCanceled 取消订阅事务取消事件
+func (e *StorageEngine) UnsubscribeCanceled(ch <-chan *TransactionCanceledEvent) {
+	e.canceledEb.Unsubscribe(ch)
+}
+
+// SubscribeRollbacked 订阅事务回滚事件
+func (e *StorageEngine) SubscribeRollbacked() <-chan *TransactionRollbackedEvent {
+	return e.rollbackedEb.Subscribe()
+}
+
+// UnsubscribeRollbacked 取消订阅事务回滚事件
+func (e *StorageEngine) UnsubscribeRollbacked(ch <-chan *TransactionRollbackedEvent) {
+	e.rollbackedEb.Unsubscribe(ch)
 }
 
 func (e *StorageEngine) GetDbPath() string {

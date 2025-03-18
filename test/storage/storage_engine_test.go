@@ -293,12 +293,12 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 	})
 	t.Run("事务事件应该被正确触发", func(t *testing.T) {
 		// 订阅事件
-		committedCh := engine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
-		canceledCh := engine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
-		rollbackedCh := engine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED)
-		defer engine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, committedCh)
-		defer engine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, canceledCh)
-		defer engine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, rollbackedCh)
+		committedCh := engine.SubscribeCommitted()
+		canceledCh := engine.SubscribeCanceled()
+		rollbackedCh := engine.SubscribeRollbacked()
+		defer engine.UnsubscribeCommitted(committedCh)
+		defer engine.UnsubscribeCanceled(canceledCh)
+		defer engine.UnsubscribeRollbacked(rollbackedCh)
 
 		// 测试事务取消事件
 		{
@@ -338,10 +338,8 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到取消事件
 			select {
 			case event := <-canceledCh:
-				canceledEvent, ok := event.(*storage_engine.TransactionCanceledEvent)
-				assert.True(t, ok)
-				assert.Equal(t, "test-client", canceledEvent.Committer)
-				assert.Equal(t, "canceled_doc", canceledEvent.Transaction.Operations[0].(storage_engine.InsertOp).DocID)
+				assert.Equal(t, "test-client", event.Committer)
+				assert.Equal(t, "canceled_doc", event.Transaction.Operations[0].(storage_engine.InsertOp).DocID)
 			case <-time.After(time.Second):
 				t.Fatal("未收到事务取消事件")
 			}
@@ -371,9 +369,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到提交事件
 			select {
 			case event := <-committedCh:
-				tr, ok := event.(*storage_engine.TransactionCommittedEvent)
-				assert.True(t, ok)
-				op, ok := tr.Transaction.Operations[0].(storage_engine.InsertOp)
+				op, ok := event.Transaction.Operations[0].(storage_engine.InsertOp)
 				assert.True(t, ok)
 				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
@@ -402,9 +398,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到回滚事件
 			select {
 			case event := <-rollbackedCh:
-				tr, ok := event.(*storage_engine.TransactionRollbackedEvent)
-				assert.True(t, ok)
-				op, ok := tr.Transaction.Operations[0].(storage_engine.InsertOp)
+				op, ok := event.Transaction.Operations[0].(storage_engine.InsertOp)
 				assert.True(t, ok)
 				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):

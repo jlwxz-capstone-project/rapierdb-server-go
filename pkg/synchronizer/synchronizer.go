@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
@@ -20,16 +19,13 @@ var (
 )
 
 // 同步器状态常量
-const (
-	SynchronizerStatusStopped  = "stopped"
-	SynchronizerStatusStarting = "starting"
-	SynchronizerStatusRunning  = "running"
-	SynchronizerStatusStopping = "stopping"
-)
+type SynchronizerStatus string
 
-// 同步器状态事件主题
 const (
-	SynchronizerEventStatusChanged = "synchronizer_status_changed"
+	SynchronizerStatusStopped  SynchronizerStatus = "stopped"
+	SynchronizerStatusStarting SynchronizerStatus = "starting"
+	SynchronizerStatusRunning  SynchronizerStatus = "running"
+	SynchronizerStatusStopping SynchronizerStatus = "stopping"
 )
 
 type SynchronizerConfig struct {
@@ -39,24 +35,29 @@ type Synchronizer struct {
 	storageEngine       *storage_engine.StorageEngine
 	storageEngineEvents *StorageEngineEvents
 	channel             network_server.Channel
-	cancel              context.CancelFunc
 	config              SynchronizerConfig
 	permission          *query.Permissions
 	activeSet           *ActiveSet
+	ctx                 context.Context
+	cancel              context.CancelFunc
 
 	// 状态相关字段
-	status     string
+	status     SynchronizerStatus
 	statusLock sync.RWMutex
-	eventBus   *util.EventBus
+	eventBus   *util.EventBus[SynchronizerStatus]
 }
 
 type StorageEngineEvents struct {
-	CommittedCh  <-chan any
-	CanceledCh   <-chan any
-	RollbackedCh <-chan any
+	CommittedCh  <-chan *storage_engine.TransactionCommittedEvent
+	CanceledCh   <-chan *storage_engine.TransactionCanceledEvent
+	RollbackedCh <-chan *storage_engine.TransactionRollbackedEvent
 }
 
 func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel network_server.Channel, config *SynchronizerConfig) *Synchronizer {
+	return NewSynchronizerWithContext(context.Background(), storageEngine, channel, config)
+}
+
+func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engine.StorageEngine, channel network_server.Channel, config *SynchronizerConfig) *Synchronizer {
 	// 使用默认配置
 	if config == nil {
 		config = &SynchronizerConfig{}
@@ -68,30 +69,35 @@ func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel networ
 		log.Errorf("NewSynchronizer: 创建权限失败: %v", err)
 	}
 
+	// 创建上下文
+	ctx, cancel := context.WithCancel(ctx)
+
 	synchronizer := &Synchronizer{
 		storageEngine:       storageEngine,
 		storageEngineEvents: &StorageEngineEvents{},
 		channel:             channel,
-		cancel:              nil,
 		config:              *config,
 		permission:          permission,
 		activeSet:           NewActiveSet(),
+		ctx:                 ctx,
+		cancel:              cancel,
 		status:              SynchronizerStatusStopped,
-		eventBus:            util.NewEventBus(),
+		statusLock:          sync.RWMutex{},
+		eventBus:            util.NewEventBus[SynchronizerStatus](),
 	}
 	log.Debugf("NewSynchronizer: 同步器创建成功")
 	return synchronizer
 }
 
 // GetStatus 获取同步器当前状态
-func (s *Synchronizer) GetStatus() string {
+func (s *Synchronizer) GetStatus() SynchronizerStatus {
 	s.statusLock.RLock()
 	defer s.statusLock.RUnlock()
 	return s.status
 }
 
-// setStatus 设置同步器状态并通知订阅者
-func (s *Synchronizer) setStatus(status string) {
+// setStatus 设置同步器状态（内部使用）
+func (s *Synchronizer) setStatus(status SynchronizerStatus) {
 	s.statusLock.Lock()
 	oldStatus := s.status
 	s.status = status
@@ -99,29 +105,27 @@ func (s *Synchronizer) setStatus(status string) {
 
 	// 只有状态发生变化时才发布事件
 	if oldStatus != status {
-		// 通过事件总线发布状态变更事件
-		s.eventBus.Publish(SynchronizerEventStatusChanged, status)
+		s.eventBus.Publish(status)
 	}
 }
 
 // SubscribeStatusChange 订阅状态变更事件
-func (s *Synchronizer) SubscribeStatusChange() <-chan any {
-	return s.eventBus.Subscribe(SynchronizerEventStatusChanged)
+func (s *Synchronizer) SubscribeStatusChange() <-chan SynchronizerStatus {
+	return s.eventBus.Subscribe()
 }
 
 // UnsubscribeStatusChange 取消订阅状态变更事件
-func (s *Synchronizer) UnsubscribeStatusChange(ch <-chan any) {
-	s.eventBus.Unsubscribe(SynchronizerEventStatusChanged, ch)
+func (s *Synchronizer) UnsubscribeStatusChange(ch <-chan SynchronizerStatus) {
+	s.eventBus.Unsubscribe(ch)
 }
 
-// WaitForStatus 等待同步器达到指定状态，返回一个通道，当达到目标状态时会收到通知
-// timeout为等待超时时间，如果为0则永不超时
-func (s *Synchronizer) WaitForStatus(targetStatus string, timeout time.Duration) <-chan struct{} {
+// WaitForStatus 等待同步器达到指定状态
+func (s *Synchronizer) WaitForStatus(targetStatus SynchronizerStatus) <-chan struct{} {
 	statusCh := s.SubscribeStatusChange()
 	cleanup := func() {
 		s.UnsubscribeStatusChange(statusCh)
 	}
-	return util.WaitForStatus(s.GetStatus, targetStatus, statusCh, cleanup, timeout)
+	return util.WaitForStatus(s.GetStatus, targetStatus, statusCh, cleanup, 0)
 }
 
 func (s *Synchronizer) Start() error {
@@ -129,13 +133,10 @@ func (s *Synchronizer) Start() error {
 	s.setStatus(SynchronizerStatusStarting)
 
 	// 订阅存储引擎事件
-	committedCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED)
-	canceledCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED)
-	rollbackedCh := s.storageEngine.Subscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED)
+	committedCh := s.storageEngine.SubscribeCommitted()
+	canceledCh := s.storageEngine.SubscribeCanceled()
+	rollbackedCh := s.storageEngine.SubscribeRollbacked()
 	log.Debugf("Synchronizer.Start: 已订阅存储引擎事件")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
 
 	// 保存订阅通道以便后续清理
 	s.storageEngineEvents = &StorageEngineEvents{
@@ -148,7 +149,7 @@ func (s *Synchronizer) Start() error {
 		log.Debugf("Synchronizer: 事件处理协程已启动")
 		for {
 			select {
-			case <-ctx.Done():
+			case <-s.ctx.Done():
 				log.Debugf("Synchronizer: 收到取消信号，事件处理协程退出")
 				return
 			case event := <-committedCh:
@@ -514,9 +515,9 @@ func (s *Synchronizer) Stop() {
 	// 取消所有订阅
 	if s.storageEngineEvents != nil {
 		log.Debugf("Synchronizer.Stop: 取消存储引擎事件订阅")
-		s.storageEngine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED, s.storageEngineEvents.CommittedCh)
-		s.storageEngine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED, s.storageEngineEvents.CanceledCh)
-		s.storageEngine.Unsubscribe(storage_engine.STORAGE_ENGINE_EVENT_TRANSACTION_ROLLBACKED, s.storageEngineEvents.RollbackedCh)
+		s.storageEngine.UnsubscribeCommitted(s.storageEngineEvents.CommittedCh)
+		s.storageEngine.UnsubscribeCanceled(s.storageEngineEvents.CanceledCh)
+		s.storageEngine.UnsubscribeRollbacked(s.storageEngineEvents.RollbackedCh)
 	}
 	s.storageEngineEvents = nil
 

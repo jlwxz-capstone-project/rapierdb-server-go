@@ -12,7 +12,7 @@ import (
 // 用于响应服务端的 VersionQueryMessage，携带有服务端要求的
 // 指定文档的版本
 type VersionQueryRespMessageV1 struct {
-	Responses map[string]map[string][]byte // collection -> doc_id -> version (bytes)
+	Responses map[string]map[string][]byte // collection -> doc_id -> version (bytes)，空数组表示文档不存在
 }
 
 var _ Message = &VersionQueryRespMessageV1{}
@@ -26,7 +26,13 @@ func (m *VersionQueryRespMessageV1) DebugPrint() string {
 		docsStrs := make([]string, len(docs))
 		j := 0
 		for docId, version := range docs {
-			docsStrs[j] = fmt.Sprintf("%s: %s", docId, version)
+			var versionStr string
+			if len(version) == 0 {
+				versionStr = "不存在"
+			} else {
+				versionStr = fmt.Sprintf("%v", version)
+			}
+			docsStrs[j] = fmt.Sprintf("%s: %s", docId, versionStr)
 			j++
 		}
 		docsStr := strings.Join(docsStrs, ", ")
@@ -84,7 +90,7 @@ func (m *VersionQueryRespMessageV1) Encode() ([]byte, error) {
 		util.WriteVarUint(buf, uint64(len(docs)))
 		for docId, version := range docs {
 			util.WriteVarString(buf, docId)
-			util.WriteBytes(buf, version)
+			util.WriteBytes(buf, version) // 空数组表示文档不存在
 		}
 	}
 	return buf.Bytes(), nil
