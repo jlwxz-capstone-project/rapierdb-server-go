@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -22,8 +23,10 @@ func (m *PostDocMessageV1) isMessage() {}
 func (m *PostDocMessageV1) DebugPrint() string {
 	upsertStrs := make([]string, len(m.Upsert))
 	i := 0
-	for key := range m.Upsert {
-		upsertStrs[i] = key
+	for docKey := range m.Upsert {
+		collection := storage_engine.GetCollectionNameFromKey([]byte(docKey))
+		docId := storage_engine.GetDocIdFromKey([]byte(docKey))
+		upsertStrs[i] = fmt.Sprintf("%s.%s", collection, docId)
 		i++
 	}
 	upsertStr := strings.Join(upsertStrs, ", ")

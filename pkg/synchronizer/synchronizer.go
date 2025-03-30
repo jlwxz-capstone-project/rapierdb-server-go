@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
 	network_server "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/server"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
@@ -218,7 +220,8 @@ func (s *Synchronizer) Start() error {
 
 				// TODO: 按理说这里应该只将查询结果中包含的文档放入 vqm 中
 				// 但简单起见，这里将查询对应集合里的所有文档都放入 vqm 中
-				if !vqm.ContainsCollection(queryCollection) {
+				allCollections := vqm.GetAllCollections()
+				if !slices.Contains(allCollections, queryCollection) {
 					docs, err := s.storageEngine.LoadAllDocsInCollection(queryCollection, true)
 					if err != nil {
 						log.Errorf("msgHandler: 获取集合 %s 所有文档失败: %v", queryCollection, err)
@@ -241,7 +244,45 @@ func (s *Synchronizer) Start() error {
 
 		case *message.VersionQueryRespMessageV1:
 			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
-
+			toUpsert := make(map[string][]byte)
+			toDelete := make([]string, 0)
+			for docKey, vvBytes := range msg.Responses {
+				docKeyBytes := util.String2Bytes(docKey)
+				collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
+				docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+				if vvBytes == nil || len(vvBytes) == 0 {
+					doc, err := s.storageEngine.LoadDoc(collection, docId)
+					if err != nil {
+						log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
+						continue
+					}
+					docBytes := doc.ExportSnapshot().Bytes()
+					toUpsert[docKey] = docBytes
+				} else {
+					doc, err := s.storageEngine.LoadDoc(collection, docId)
+					if err != nil {
+						log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
+						continue
+					}
+					vv := loro.NewVvFromBytes(loro.NewRustBytesVec(vvBytes))
+					updateBytesVec := doc.ExportUpdatesFrom(vv)
+					updateBytes := updateBytesVec.Bytes()
+					toUpsert[docKey] = updateBytes
+				}
+			}
+			if len(toUpsert) > 0 {
+				syncMsg := message.PostDocMessageV1{
+					Upsert: toUpsert,
+					Delete: toDelete,
+				}
+				log.Debugf("msgHandler: 向客户端 %s 发送同步消息 %s", clientId, syncMsg.DebugPrint())
+				syncMsgBytes, err := syncMsg.Encode()
+				if err != nil {
+					log.Errorf("msgHandler: 编码同步消息失败: %v", err)
+					return
+				}
+				s.channel.Send(clientId, syncMsgBytes)
+			}
 		}
 	}
 	s.channel.SetMsgHandler(msgHandler)

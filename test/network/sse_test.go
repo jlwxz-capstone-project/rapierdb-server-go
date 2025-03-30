@@ -1,19 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/auth"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/client"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
+	network_client "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/client"
 	network_server "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/server"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/sse"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
@@ -27,6 +25,10 @@ var testPermissionConditional string
 //go:embed test_schema1.js
 var testSchema1 string
 
+const serverUrl = "localhost:8080"
+const sseEndpoint = "/sse"
+const apiEndpoint = "/api"
+
 func TestBasicCURD(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -39,9 +41,9 @@ func TestBasicCURD(t *testing.T) {
 
 	// 启动 SSE 客户端
 	clientReadyCh := make(chan struct{})
-	go startSseClient(t, ctx, clientReadyCh)
+	go startTestClient(t, ctx, clientReadyCh)
 	<-clientReadyCh
-	log.Info("SSE 客户端已启动")
+	log.Info("客户端已启动")
 
 	time.Sleep(5 * time.Second)
 
@@ -129,9 +131,9 @@ func startServer(t *testing.T, ctx context.Context, serverReadyCh chan<- struct{
 	<-storageEngine.WaitForStatus(storage_engine.StorageEngineStatusOpen)
 
 	opts := &network_server.RapierDbHTTPServerOption{
-		Addr:        "localhost:8080",
-		SseEndpoint: "/sse",
-		ApiEndpoint: "/api",
+		Addr:        serverUrl,
+		SseEndpoint: sseEndpoint,
+		ApiEndpoint: apiEndpoint,
 	}
 	server := network_server.NewRapierDbHTTPServer(opts)
 	server.SetAuthProvider(&auth.HttpMockAuthProvider{})
@@ -170,75 +172,101 @@ func startServer(t *testing.T, ctx context.Context, serverReadyCh chan<- struct{
 	log.Info("服务器已完全关闭")
 }
 
-func startSseClient(t *testing.T, ctx context.Context, clientReadyCh chan<- struct{}) {
-	eventCh := make(chan *sse.SseEvent)
-	sseClient := sse.NewSseClient("http://localhost:8080/sse?client_id=test_client")
+func startTestClient(t *testing.T, ctx context.Context, clientReadyCh chan<- struct{}) {
+	cm := network_client.NewHttpChannelManager(network_client.HttpChannelConfig{
+		ReceiveURL: "http://" + serverUrl + sseEndpoint,
+		SendURL:    "http://" + serverUrl + apiEndpoint,
+		Headers:    map[string]string{},
+	})
+	c := client.NewTestClient(cm)
+	c.Connect()
 
-	// 订阅事件
-	go func() {
-		err := sseClient.SubscribeChan(eventCh)
-		if err != nil {
-			log.Terrorf(t, "订阅失败: %v", err)
-			return
-		}
-	}()
+	<-c.WaitForStatus(client.TEST_CLIENT_STATUS_READY)
+	clientReadyCh <- struct{}{}
 
-	// 等待客户端连接建立
-	<-sseClient.WaitForStatus(sse.SSE_CLIENT_STATUS_CONNECTED)
-	clientReadyCh <- struct{}{} // 通知测试函数客户端已就绪
-
-	// 处理接收到的事件
-	go func() {
-		for event := range eventCh {
-			buf := bytes.NewBuffer(event.Data)
-			msg, err := message.DecodeMessage(buf)
-			if err != nil {
-				log.Terrorf(t, "解码失败: %v", err)
-				return
-			}
-			log.Infof("客户端接收到消息: %s", msg.DebugPrint())
-		}
-	}()
-
-	// 创建查询
 	query1 := query.FindManyQuery{
 		Collection: "users",
 		Filter: &query_filter_expr.ValueExpr{
 			Value: true,
 		},
 	}
+	rquery1, err := c.FindMany(&query1)
+	assert.NoError(t, err)
 
-	// 创建订阅更新消息
-	apiUrl := "http://localhost:8080/api?client_id=test_client"
-	msg1 := message.SubscriptionUpdateMessageV1{
-		Added:   []query.Query{&query1},
-		Removed: []query.Query{},
-	}
-	msg1Bytes, err := msg1.Encode()
-	if err != nil {
-		log.Terrorf(t, "编码失败: %v", err)
-		return
-	}
-
-	// 发送订阅请求
-	log.Info("客户端发送消息要求更新订阅")
-	resp, err := http.Post(apiUrl, "application/octet-stream", bytes.NewReader(msg1Bytes))
-	if err != nil {
-		log.Terrorf(t, "发送订阅请求失败: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Terrorf(t, "订阅请求返回非200状态码: %d", resp.StatusCode)
-		return
-	}
-
-	// 接收到关闭信号时，优雅关闭
-	<-ctx.Done()
-	log.Info("开始关闭SSE客户端...")
-
-	sseClient.Close()
-
-	log.Info("SSE客户端已完全关闭")
+	log.Debugf("query1 之前结果：%v", rquery1.Result.Get())
+	time.Sleep(2 * time.Second)
+	log.Debugf("query1 之后结果：%v", rquery1.Result.Get())
 }
+
+// func startSseClient(t *testing.T, ctx context.Context, clientReadyCh chan<- struct{}) {
+// 	eventCh := make(chan *sse.SseEvent)
+// 	sseClient := sse.NewSseClient("http://localhost:8080/sse?client_id=test_client")
+
+// 	// 订阅事件
+// 	go func() {
+// 		err := sseClient.SubscribeChan(eventCh)
+// 		if err != nil {
+// 			log.Terrorf(t, "订阅失败: %v", err)
+// 			return
+// 		}
+// 	}()
+
+// 	// 等待客户端连接建立
+// 	<-sseClient.WaitForStatus(sse.SSE_CLIENT_STATUS_CONNECTED)
+// 	clientReadyCh <- struct{}{} // 通知测试函数客户端已就绪
+
+// 	// 处理接收到的事件
+// 	go func() {
+// 		for event := range eventCh {
+// 			buf := bytes.NewBuffer(event.Data)
+// 			msg, err := message.DecodeMessage(buf)
+// 			if err != nil {
+// 				log.Terrorf(t, "解码失败: %v", err)
+// 				return
+// 			}
+// 			log.Infof("客户端接收到消息: %s", msg.DebugPrint())
+// 		}
+// 	}()
+
+// 	// 创建查询
+// 	query1 := query.FindManyQuery{
+// 		Collection: "users",
+// 		Filter: &query_filter_expr.ValueExpr{
+// 			Value: true,
+// 		},
+// 	}
+
+// 	// 创建订阅更新消息
+// 	apiUrl := "http://localhost:8080/api?client_id=test_client"
+// 	msg1 := message.SubscriptionUpdateMessageV1{
+// 		Added:   []query.Query{&query1},
+// 		Removed: []query.Query{},
+// 	}
+// 	msg1Bytes, err := msg1.Encode()
+// 	if err != nil {
+// 		log.Terrorf(t, "编码失败: %v", err)
+// 		return
+// 	}
+
+// 	// 发送订阅请求
+// 	log.Info("客户端发送消息要求更新订阅")
+// 	resp, err := http.Post(apiUrl, "application/octet-stream", bytes.NewReader(msg1Bytes))
+// 	if err != nil {
+// 		log.Terrorf(t, "发送订阅请求失败: %v", err)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
+
+// 	if resp.StatusCode != http.StatusOK {
+// 		log.Terrorf(t, "订阅请求返回非200状态码: %d", resp.StatusCode)
+// 		return
+// 	}
+
+// 	// 接收到关闭信号时，优雅关闭
+// 	<-ctx.Done()
+// 	log.Info("开始关闭SSE客户端...")
+
+// 	sseClient.Close()
+
+// 	log.Info("SSE客户端已完全关闭")
+// }

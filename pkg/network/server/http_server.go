@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/auth"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	pe "github.com/pkg/errors"
 )
@@ -117,7 +117,7 @@ func (s *RapierDbHTTPServer) Start() error {
 	go func() {
 		err := s.server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			log.Printf("HTTP服务器错误: %v", err)
+			log.Errorf("HTTP服务器错误: %v", err)
 			s.setStatus(ServerStatusStopped)
 		}
 	}()
@@ -148,7 +148,7 @@ func (s *RapierDbHTTPServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		msg := fmt.Sprintf("SSE 只接受 GET 请求，当前请求方法为 %s", r.Method)
 		http.Error(w, msg, http.StatusMethodNotAllowed)
-		log.Printf("非法的 SSE 请求，方法为 %s", r.Method)
+		log.Errorf("非法的 SSE 请求，方法为 %s", r.Method)
 		return
 	}
 
@@ -156,7 +156,7 @@ func (s *RapierDbHTTPServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	authResult := <-s.authProvider.Authenticate(r)
 	if authResult.Err != nil {
 		http.Error(w, "认证失败", http.StatusUnauthorized)
-		log.Printf("SSE 请求认证失败，错误为 %v", authResult.Err)
+		log.Errorf("SSE 请求认证失败，错误为 %v", authResult.Err)
 		return
 	}
 	clientId := authResult.ClientID
@@ -165,7 +165,7 @@ func (s *RapierDbHTTPServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 	err := s.channel.Accept(clientId, w)
 	if err != nil {
 		http.Error(w, "服务器错误", http.StatusInternalServerError)
-		log.Printf("信道接受失败，错误为 %v", err)
+		log.Errorf("信道接受失败，错误为 %v", err)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (s *RapierDbHTTPServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 func (s *RapierDbHTTPServer) handleApi(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "API 接口只接受 POST 请求", http.StatusMethodNotAllowed)
-		log.Printf("非法的 API 请求，方法为 %s", r.Method)
+		log.Errorf("非法的 API 请求，方法为 %s", r.Method)
 		return
 	}
 
@@ -186,7 +186,7 @@ func (s *RapierDbHTTPServer) handleApi(w http.ResponseWriter, r *http.Request) {
 	authResult := <-s.authProvider.Authenticate(r)
 	if authResult.Err != nil {
 		http.Error(w, "认证失败", http.StatusUnauthorized)
-		log.Printf("API 请求认证失败，错误为 %v", authResult.Err)
+		log.Errorf("API 请求认证失败，错误为 %v", authResult.Err)
 		return
 	}
 	clientId := authResult.ClientID
@@ -194,7 +194,7 @@ func (s *RapierDbHTTPServer) handleApi(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "服务器错误", http.StatusInternalServerError)
-		log.Printf("读取请求体失败，错误为 %v", err)
+		log.Errorf("读取请求体失败，错误为 %v", err)
 		return
 	}
 	defer r.Body.Close()

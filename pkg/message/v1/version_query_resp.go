@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -12,7 +13,7 @@ import (
 // 用于响应服务端的 VersionQueryMessage，携带有服务端要求的
 // 指定文档的版本
 type VersionQueryRespMessageV1 struct {
-	Responses map[string]map[string][]byte // collection -> doc_id -> version (bytes)，空数组表示文档不存在
+	Responses map[string][]byte // docKey -> version (bytes)，空数组表示文档不存在
 }
 
 var _ Message = &VersionQueryRespMessageV1{}
@@ -20,59 +21,36 @@ var _ Message = &VersionQueryRespMessageV1{}
 func (m *VersionQueryRespMessageV1) isMessage() {}
 
 func (m *VersionQueryRespMessageV1) DebugPrint() string {
-	responsesStrs := make([]string, len(m.Responses))
+	respStrs := make([]string, len(m.Responses))
 	i := 0
-	for collection, docs := range m.Responses {
-		docsStrs := make([]string, len(docs))
-		j := 0
-		for docId, version := range docs {
-			var versionStr string
-			if len(version) == 0 {
-				versionStr = "不存在"
-			} else {
-				versionStr = fmt.Sprintf("%v", version)
-			}
-			docsStrs[j] = fmt.Sprintf("%s: %s", docId, versionStr)
-			j++
-		}
-		docsStr := strings.Join(docsStrs, ", ")
-		responsesStrs[i] = fmt.Sprintf("%s: {%s}", collection, docsStr)
+	for docKey, version := range m.Responses {
+		docKeyBytes := util.String2Bytes(docKey)
+		collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
+		docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+		respStrs[i] = fmt.Sprintf("[%s.%s]: %s", collection, docId, version)
 		i++
 	}
-	responsesStr := strings.Join(responsesStrs, ", ")
-	return fmt.Sprintf("VersionQueryRespMessageV1{Responses: {%s}}", responsesStr)
+	return fmt.Sprintf("VersionQueryRespMessageV1{Responses: {%s}}", strings.Join(respStrs, ", "))
 }
 
 // decodeVersionQueryRespMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryRespMessageV1
 // 如果解码失败，返回 nil
 func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMessageV1, error) {
-	nCollections, err := util.ReadVarUint(b)
+	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
 	}
-	responses := make(map[string]map[string][]byte)
-	for i := uint64(0); i < nCollections; i++ {
-		collection, err := util.ReadVarString(b)
+	responses := make(map[string][]byte)
+	for i := uint64(0); i < nDocs; i++ {
+		docKey, err := util.ReadVarString(b)
 		if err != nil {
 			return nil, err
 		}
-		nDocs, err := util.ReadVarUint(b)
+		version, err := util.ReadBytes(b)
 		if err != nil {
 			return nil, err
 		}
-		docs := make(map[string][]byte)
-		for j := uint64(0); j < nDocs; j++ {
-			docId, err := util.ReadVarString(b)
-			if err != nil {
-				return nil, err
-			}
-			version, err := util.ReadBytes(b)
-			if err != nil {
-				return nil, err
-			}
-			docs[docId] = version
-		}
-		responses[collection] = docs
+		responses[docKey] = version
 	}
 	return &VersionQueryRespMessageV1{
 		Responses: responses,
@@ -83,15 +61,10 @@ func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMess
 func (m *VersionQueryRespMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteVarUint(buf, m.Type())
-	nCollections := len(m.Responses)
-	util.WriteVarUint(buf, uint64(nCollections))
-	for collection, docs := range m.Responses {
-		util.WriteVarString(buf, collection)
-		util.WriteVarUint(buf, uint64(len(docs)))
-		for docId, version := range docs {
-			util.WriteVarString(buf, docId)
-			util.WriteBytes(buf, version) // 空数组表示文档不存在
-		}
+	util.WriteVarUint(buf, uint64(len(m.Responses)))
+	for docKey, version := range m.Responses {
+		util.WriteVarString(buf, docKey)
+		util.WriteBytes(buf, version)
 	}
 	return buf.Bytes(), nil
 }

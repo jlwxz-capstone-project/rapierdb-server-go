@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -103,6 +104,7 @@ func (c *SseClient) GetStatus() SseClientStatus {
 
 // setStatus 设置客户端状态并通知订阅者
 func (c *SseClient) setStatus(status SseClientStatus) {
+	log.Debugf("SSE 客户端状态改变：%s -> %s", c.status, status)
 	c.statusLock.Lock()
 	oldStatus := c.status
 	c.status = status

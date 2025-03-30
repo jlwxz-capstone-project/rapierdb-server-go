@@ -24,6 +24,7 @@ const (
 	MSG_TYPE_TRANSACTION_FAILED_V1  uint64 = 5
 	MSG_TYPE_VERSION_QUERY_V1       uint64 = 6
 	MSG_TYPE_VERSION_QUERY_RESP_V1  uint64 = 7
+	MSG_TYPE_SUBSCRIPTION_RESET_V1  uint64 = 8
 )
 
 func DecodeMessage(b *bytes.Buffer) (Message, error) {
@@ -47,6 +48,8 @@ func DecodeMessage(b *bytes.Buffer) (Message, error) {
 		return decodeVersionQueryMessageV1Body(b)
 	case MSG_TYPE_VERSION_QUERY_RESP_V1:
 		return decodeVersionQueryRespMessageV1Body(b)
+	case MSG_TYPE_SUBSCRIPTION_RESET_V1:
+		return decodeSubscriptionResetMessageV1Body(b)
 	default:
 		return nil, errors.New("未知的消息类型")
 	}

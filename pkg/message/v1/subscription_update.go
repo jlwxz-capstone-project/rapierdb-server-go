@@ -9,6 +9,8 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
+// SubscriptionUpdateMessageV1 用于通知客户端订阅更新
+// 当客户端需要更新订阅时，会发送该消息给服务器
 type SubscriptionUpdateMessageV1 struct {
 	Added   []query.Query
 	Removed []query.Query

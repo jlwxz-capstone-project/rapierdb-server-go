@@ -10,6 +10,7 @@ import (
 
 	pe "github.com/pkg/errors"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/sse"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
@@ -33,10 +34,15 @@ type HttpChannelManager struct {
 
 // NewHttpChannelManager 创建一个新的HTTP通道管理器
 func NewHttpChannelManager(config HttpChannelConfig) *HttpChannelManager {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &HttpChannelManager{
-		config:     config,
-		channels:   make(map[*HttpChannel]bool),
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		config:       config,
+		channels:     make(map[*HttpChannel]bool),
+		channelMutex: sync.Mutex{},
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
@@ -72,18 +78,32 @@ func (m *HttpChannelManager) GetChannel() (ClientChannel, error) {
 	channel.closeFunc = func() error {
 		return m.Close(channel)
 	}
+	log.Debugf("客户端通道创建成功")
 
 	// 启动SSE接收
-	err := sseClient.Subscribe(channel.HandleSseEvent)
+	sseEventCh := make(chan *sse.SseEvent)
+	err := sseClient.SubscribeChanWithContext(ctx, sseEventCh)
 	if err != nil {
-		cancel()
-		return nil, pe.WithStack(fmt.Errorf("启动SSE接收失败: %w", err))
+		log.Errorf("SSE接收启动失败: %v", err)
 	}
+	log.Debugf("SSE 接收启动成功，URL: %s", m.config.ReceiveURL)
+	go func() {
+		defer close(sseEventCh)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event := <-sseEventCh:
+				channel.HandleSseEvent(event)
+			}
+		}
+	}()
 
 	// 注册通道到管理器
 	m.channelMutex.Lock()
 	m.channels[channel] = true
 	m.channelMutex.Unlock()
+	log.Debugf("通道注册成功，当前活跃通道数量: %d", len(m.channels))
 
 	return channel, nil
 }

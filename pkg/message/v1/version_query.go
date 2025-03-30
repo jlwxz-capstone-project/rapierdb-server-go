@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // VersionQueryMessageV1 由服务端发送给客户端
 // 表示服务端希望查询客户端指定文档的版本
 type VersionQueryMessageV1 struct {
-	Queries map[string]map[string]struct{} // collection -> doc_ids
+	Queries map[string]struct{} // collection -> doc_ids
 }
 
 var _ Message = &VersionQueryMessageV1{}
@@ -19,53 +21,38 @@ var _ Message = &VersionQueryMessageV1{}
 func (m *VersionQueryMessageV1) isMessage() {}
 
 func (m *VersionQueryMessageV1) DebugPrint() string {
-	queriesStrs := make([]string, len(m.Queries))
+	queryStrs := make([]string, len(m.Queries))
 	i := 0
-	for collection, docs := range m.Queries {
-		docIds := make([]string, 0, len(docs))
-		for docId := range docs {
-			docIds = append(docIds, docId)
-		}
-		docsStr := strings.Join(docIds, ", ")
-		queriesStrs[i] = fmt.Sprintf("%s: {%s}", collection, docsStr)
+	for docKey, version := range m.Queries {
+		docKeyBytes := util.String2Bytes(docKey)
+		collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
+		docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+		queryStrs[i] = fmt.Sprintf("[%s.%s]: %s", collection, docId, version)
 		i++
 	}
-	queriesStr := strings.Join(queriesStrs, ", ")
-	return fmt.Sprintf("VersionQueryMessageV1{Queries: {%s}}", queriesStr)
+	return fmt.Sprintf("VersionQueryMessageV1{Queries: {%s}}", strings.Join(queryStrs, ", "))
 }
 
 func NewVersionQueryMessageV1() *VersionQueryMessageV1 {
 	return &VersionQueryMessageV1{
-		Queries: make(map[string]map[string]struct{}),
+		Queries: make(map[string]struct{}),
 	}
 }
 
 // decodeVersionQueryMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryMessageV1
 // 如果解码失败，返回 nil
 func decodeVersionQueryMessageV1Body(b *bytes.Buffer) (*VersionQueryMessageV1, error) {
-	nCollections, err := util.ReadVarUint(b)
+	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
 	}
-	queries := make(map[string]map[string]struct{})
-	for i := uint64(0); i < nCollections; i++ {
-		collection, err := util.ReadVarString(b)
+	queries := make(map[string]struct{})
+	for i := uint64(0); i < nDocs; i++ {
+		docKey, err := util.ReadVarString(b)
 		if err != nil {
 			return nil, err
 		}
-		nDocIds, err := util.ReadVarUint(b)
-		if err != nil {
-			return nil, err
-		}
-		docIds := make(map[string]struct{}, nDocIds)
-		for j := uint64(0); j < nDocIds; j++ {
-			docId, err := util.ReadVarString(b)
-			if err != nil {
-				return nil, err
-			}
-			docIds[docId] = struct{}{}
-		}
-		queries[collection] = docIds
+		queries[docKey] = struct{}{}
 	}
 	return &VersionQueryMessageV1{
 		Queries: queries,
@@ -76,14 +63,10 @@ func decodeVersionQueryMessageV1Body(b *bytes.Buffer) (*VersionQueryMessageV1, e
 func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteVarUint(buf, m.Type())
-	nCollections := len(m.Queries)
-	util.WriteVarUint(buf, uint64(nCollections))
-	for collection, docIds := range m.Queries {
-		util.WriteVarString(buf, collection)
-		util.WriteVarUint(buf, uint64(len(docIds)))
-		for docId := range docIds {
-			util.WriteVarString(buf, docId)
-		}
+	nDocs := len(m.Queries)
+	util.WriteVarUint(buf, uint64(nDocs))
+	for docKey := range m.Queries {
+		util.WriteVarString(buf, docKey)
 	}
 	return buf.Bytes(), nil
 }
@@ -93,28 +76,41 @@ func (m *VersionQueryMessageV1) Type() uint64 {
 }
 
 func (m *VersionQueryMessageV1) AddDoc(collection string, docId string) {
-	if _, ok := m.Queries[collection]; !ok {
-		m.Queries[collection] = make(map[string]struct{})
+	docKeyBytes, err := storage_engine.CalcDocKey(collection, docId)
+	if err != nil {
+		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
+		return
 	}
-	m.Queries[collection][docId] = struct{}{}
+	docKey := util.Bytes2String(docKeyBytes)
+	m.Queries[docKey] = struct{}{}
 }
 
 func (m *VersionQueryMessageV1) RemoveDoc(collection string, docId string) {
-	if _, ok := m.Queries[collection]; !ok {
+	docKeyBytes, err := storage_engine.CalcDocKey(collection, docId)
+	if err != nil {
+		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
 		return
 	}
-	delete(m.Queries[collection], docId)
+	docKey := util.Bytes2String(docKeyBytes)
+	delete(m.Queries, docKey)
 }
 
-func (m *VersionQueryMessageV1) ContainsCollection(collection string) bool {
-	_, exists := m.Queries[collection]
-	return exists
+func (m *VersionQueryMessageV1) GetAllCollections() []string {
+	collections := make([]string, 0, len(m.Queries))
+	for docKey := range m.Queries {
+		docKeyBytes := util.String2Bytes(docKey)
+		collections = append(collections, storage_engine.GetCollectionNameFromKey(docKeyBytes))
+	}
+	return collections
 }
 
 func (m *VersionQueryMessageV1) ContainsDoc(collection string, docId string) bool {
-	if _, ok := m.Queries[collection]; !ok {
+	docKeyBytes, err := storage_engine.CalcDocKey(collection, docId)
+	if err != nil {
+		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
 		return false
 	}
-	_, exists := m.Queries[collection][docId]
+	docKey := util.Bytes2String(docKeyBytes)
+	_, exists := m.Queries[docKey]
 	return exists
 }
