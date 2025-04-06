@@ -130,6 +130,7 @@ func (c *TestClient) handleServerMessage(data []byte) {
 			// 如果未启用乐观更新，则收到事务确认消息后应用事务
 			if c.OptimisticMode == TEST_CLIENT_OPTIMISTIC_MODE_OFF {
 				c.applyTransaction(tx)
+				log.Debugf("客户端收到事务确认消息，应用事务 %s", msg.TxID)
 			}
 		}
 	case *message.VersionQueryMessageV1:
@@ -325,6 +326,12 @@ func (c *TestClient) applyTransaction(tx *storage_engine.Transaction) error {
 			}
 		}
 	}
+
+	// TODO
+	for _, query := range c.Queries {
+		c.updateQueryResult(query)
+	}
+
 	return nil
 }
 
