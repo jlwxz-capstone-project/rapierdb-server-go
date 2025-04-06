@@ -66,6 +66,7 @@ func (c *HTTPChannel) CloseAll() error {
 }
 
 func (c *HTTPChannel) Send(clientId string, msg []byte) error {
+	// fmt.Printf("server send data=%v, clientId=%s\n", msg, clientId)
 	c.mu.RLock()
 	client, exists := c.clients[clientId]
 	c.mu.RUnlock()
@@ -86,6 +87,7 @@ func (c *HTTPChannel) Send(clientId string, msg []byte) error {
 }
 
 func (c *HTTPChannel) Broadcast(msg []byte) error {
+	// fmt.Printf("server broadcast data=%v\n", msg)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -115,6 +117,10 @@ func (c *HTTPChannel) GetAllConnectedClientIds() []string {
 
 func (c *HTTPChannel) SetMsgHandler(handler func(clientId string, msg []byte)) {
 	c.mu.Lock()
+	// c.handler = func(clientId string, msg []byte) {
+	// 	fmt.Printf("server receive data=%v, clientId=%s\n", msg, clientId)
+	// 	handler(clientId, msg)
+	// }
 	c.handler = handler
 	c.mu.Unlock()
 }

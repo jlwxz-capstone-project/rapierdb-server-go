@@ -34,6 +34,7 @@ var _ ClientChannel = &HttpChannel{}
 // 参数 msg 是要发送的消息字节数组
 // 返回发送过程中可能出现的错误
 func (c *HttpChannel) Send(msg []byte) error {
+	// fmt.Printf("client send data=%v\n", msg)
 	return c.sendFunc(msg)
 }
 
@@ -42,6 +43,10 @@ func (c *HttpChannel) Send(msg []byte) error {
 func (c *HttpChannel) SetMsgHandler(handler func(msg []byte)) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	// c.msgHandler = func(msg []byte) {
+	// 	fmt.Printf("client receive data=%v\n", msg)
+	// 	handler(msg)
+	// }
 	c.msgHandler = handler
 }
 

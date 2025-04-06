@@ -22,11 +22,17 @@ var (
 	ErrTransactionInvalid = errors.New("transaction invalid")
 )
 
+type TransactionOp interface {
+	isTransactionOp()
+}
+
 type InsertOp struct {
 	Collection string
 	DocID      string
 	Snapshot   []byte
 }
+
+func (op *InsertOp) isTransactionOp() {}
 
 type UpdateOp struct {
 	Collection string
@@ -34,10 +40,14 @@ type UpdateOp struct {
 	Update     []byte
 }
 
+func (op *UpdateOp) isTransactionOp() {}
+
 type DeleteOp struct {
 	Collection string
 	DocID      string
 }
+
+func (op *DeleteOp) isTransactionOp() {}
 
 type Transaction struct {
 	// 事务 ID，应该是 UUID，通常由客户端生成
@@ -47,11 +57,7 @@ type Transaction struct {
 	// 提交者，通常是客户端的 ID
 	Committer string
 	// 操作
-	Operations []any
-}
-
-type TransactionOp interface {
-	InsertOp | UpdateOp | DeleteOp
+	Operations []TransactionOp
 }
 
 func EnsureTransactionValid(tr *Transaction) error {
@@ -73,7 +79,7 @@ func EnsureTransactionValid(tr *Transaction) error {
 
 	for _, op := range tr.Operations {
 		switch op := op.(type) {
-		case InsertOp, UpdateOp, DeleteOp:
+		case *InsertOp, *UpdateOp, *DeleteOp:
 			continue
 		default:
 			return pe.WithStack(fmt.Errorf("%w: invalid operation type = %T", ErrTransactionInvalid, op))
@@ -183,7 +189,7 @@ func (tr *Transaction) Encode() ([]byte, error) {
 				return nil, pe.WithStack(err)
 			}
 		}
-		err = util.WriteBytes(buf, opBytes)
+		_, err := buf.Write(opBytes)
 		if err != nil {
 			return nil, pe.WithStack(err)
 		}
@@ -192,38 +198,35 @@ func (tr *Transaction) Encode() ([]byte, error) {
 }
 
 // DecodeOperation 从字节流解码操作
-func DecodeOperation(data []byte) (any, error) {
-	buf := bytes.NewBuffer(data)
-	opType, err := util.ReadVarUint(buf)
+func DecodeOperation(data *bytes.Buffer) (TransactionOp, error) {
+	opType, err := util.ReadVarUint(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
 
-	remainingData := buf.Bytes()
 	switch TransactionOpType(opType) {
 	case OP_INSERT:
-		return DecodeInsertOp(remainingData)
+		return DecodeInsertOp(data)
 	case OP_UPDATE:
-		return DecodeUpdateOp(remainingData)
+		return DecodeUpdateOp(data)
 	case OP_DELETE:
-		return DecodeDeleteOp(remainingData)
+		return DecodeDeleteOp(data)
 	default:
 		return nil, pe.WithStack(fmt.Errorf("%w: unknown operation type %d", ErrTransactionInvalid, opType))
 	}
 }
 
 // DecodeInsertOp 从字节流解码 InsertOp
-func DecodeInsertOp(data []byte) (*InsertOp, error) {
-	buf := bytes.NewBuffer(data)
-	collection, err := util.ReadVarString(buf)
+func DecodeInsertOp(data *bytes.Buffer) (*InsertOp, error) {
+	collection, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	docID, err := util.ReadVarString(buf)
+	docID, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	snapshot, err := util.ReadBytes(buf)
+	snapshot, err := util.ReadBytes(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
@@ -235,17 +238,16 @@ func DecodeInsertOp(data []byte) (*InsertOp, error) {
 }
 
 // DecodeUpdateOp 从字节流解码 UpdateOp
-func DecodeUpdateOp(data []byte) (*UpdateOp, error) {
-	buf := bytes.NewBuffer(data)
-	collection, err := util.ReadVarString(buf)
+func DecodeUpdateOp(data *bytes.Buffer) (*UpdateOp, error) {
+	collection, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	docID, err := util.ReadVarString(buf)
+	docID, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	update, err := util.ReadBytes(buf)
+	update, err := util.ReadBytes(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
@@ -257,13 +259,12 @@ func DecodeUpdateOp(data []byte) (*UpdateOp, error) {
 }
 
 // DecodeDeleteOp 从字节流解码 DeleteOp
-func DecodeDeleteOp(data []byte) (*DeleteOp, error) {
-	buf := bytes.NewBuffer(data)
-	collection, err := util.ReadVarString(buf)
+func DecodeDeleteOp(data *bytes.Buffer) (*DeleteOp, error) {
+	collection, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	docID, err := util.ReadVarString(buf)
+	docID, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
@@ -274,21 +275,20 @@ func DecodeDeleteOp(data []byte) (*DeleteOp, error) {
 }
 
 // DecodeTransaction 从字节流解码 Transaction
-func DecodeTransaction(data []byte) (*Transaction, error) {
-	buf := bytes.NewBuffer(data)
-	txID, err := util.ReadVarString(buf)
+func DecodeTransaction(data *bytes.Buffer) (*Transaction, error) {
+	txID, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	targetDatabase, err := util.ReadVarString(buf)
+	targetDatabase, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	committer, err := util.ReadVarString(buf)
+	committer, err := util.ReadVarString(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
-	opCount, err := util.ReadVarUint(buf)
+	opCount, err := util.ReadVarUint(data)
 	if err != nil {
 		return nil, pe.WithStack(err)
 	}
@@ -297,15 +297,11 @@ func DecodeTransaction(data []byte) (*Transaction, error) {
 		TxID:           txID,
 		TargetDatabase: targetDatabase,
 		Committer:      committer,
-		Operations:     make([]any, 0, opCount),
+		Operations:     make([]TransactionOp, 0, opCount),
 	}
 
 	for i := uint64(0); i < opCount; i++ {
-		opBytes, err := util.ReadBytes(buf)
-		if err != nil {
-			return nil, pe.WithStack(err)
-		}
-		op, err := DecodeOperation(opBytes)
+		op, err := DecodeOperation(data)
 		if err != nil {
 			return nil, pe.WithStack(err)
 		}

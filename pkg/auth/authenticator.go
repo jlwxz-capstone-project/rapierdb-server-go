@@ -24,7 +24,8 @@ var _ Authenticator[*http.Request] = (*HttpMockAuthProvider)(nil)
 func (p *HttpMockAuthProvider) Authenticate(ctx *http.Request) <-chan AuthenticationResult {
 	ch := make(chan AuthenticationResult)
 	go func() {
-		clientID := ctx.URL.Query().Get("client_id")
+		// 从 header 中获取客户端 ID
+		clientID := ctx.Header.Get("X-Client-ID")
 		ch <- AuthenticationResult{ClientID: clientID}
 		close(ch)
 	}()

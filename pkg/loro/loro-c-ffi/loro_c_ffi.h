@@ -136,6 +136,7 @@ extern void* loro_map_insert_map(void* ptr, char* key_ptr, void* map_ptr, uint8_
 extern void* loro_map_to_container(void* ptr);
 extern int loro_map_is_attached(void* ptr);
 extern void* loro_map_get_items(void* ptr);
+extern void* loro_map_insert_value(void* ptr, char* key_ptr, void* value_ptr, uint8_t* err);
 
 // Loro List
 extern void* loro_list_new_empty();

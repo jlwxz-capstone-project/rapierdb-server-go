@@ -756,6 +756,17 @@ func (m *LoroMap) GetMap(key string) (*LoroMap, error) {
 	return newMap, nil
 }
 
+func (m *LoroMap) InsertValue(key string, value *LoroValue) error {
+	var err C.uint8_t
+	keyPtr := C.CString(key)
+	defer C.free(unsafe.Pointer(keyPtr))
+	C.loro_map_insert_value(m.ptr, keyPtr, value.ptr, &err)
+	if err != 0 {
+		return pe.WithStack(fmt.Errorf("%w: insert value to map, key=%s", ErrLoroInsertFailed, key))
+	}
+	return nil
+}
+
 func (m *LoroMap) InsertNull(key string) error {
 	var err C.uint8_t
 	keyPtr := C.CString(key)

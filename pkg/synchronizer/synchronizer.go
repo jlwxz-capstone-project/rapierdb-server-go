@@ -173,7 +173,7 @@ func (s *Synchronizer) Start() error {
 		buf := bytes.NewBuffer(msgBytes)
 		msg, err := message.DecodeMessage(buf)
 		if err != nil {
-			log.Errorf("msgHandler: 解码消息失败: %v", err)
+			log.Errorf("msgHandler: 解码消息失败: %#+v", err)
 			return
 		}
 		switch msg := msg.(type) {
@@ -349,7 +349,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 
 		for _, op := range event.Transaction.Operations {
 			switch operation := op.(type) {
-			case storage_engine.InsertOp:
+			case *storage_engine.InsertOp:
 				// 检查该集合是否被订阅
 				if _, subscribed := collections[operation.Collection]; !subscribed {
 					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
@@ -389,7 +389,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				upsertDocs[docKey] = operation.Snapshot
 				log.Debugf("handleTransactionCommitted: 添加文档 %s/%s 到 upsert 列表", operation.Collection, operation.DocID)
 
-			case storage_engine.UpdateOp:
+			case *storage_engine.UpdateOp:
 				// 检查该集合是否被订阅
 				if _, subscribed := collections[operation.Collection]; !subscribed {
 					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
@@ -430,7 +430,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 				upsertDocs[docKey] = snapshot.Bytes()
 				log.Debugf("handleTransactionCommitted: 添加文档 %s/%s 到 upsert 列表", operation.Collection, operation.DocID)
 
-			case storage_engine.DeleteOp:
+			case *storage_engine.DeleteOp:
 				// 检查该集合是否被订阅
 				if _, subscribed := collections[operation.Collection]; !subscribed {
 					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)

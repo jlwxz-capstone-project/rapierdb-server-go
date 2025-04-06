@@ -1,6 +1,6 @@
 use std::ffi::{c_schar, CStr};
 
-use loro::{EncodedBlobMode, Frontiers, LoroDoc, ValueOrContainer, VersionVector};
+use loro::{EncodedBlobMode, Frontiers, LoroDoc, LoroMap, ValueOrContainer, VersionVector};
 
 #[no_mangle]
 pub extern "C" fn loro_doc_decode_import_blob_meta(

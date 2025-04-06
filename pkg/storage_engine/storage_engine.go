@@ -337,7 +337,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 	// 处理事务中的每个操作
 	for _, op := range tr.Operations {
 		switch op := op.(type) {
-		case InsertOp:
+		case *InsertOp:
 			{
 				collection := op.Collection
 				docID := op.DocID
@@ -364,7 +364,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// 添加到批处理
 				batch.Set(keyBytes, op.Snapshot, pebble.Sync)
 			}
-		case UpdateOp:
+		case *UpdateOp:
 			{
 				collection := op.Collection
 				docID := op.DocID
@@ -396,7 +396,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// 添加到批处理
 				batch.Set(keyBytes, snapshot.Bytes(), pebble.Sync)
 			}
-		case DeleteOp:
+		case *DeleteOp:
 			{
 				collection := op.Collection
 				docID := op.DocID

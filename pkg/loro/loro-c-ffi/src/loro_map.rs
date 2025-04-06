@@ -265,6 +265,23 @@ pub extern "C" fn loro_map_get_map(
 // Insert
 
 #[no_mangle]
+pub extern "C" fn loro_map_insert_value(
+    ptr: *mut LoroMap,
+    key_ptr: *const c_char,
+    value_ptr: *mut LoroValue,
+    err: *mut u8,
+) {
+    unsafe {
+        let map = &mut *ptr;
+        let key = CStr::from_ptr(key_ptr).to_string_lossy().into_owned();
+        let value = &mut *value_ptr;
+        if map.insert(&key, value.clone()).is_err() {
+            *err = 1;
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn loro_map_insert_null(ptr: *mut LoroMap, key_ptr: *const c_char, err: *mut u8) {
     unsafe {
         let map = &mut *ptr;

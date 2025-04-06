@@ -34,7 +34,7 @@ func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 }
 
 func decodePostTransactionMessageV1Body(b *bytes.Buffer) (*PostTransactionMessageV1, error) {
-	tr, err := storage_engine.DecodeTransaction(b.Bytes())
+	tr, err := storage_engine.DecodeTransaction(b)
 	if err != nil {
 		return nil, err
 	}

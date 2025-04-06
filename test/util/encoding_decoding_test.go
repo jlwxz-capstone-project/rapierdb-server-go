@@ -412,7 +412,7 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 				TxID:           "12345678-1234-5678-1234-567812345678",
 				TargetDatabase: "test_db",
 				Committer:      "client-1",
-				Operations: []any{
+				Operations: []storage_engine.TransactionOp{
 					&storage_engine.InsertOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
@@ -428,7 +428,7 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 				TxID:           "12345678-1234-5678-1234-567812345679",
 				TargetDatabase: "test_db",
 				Committer:      "client-2",
-				Operations: []any{
+				Operations: []storage_engine.TransactionOp{
 					&storage_engine.UpdateOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
@@ -444,7 +444,7 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 				TxID:           "12345678-1234-5678-1234-567812345680",
 				TargetDatabase: "test_db",
 				Committer:      "client-3",
-				Operations: []any{
+				Operations: []storage_engine.TransactionOp{
 					&storage_engine.DeleteOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
@@ -459,7 +459,7 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 				TxID:           "12345678-1234-5678-1234-567812345681",
 				TargetDatabase: "test_db",
 				Committer:      "client-4",
-				Operations: []any{
+				Operations: []storage_engine.TransactionOp{
 					&storage_engine.InsertOp{
 						Collection: "test_collection",
 						DocID:      "doc1",
@@ -491,7 +491,8 @@ func TestTransactionEncodingDecoding(t *testing.T) {
 			assert.NoError(t, err)
 
 			// 测试解码
-			decoded, err := storage_engine.DecodeTransaction(encoded)
+			buf := bytes.NewBuffer(encoded)
+			decoded, err := storage_engine.DecodeTransaction(buf)
 			assert.NoError(t, err)
 
 			// 验证解码后的事务

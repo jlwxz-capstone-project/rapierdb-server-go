@@ -24,11 +24,23 @@ const (
 	TEST_CLIENT_STATUS_NOT_READY TestClientStatus = 1
 )
 
+// 客户端是否开启乐观更新
+// 开启乐观更新：对每个客户端事务，立即修改客户端数据库，不等待服务端确认
+// 不开启乐观更新：对每个客户端事务，不立即修改客户端数据库，等待服务端确认后才修改
+type TestClientOptimisticMode int
+
+const (
+	TEST_CLIENT_OPTIMISTIC_MODE_ON  TestClientOptimisticMode = 0
+	TEST_CLIENT_OPTIMISTIC_MODE_OFF TestClientOptimisticMode = 1
+)
+
 type TestClient struct {
 	Docs           map[string]map[string]*loro.LoroDoc
 	Queries        map[string]ReactiveQuery
 	Channel        network_client.ClientChannel
 	ChannelManager network_client.ClientChannelManager
+	OptimisticMode TestClientOptimisticMode
+	PendingQueue   map[string]*storage_engine.Transaction
 	ctx            context.Context
 	cancel         context.CancelFunc
 
@@ -45,6 +57,8 @@ func NewTestClient(channelManager network_client.ClientChannelManager) *TestClie
 		Queries:        make(map[string]ReactiveQuery),
 		Channel:        nil,
 		ChannelManager: channelManager,
+		OptimisticMode: TEST_CLIENT_OPTIMISTIC_MODE_OFF,
+		PendingQueue:   make(map[string]*storage_engine.Transaction),
 		ctx:            ctx,
 		cancel:         cancel,
 
@@ -64,13 +78,6 @@ func (c *TestClient) Connect() error {
 	c.Channel = channel
 	channel.SetMsgHandler(c.handleServerMessage)
 
-	// 将通道状态同步到客户端状态
-	if channel.GetStatus() == network_client.CHANNEL_STATUS_READY {
-		c.setStatus(TEST_CLIENT_STATUS_READY)
-	} else {
-		c.setStatus(TEST_CLIENT_STATUS_NOT_READY)
-	}
-
 	channelStatusCh := channel.SubscribeStatusChange()
 	go func() {
 		defer channel.UnsubscribeStatusChange(channelStatusCh)
@@ -82,6 +89,13 @@ func (c *TestClient) Connect() error {
 			}
 		}
 	}()
+
+	// 将通道状态同步到客户端状态
+	if channel.GetStatus() == network_client.CHANNEL_STATUS_READY {
+		c.setStatus(TEST_CLIENT_STATUS_READY)
+	} else {
+		c.setStatus(TEST_CLIENT_STATUS_NOT_READY)
+	}
 
 	return nil
 }
@@ -110,6 +124,14 @@ func (c *TestClient) handleServerMessage(data []byte) {
 	log.Debugf("客户端收到 %s", msg.DebugPrint())
 
 	switch msg := msg.(type) {
+	case *message.AckTransactionMessageV1:
+		if tx, ok := c.PendingQueue[msg.TxID]; ok {
+			delete(c.PendingQueue, msg.TxID)
+			// 如果未启用乐观更新，则收到事务确认消息后应用事务
+			if c.OptimisticMode == TEST_CLIENT_OPTIMISTIC_MODE_OFF {
+				c.applyTransaction(tx)
+			}
+		}
 	case *message.VersionQueryMessageV1:
 		resp := &message.VersionQueryRespMessageV1{
 			Responses: make(map[string][]byte),
@@ -243,6 +265,67 @@ func (c *TestClient) FindMany(q *query.FindManyQuery) (*ReactiveFindManyQuery, e
 	c.Queries[queryHash] = reactiveQuery
 	c.updateQueryResult(reactiveQuery)
 	return reactiveQuery, nil
+}
+
+func (c *TestClient) SubmitTransaction(tx *storage_engine.Transaction) error {
+	log.Debugf("客户端提交事务 %s", tx.TxID)
+	// 如果启用乐观更新，则立即修改客户端数据库
+	if c.OptimisticMode == TEST_CLIENT_OPTIMISTIC_MODE_ON {
+		log.Debugf("客户端启用乐观更新，立即更新客户端数据库 %s", tx.TxID)
+		c.applyTransaction(tx)
+	}
+
+	// 将事务加入到待确认队列
+	if c.PendingQueue[tx.TxID] != nil {
+		return pe.WithStack(fmt.Errorf("事务 %s 已存在", tx.TxID))
+	}
+	log.Debugf("客户端将事务 %s 加入到待确认队列", tx.TxID)
+	c.PendingQueue[tx.TxID] = tx
+
+	// 向服务端发送 PostTransactionMessage 消息
+	msg := message.PostTransactionMessageV1{
+		Transaction: tx,
+	}
+	msgBytes, err := msg.Encode()
+	if err != nil {
+		log.Warnf("编码 PostTransactionMessage 消息失败: %v", err)
+		return nil
+	}
+	err = c.Channel.Send(msgBytes)
+	if err != nil {
+		log.Warnf("发送 PostTransactionMessage 消息失败: %v", err)
+		return nil
+	}
+	return nil
+}
+
+func (c *TestClient) applyTransaction(tx *storage_engine.Transaction) error {
+	for _, op := range tx.Operations {
+		switch op := op.(type) {
+		case *storage_engine.InsertOp:
+			if _, exists := c.Docs[op.Collection]; !exists {
+				c.Docs[op.Collection] = make(map[string]*loro.LoroDoc)
+			}
+			doc := loro.NewLoroDoc()
+			doc.Import(op.Snapshot)
+			c.Docs[op.Collection][op.DocID] = doc
+		case *storage_engine.UpdateOp:
+			if _, exists := c.Docs[op.Collection]; !exists {
+				c.Docs[op.Collection] = make(map[string]*loro.LoroDoc)
+			}
+			doc := loro.NewLoroDoc()
+			doc.Import(op.Update)
+			c.Docs[op.Collection][op.DocID] = doc
+		case *storage_engine.DeleteOp:
+			if _, exists := c.Docs[op.Collection]; exists {
+				delete(c.Docs[op.Collection], op.DocID)
+				if len(c.Docs[op.Collection]) == 0 {
+					delete(c.Docs, op.Collection)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (c *TestClient) updateSubscription(added []query.Query, removed []query.Query) {

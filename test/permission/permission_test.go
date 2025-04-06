@@ -202,23 +202,23 @@ func setupEngine(t *testing.T) *storage_engine.StorageEngine {
 		TxID:           "123e4567-e89b-12d3-a456-426614174000",
 		TargetDatabase: "testdb",
 		Committer:      "user1",
-		Operations: []any{
-			storage_engine.InsertOp{
+		Operations: []storage_engine.TransactionOp{
+			&storage_engine.InsertOp{
 				Collection: "users",
 				DocID:      "user1",
 				Snapshot:   user1.ExportSnapshot().Bytes(),
 			},
-			storage_engine.InsertOp{
+			&storage_engine.InsertOp{
 				Collection: "users",
 				DocID:      "user2",
 				Snapshot:   user2.ExportSnapshot().Bytes(),
 			},
-			storage_engine.InsertOp{
+			&storage_engine.InsertOp{
 				Collection: "users",
 				DocID:      "user3",
 				Snapshot:   user3.ExportSnapshot().Bytes(),
 			},
-			storage_engine.InsertOp{
+			&storage_engine.InsertOp{
 				Collection: "postMetas",
 				DocID:      "post1",
 				Snapshot:   postMeta1.ExportSnapshot().Bytes(),

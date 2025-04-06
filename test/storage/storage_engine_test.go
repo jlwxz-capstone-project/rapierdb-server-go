@@ -67,8 +67,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 			TxID:           "11111111-1111-1111-1111-111111111111",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
-			Operations: []any{
-				storage_engine.InsertOp{
+			Operations: []storage_engine.TransactionOp{
+				&storage_engine.InsertOp{
 					Collection: "users",
 					DocID:      "user1",
 					Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -97,8 +97,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 			TxID:           "22222222-2222-2222-2222-222222222222",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
-			Operations: []any{
-				storage_engine.InsertOp{
+			Operations: []storage_engine.TransactionOp{
+				&storage_engine.InsertOp{
 					Collection: "users",
 					DocID:      "user1",
 					Snapshot:   snapshot,
@@ -121,8 +121,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 			TxID:           "33333333-3333-3333-3333-333333333333",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
-			Operations: []any{
-				storage_engine.UpdateOp{
+			Operations: []storage_engine.TransactionOp{
+				&storage_engine.UpdateOp{
 					Collection: "users",
 					DocID:      "user1",
 					Update:     update,
@@ -139,8 +139,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 			TxID:           "44444444-4444-4444-4444-444444444444",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
-			Operations: []any{
-				storage_engine.UpdateOp{
+			Operations: []storage_engine.TransactionOp{
+				&storage_engine.UpdateOp{
 					Collection: "users",
 					DocID:      "xxxxxxx",
 					Update:     update,
@@ -160,8 +160,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 				TxID:           "77777777-7777-7777-7777-777777777777",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
-				Operations: []any{
-					storage_engine.InsertOp{
+				Operations: []storage_engine.TransactionOp{
+					&storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "user2",
 						Snapshot:   snapshot,
@@ -180,8 +180,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 			TxID:           "88888888-8888-8888-8888-888888888888",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
-			Operations: []any{
-				storage_engine.DeleteOp{
+			Operations: []storage_engine.TransactionOp{
+				&storage_engine.DeleteOp{
 					Collection: "users",
 					DocID:      "user2",
 				},
@@ -222,8 +222,8 @@ func TestStorageEngineCRUD(t *testing.T) {
 				TxID:           "99999999-9999-9999-9999-99999999999" + user.id[len(user.id)-1:],
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
-				Operations: []any{
-					storage_engine.InsertOp{
+				Operations: []storage_engine.TransactionOp{
+					&storage_engine.InsertOp{
 						Collection: "test_users",
 						DocID:      user.id,
 						Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -258,7 +258,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 		hook := func(tr *storage_engine.Transaction) error {
 			hookCalled = true
 			// 检查事务中是否包含特定的文档ID
-			if tr.Operations[0].(storage_engine.InsertOp).DocID == "blocked_doc" {
+			if tr.Operations[0].(*storage_engine.InsertOp).DocID == "blocked_doc" {
 				return fmt.Errorf("document blocked")
 			}
 			return nil
@@ -272,8 +272,8 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			TxID:           "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 			TargetDatabase: "testdb",
 			Committer:      "test-client",
-			Operations: []any{
-				storage_engine.InsertOp{
+			Operations: []storage_engine.TransactionOp{
+				&storage_engine.InsertOp{
 					Collection: "users",
 					DocID:      "blocked_doc",
 					Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -310,8 +310,8 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 				TxID:           "00000000-0000-0000-0000-000000000001",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
-				Operations: []any{
-					storage_engine.InsertOp{
+				Operations: []storage_engine.TransactionOp{
+					&storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "canceled_doc",
 						Snapshot:   snapshot.Bytes(),
@@ -322,7 +322,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 设置一个会导致事务取消的 hook
 			hook := func(tr *storage_engine.Transaction) error {
 				if tr != nil && len(tr.Operations) > 0 {
-					if op, ok := tr.Operations[0].(storage_engine.InsertOp); ok && op.DocID == "canceled_doc" {
+					if op, ok := tr.Operations[0].(*storage_engine.InsertOp); ok && op.DocID == "canceled_doc" {
 						return fmt.Errorf("transaction canceled")
 					}
 				}
@@ -339,7 +339,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			select {
 			case event := <-canceledCh:
 				assert.Equal(t, "test-client", event.Committer)
-				assert.Equal(t, "canceled_doc", event.Transaction.Operations[0].(storage_engine.InsertOp).DocID)
+				assert.Equal(t, "canceled_doc", event.Transaction.Operations[0].(*storage_engine.InsertOp).DocID)
 			case <-time.After(time.Second):
 				t.Fatal("未收到事务取消事件")
 			}
@@ -356,8 +356,8 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 				TxID:           "cccccccc-cccc-cccc-cccc-cccccccccccc",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
-				Operations: []any{
-					storage_engine.InsertOp{
+				Operations: []storage_engine.TransactionOp{
+					&storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "success_doc",
 						Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -369,7 +369,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到提交事件
 			select {
 			case event := <-committedCh:
-				op, ok := event.Transaction.Operations[0].(storage_engine.InsertOp)
+				op, ok := event.Transaction.Operations[0].(*storage_engine.InsertOp)
 				assert.True(t, ok)
 				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
@@ -385,8 +385,8 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 				TxID:           "dddddddd-dddd-dddd-dddd-dddddddddddd",
 				TargetDatabase: "testdb",
 				Committer:      "test-client",
-				Operations: []any{
-					storage_engine.InsertOp{
+				Operations: []storage_engine.TransactionOp{
+					&storage_engine.InsertOp{
 						Collection: "users",
 						DocID:      "success_doc", // 使用已存在的文档ID
 						Snapshot:   doc.ExportSnapshot().Bytes(),
@@ -398,7 +398,7 @@ func TestStorageEngineHooksAndEvents(t *testing.T) {
 			// 验证收到回滚事件
 			select {
 			case event := <-rollbackedCh:
-				op, ok := event.Transaction.Operations[0].(storage_engine.InsertOp)
+				op, ok := event.Transaction.Operations[0].(*storage_engine.InsertOp)
 				assert.True(t, ok)
 				assert.Equal(t, "success_doc", op.DocID)
 			case <-time.After(time.Second):
