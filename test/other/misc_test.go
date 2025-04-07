@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -39,4 +40,15 @@ func TestNil(t *testing.T) {
 
 	v2 = v1
 	assert.True(t, v2 == nil)
+}
+
+func TestJson(t *testing.T) {
+	val := map[string]any{
+		"field1": "value1",
+		"field2": 2,
+	}
+
+	json, err := json.Marshal(val)
+	assert.NoError(t, err)
+	fmt.Println(string(json))
 }
