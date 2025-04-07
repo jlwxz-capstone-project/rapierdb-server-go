@@ -1,21 +1,27 @@
 package bdd
 
+import "fmt"
+
 type InternalNode struct {
 	*BaseNode
 	Branches *Branches
 	Parents  *Parents
 }
 
-func NewInternalNode(level int, rootNode *RootNode, parent NonLeafNode) *InternalNode {
-	node := &InternalNode{
+func NewInternalNode(level int, rootNode *RootNode, parent *NonLeafNode) *InternalNode {
+	ret := &InternalNode{
 		BaseNode: NewBaseNode(level, rootNode),
 	}
-	node.Branches = NewBranches(node)
-	node.Parents = NewParents(node)
-	node.Parents.Add(parent)
-
-	return node
+	ret.outermostInstance = ret
+	ret.Branches = NewBranches(ret.AsNode())
+	ret.Parents = NewParents(ret.AsNode())
+	ret.Parents.Add(parent)
+	fmt.Println("NewInternalNode", ret.Id)
+	return ret
 }
+
+func (n *Node) IsInternalNode() bool          { _, ok := n.outermostInstance.(*InternalNode); return ok }
+func (n *Node) AsInternalNode() *InternalNode { return n.outermostInstance.(*InternalNode) }
 
 func (n *InternalNode) ApplyRuductionRule() bool {
 	if n.Branches.HasEqualBranches() {
@@ -24,14 +30,15 @@ func (n *InternalNode) ApplyRuductionRule() bool {
 
 		ownParents := n.GetParents().GetAll()
 		for _, parent := range ownParents {
-			branchkey := parent.GetBranches().GetKeyOfNode(n)
+			branchkey := parent.GetBranches().GetKeyOfNode(n.AsNode())
 			parent.GetBranches().SetBranch(branchkey, keepBranch)
 
 			n.Parents.Remove(parent)
 
-			if parent, ok := parent.(*InternalNode); ok {
-				if parent.Branches.AreBranchesStrictEqual() {
-					parent.ApplyRuductionRule()
+			if parent.IsInternalNode() {
+				internalNode := parent.AsInternalNode()
+				if internalNode.Branches.AreBranchesStrictEqual() {
+					internalNode.ApplyRuductionRule()
 				}
 			}
 		}

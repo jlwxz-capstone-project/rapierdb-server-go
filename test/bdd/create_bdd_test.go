@@ -8,7 +8,8 @@ import (
 
 func TestCreateBddFromTruthTable(t *testing.T) {
 	t.Run("应该创建一个BDD", func(t *testing.T) {
-		bddVal := bdd.CreateBddFromTruthTable(bdd.NewExampleTruthTable(3))
+		tt := bdd.NewExampleTruthTable(3)
+		bddVal := bdd.CreateBddFromTruthTable(tt)
 		if bddVal == nil {
 			t.Fatal("BDD不应该为nil")
 		}

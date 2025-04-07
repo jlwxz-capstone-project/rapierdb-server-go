@@ -52,3 +52,75 @@ func TestJson(t *testing.T) {
 	assert.NoError(t, err)
 	fmt.Println(string(json))
 }
+
+type Animal struct {
+	data animalData
+}
+
+type animalData interface {
+	AsObj() *Animal
+}
+
+type BaseAnimal struct {
+	Animal
+}
+
+func (n *BaseAnimal) AsObj() *Animal {
+	return &n.Animal
+}
+
+type Cat struct {
+	BaseAnimal
+}
+
+func NewCat() *Cat {
+	cat := &Cat{
+		BaseAnimal: BaseAnimal{
+			Animal: Animal{},
+		},
+	}
+	cat.data = cat
+	return cat
+}
+
+func (o *Animal) IsCat() bool { _, ok := o.data.(*Cat); return ok }
+func (o *Animal) AsCat() *Cat { return o.data.(*Cat) }
+
+func (cat *Cat) MakeSound() string {
+	return "meow"
+}
+
+type Dog struct {
+	BaseAnimal
+}
+
+func NewDog() *Dog {
+	dog := &Dog{
+		BaseAnimal: BaseAnimal{
+			Animal: Animal{},
+		},
+	}
+	dog.data = dog
+	return dog
+}
+
+func (o *Animal) IsDog() bool { _, ok := o.data.(*Dog); return ok }
+func (o *Animal) AsDog() *Dog { return o.data.(*Dog) }
+
+func (dog *Dog) MakeSound() string {
+	return "woof"
+}
+
+func TestNode(t *testing.T) {
+	cat := NewCat()
+	dog := NewDog()
+
+	assert.True(t, cat.AsObj().IsCat())
+	assert.True(t, dog.AsObj().IsDog())
+
+	assert.Equal(t, cat, cat.AsObj().AsCat())
+	assert.Equal(t, dog, dog.AsObj().AsDog())
+
+	assert.Equal(t, "meow", cat.MakeSound())
+	assert.Equal(t, "woof", dog.MakeSound())
+}

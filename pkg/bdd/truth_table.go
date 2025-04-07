@@ -31,24 +31,20 @@ func FillTruthTable(truthTable TruthTable, inputLength int, value int) {
 
 // NewExampleTruthTable 创建示例真值表
 func NewExampleTruthTable(stateLength int) TruthTable {
-	if stateLength <= 0 {
-		stateLength = 3
-	}
-
 	lastID := 0
-	result := make(TruthTable)
+	ret := make(TruthTable)
 	maxBin := MaxBinaryWithLength(stateLength)
 	maxDecimal := BinaryToDecimal(maxBin)
 
 	end := maxDecimal
 	start := 0
 	for start <= end {
-		result[DecimalToPaddedBinary(start, stateLength)] = lastID
+		ret[DecimalToPaddedBinary(start, stateLength)] = lastID
 		lastID++
 		start++
 	}
 
-	return result
+	return ret
 }
 
 // NewAllEqualTable 创建所有元素相等的真值表

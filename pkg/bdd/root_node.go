@@ -1,6 +1,7 @@
 package bdd
 
 import (
+	"fmt"
 	"sort"
 )
 
@@ -8,7 +9,7 @@ type RootNode struct {
 	*BaseNode
 	Branches     *Branches
 	Levels       []int
-	NodesByLevel map[int]map[Node]struct{}
+	NodesByLevel map[int]map[*Node]struct{}
 	RootNode     *RootNode
 }
 
@@ -17,19 +18,24 @@ func NewRootNode() *RootNode {
 		BaseNode:     NewBaseNode(0, nil),
 		Branches:     nil, // 下面赋值
 		Levels:       []int{},
-		NodesByLevel: map[int]map[Node]struct{}{},
+		NodesByLevel: map[int]map[*Node]struct{}{},
 	}
-	ret.Branches = NewBranches(ret)
+	ret.outermostInstance = ret
+	ret.Branches = NewBranches(ret.AsNode())
 	ret.Levels = append(ret.Levels, 0)
-	level0Set := map[Node]struct{}{}
-	level0Set[ret] = struct{}{}
+	level0Set := map[*Node]struct{}{}
+	level0Set[ret.AsNode()] = struct{}{}
 	ret.NodesByLevel[0] = level0Set
 	ret.RootNode = ret // 根节点的RootNode指向自己
+	fmt.Println("NewRootNode", ret.Id)
 	return ret
 }
 
-func (n *RootNode) AddNode(node NonRootNode) {
-	level := node.GetLevel()
+func (n *Node) IsRootNode() bool      { _, ok := n.outermostInstance.(*RootNode); return ok }
+func (n *Node) AsRootNode() *RootNode { return n.outermostInstance.(*RootNode) }
+
+func (n *RootNode) AddNode(node *NonRootNode) {
+	level := node.Level
 
 	contains := false
 	for _, l := range n.Levels {
@@ -47,8 +53,8 @@ func (n *RootNode) AddNode(node NonRootNode) {
 	n.NodesByLevel[level][node] = struct{}{}
 }
 
-func (n *RootNode) RemoveNode(node NonRootNode) {
-	level := node.GetLevel()
+func (n *RootNode) RemoveNode(node *NonRootNode) {
+	level := node.Level
 	set := n.NodesByLevel[level]
 	if set != nil {
 		delete(set, node)
@@ -62,17 +68,12 @@ func (n *RootNode) GetSortedLevels() []int {
 	return ret
 }
 
-func (n *RootNode) GetNodesOfLevel(level int) []NonRootNode {
+func (n *RootNode) GetNodesOfLevel(level int) []*NonRootNode {
+	n.ensureLevelSetExists(level)
 	set := n.NodesByLevel[level]
-	if set == nil {
-		return []NonRootNode{}
-	}
-
-	ret := make([]NonRootNode, 0, len(set))
+	ret := make([]*NonRootNode, 0, len(set))
 	for node := range set {
-		if node != n { // 跳过根节点自身
-			ret = append(ret, node.(NonRootNode))
-		}
+		ret = append(ret, node)
 	}
 	return ret
 }
@@ -97,18 +98,20 @@ func (n *RootNode) Minimize() {
 			nodeCount := 0
 			for _, node := range nodes {
 				nodeCount++
-				if leafNode, ok := node.(*LeafNode); ok {
+				if node.IsLeafNode() {
+					leafNode := node.AsLeafNode()
 					reductionDone := leafNode.ApplyEliminationRule(nil)
 					if reductionDone {
 						successCount++
 					}
 				}
-				if useNode, ok := node.(*InternalNode); ok {
-					if !useNode.IsDeleted() {
+				if node.IsInternalNode() {
+					useNode := node.AsInternalNode()
+					if !useNode.Deleted {
 						reductionDone := useNode.ApplyRuductionRule()
 						eliminationDone := false
-						if !useNode.IsDeleted() {
-							nodes2 := make([]Node, 0)
+						if !useNode.Deleted {
+							nodes2 := make([]*Node, 0)
 							for _, node := range nodes {
 								nodes2 = append(nodes2, node)
 							}
@@ -149,7 +152,8 @@ func (n *RootNode) GetLeafNodes() []*LeafNode {
 
 	ret := make([]*LeafNode, 0, len(set))
 	for node := range set {
-		if leaf, ok := node.(*LeafNode); ok {
+		if node.IsLeafNode() {
+			leaf := node.AsLeafNode()
 			ret = append(ret, leaf)
 		}
 	}
@@ -178,13 +182,14 @@ func (n *RootNode) RemoveIrrelevantLeafNodes(leafNodeValue int) {
 }
 
 func (n *RootNode) Resolve(fns ResolverFunctions, booleanFunctionInput string) int {
-	var currentNode Node = n
+	var currentNode *Node = n.AsNode()
 	for {
-		booleanResult := fns[currentNode.GetLevel()](booleanFunctionInput)
+		booleanResult := fns[currentNode.Level](booleanFunctionInput)
 		branchKey := string(BooleanToBooleanString(booleanResult))
-		if nonLeafNode, ok := any(currentNode).(NonLeafNode); ok {
-			currentNode = nonLeafNode.GetBranches().GetBranch(branchKey)
-			if leafNode, ok := currentNode.(*LeafNode); ok {
+		if currentNode.IsNonLeafNode() {
+			currentNode = currentNode.GetBranches().GetBranch(branchKey)
+			if currentNode.IsLeafNode() {
+				leafNode := currentNode.AsLeafNode()
 				return leafNode.Value
 			}
 		} else {
@@ -195,6 +200,6 @@ func (n *RootNode) Resolve(fns ResolverFunctions, booleanFunctionInput string) i
 
 func (n *RootNode) ensureLevelSetExists(level int) {
 	if _, ok := n.NodesByLevel[level]; !ok {
-		n.NodesByLevel[level] = map[Node]struct{}{}
+		n.NodesByLevel[level] = map[*Node]struct{}{}
 	}
 }

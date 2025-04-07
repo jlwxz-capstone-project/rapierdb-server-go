@@ -7,19 +7,19 @@ import (
 
 type Branches struct {
 	Deleted  bool
-	Branches map[string]NonRootNode
-	Node     NonLeafNode
+	Branches map[string]*NonRootNode
+	Node     *NonLeafNode
 }
 
-func NewBranches(node NonLeafNode) *Branches {
+func NewBranches(node *NonLeafNode) *Branches {
 	return &Branches{
 		Deleted:  false,
-		Branches: map[string]NonRootNode{},
+		Branches: map[string]*NonRootNode{},
 		Node:     node,
 	}
 }
 
-func (b *Branches) SetBranch(which string, branchNode NonRootNode) {
+func (b *Branches) SetBranch(which string, branchNode *NonRootNode) {
 	previous, exists := b.Branches[which]
 	if exists && previous == branchNode {
 		return
@@ -29,7 +29,7 @@ func (b *Branches) SetBranch(which string, branchNode NonRootNode) {
 	branchNode.GetParents().Add(b.Node)
 }
 
-func (b *Branches) GetKeyOfNode(node NonRootNode) string {
+func (b *Branches) GetKeyOfNode(node *NonRootNode) string {
 	if b.GetBranch("0") == node {
 		return "0"
 	} else if b.GetBranch("1") == node {
@@ -39,18 +39,18 @@ func (b *Branches) GetKeyOfNode(node NonRootNode) string {
 	}
 }
 
-func (b *Branches) GetBranch(which string) NonRootNode {
+func (b *Branches) GetBranch(which string) *NonRootNode {
 	return b.Branches[which]
 }
 
-func (b *Branches) GetBothBranches() []NonRootNode {
-	return []NonRootNode{
+func (b *Branches) GetBothBranches() []*NonRootNode {
+	return []*NonRootNode{
 		b.GetBranch("0"),
 		b.GetBranch("1"),
 	}
 }
 
-func (b *Branches) HasBranchAsNode(node Node) bool {
+func (b *Branches) HasBranchAsNode(node *Node) bool {
 	if b.GetBranch("0") == node || b.GetBranch("1") == node {
 		return true
 	}
@@ -58,7 +58,7 @@ func (b *Branches) HasBranchAsNode(node Node) bool {
 }
 
 func (b *Branches) HasNodeIdAsBranch(id string) bool {
-	if b.GetBranch("0").GetId() == id || b.GetBranch("1").GetId() == id {
+	if b.GetBranch("0").Id == id || b.GetBranch("1").Id == id {
 		return true
 	}
 	return false

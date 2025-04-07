@@ -14,13 +14,13 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 		panic("error marshalling bddJson: " + err.Error())
 	}
 
-	allNodes := []Node{}
-	nodesById := make(map[string]Node)
+	allNodes := []*Node{}
+	nodesById := make(map[string]*Node)
 	for _, level := range bdd.GetSortedLevels() {
 		levelNodes := bdd.GetNodesOfLevel(level)
 		for _, node := range levelNodes {
 			allNodes = append(allNodes, node)
-			nodesById[node.GetId()] = node
+			nodesById[node.Id] = node
 		}
 	}
 
@@ -29,13 +29,13 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 	if len(allNodes) != len(recursiveNodes) {
 		allNodesIds := make([]string, 0, len(allNodes))
 		for _, node := range allNodes {
-			allNodesIds = append(allNodesIds, node.GetId())
+			allNodesIds = append(allNodesIds, node.Id)
 		}
 		sort.Strings(allNodesIds)
 
 		recursiveNodesIds := make([]string, 0, len(recursiveNodes))
 		for node := range recursiveNodes {
-			recursiveNodesIds = append(recursiveNodesIds, node.GetId())
+			recursiveNodesIds = append(recursiveNodesIds, node.Id)
 		}
 		sort.Strings(recursiveNodesIds)
 
@@ -55,11 +55,10 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 
 		if len(recursiveNodes) > len(allNodes) {
 			firstId := nodesOnlyInRecursive[0]
-			var referenceToFirst Node
+			var referenceToFirst *Node
 			for _, n := range allNodes {
-				if _, ok := n.(*InternalNode); ok {
-					internalNode := n.(*InternalNode)
-					if internalNode.GetBranches().HasNodeIdAsBranch(firstId) {
+				if n.IsInternalNode() {
+					if n.GetBranches().HasNodeIdAsBranch(firstId) {
 						referenceToFirst = n
 						break
 					}
@@ -71,39 +70,39 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 		}
 
 		return fmt.Errorf(
-			"ensureCorrectBdd() nodes in list not equal size to recursive nodes allNodes: %d recursiveNodes: %d nodesOnlyInRecursive: %s",
+			"ensureCorrectBdd() nodes in list not equal size to recursive nodes. allNodes: %d recursiveNodes: %d nodesOnlyInRecursive: %s",
 			len(allNodes), len(recursiveNodes), strings.Join(nodesOnlyInRecursive, ", "),
 		)
 	}
 
 	for _, node := range allNodes {
-		if _, ok := node.(*RootNode); ok {
+		if node.IsRootNode() {
 			continue
 		}
-		useNode := node.(NonRootNode)
+		useNode := node
 
-		if useNode.IsDeleted() {
+		if useNode.Deleted {
 			return fmt.Errorf("ensureCorrectBdd() bdd includes a deleted node")
 		}
 
 		if useNode.GetParents().Size() == 0 {
-			return fmt.Errorf("ensureCorrectBdd() node has no parent %s", useNode.GetId())
+			return fmt.Errorf("ensureCorrectBdd() node has no parent %s", useNode.Id)
 		}
 
-		if _, ok := useNode.(*InternalNode); ok {
-			internalNode := useNode.(*InternalNode)
+		if useNode.IsInternalNode() {
+			internalNode := useNode.AsInternalNode()
 			bothBranches := internalNode.GetBranches().GetBothBranches()
 
 			if internalNode.GetBranches().AreBranchesStrictEqual() {
 				branchIds := make([]string, 0, len(bothBranches))
 				for _, branch := range bothBranches {
-					branchIds = append(branchIds, branch.GetId())
+					branchIds = append(branchIds, branch.Id)
 				}
 				return fmt.Errorf("ensureCorrectBdd() node has two equal branches: %s", strings.Join(branchIds, ", "))
 			}
 
 			for _, branch := range bothBranches {
-				if !branch.GetParents().Has(internalNode) {
+				if !branch.GetParents().Has(internalNode.AsNode()) {
 					return fmt.Errorf("ensureCorrectBdd() branch must have the node as parent")
 				}
 			}
@@ -123,14 +122,14 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 	return nil
 }
 
-func getNodesRecursive(bdd *RootNode) map[Node]struct{} {
-	return getNodesRecursiveImpl(bdd, make(map[Node]struct{}))
+func getNodesRecursive(bdd *RootNode) map[*Node]struct{} {
+	return getNodesRecursiveImpl(bdd.AsNode(), make(map[*Node]struct{}))
 }
 
-func getNodesRecursiveImpl(node Node, set map[Node]struct{}) map[Node]struct{} {
+func getNodesRecursiveImpl(node *Node, set map[*Node]struct{}) map[*Node]struct{} {
 	set[node] = struct{}{}
-	if _, ok := node.(*LeafNode); !ok { // not leaf node
-		useNode := node.(NonLeafNode)
+	if !node.IsLeafNode() { // not leaf node
+		useNode := node
 		branch0 := useNode.GetBranches().GetBranch("0")
 		set[branch0] = struct{}{}
 		getNodesRecursiveImpl(branch0, set)
