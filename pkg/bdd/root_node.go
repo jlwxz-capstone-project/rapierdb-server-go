@@ -1,15 +1,18 @@
 package bdd
 
 import (
-	"fmt"
 	"sort"
+
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/orderedmap"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/orderedset"
 )
 
 type RootNode struct {
 	*BaseNode
-	Branches     *Branches
-	Levels       []int
-	NodesByLevel map[int]map[*Node]struct{}
+	Branches *Branches
+	Levels   []int
+	// NodesByLevel map[int]map[*Node]struct{}
+	NodesByLevel *orderedmap.OrderedMap[int, *orderedset.OrderedSet[*Node]]
 	RootNode     *RootNode
 }
 
@@ -18,16 +21,15 @@ func NewRootNode() *RootNode {
 		BaseNode:     NewBaseNode(0, nil),
 		Branches:     nil, // 下面赋值
 		Levels:       []int{},
-		NodesByLevel: map[int]map[*Node]struct{}{},
+		NodesByLevel: orderedmap.NewOrderedMap[int, *orderedset.OrderedSet[*Node]](),
 	}
 	ret.outermostInstance = ret
 	ret.Branches = NewBranches(ret.AsNode())
 	ret.Levels = append(ret.Levels, 0)
-	level0Set := map[*Node]struct{}{}
-	level0Set[ret.AsNode()] = struct{}{}
-	ret.NodesByLevel[0] = level0Set
+	level0Set := orderedset.NewOrderedSet[*Node]()
+	level0Set.Add(ret.AsNode())
+	ret.NodesByLevel.Set(0, level0Set)
 	ret.RootNode = ret // 根节点的RootNode指向自己
-	fmt.Println("NewRootNode", ret.Id)
 	return ret
 }
 
@@ -50,14 +52,14 @@ func (n *RootNode) AddNode(node *NonRootNode) {
 	}
 
 	n.ensureLevelSetExists(level)
-	n.NodesByLevel[level][node] = struct{}{}
+	n.NodesByLevel.MustGet(level).Add(node)
 }
 
 func (n *RootNode) RemoveNode(node *NonRootNode) {
 	level := node.Level
-	set := n.NodesByLevel[level]
-	if set != nil {
-		delete(set, node)
+	set, ok := n.NodesByLevel.Get(level)
+	if ok {
+		set.Remove(node)
 	}
 }
 
@@ -70,18 +72,22 @@ func (n *RootNode) GetSortedLevels() []int {
 
 func (n *RootNode) GetNodesOfLevel(level int) []*NonRootNode {
 	n.ensureLevelSetExists(level)
-	set := n.NodesByLevel[level]
-	ret := make([]*NonRootNode, 0, len(set))
-	for node := range set {
+	set := n.NodesByLevel.MustGet(level)
+	ret := make([]*NonRootNode, 0, set.Len())
+	for node := range set.IterValues() {
 		ret = append(ret, node)
 	}
+	// 按照 id 从小到大排序，保证和 Js 实现一致
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].Id < ret[j].Id
+	})
 	return ret
 }
 
 func (n *RootNode) CountNodes() int {
 	ret := 0
-	for _, set := range n.NodesByLevel {
-		ret += len(set)
+	for set := range n.NodesByLevel.IterValues() {
+		ret += set.Len()
 	}
 	return ret
 }
@@ -99,27 +105,20 @@ func (n *RootNode) Minimize() {
 			for _, node := range nodes {
 				nodeCount++
 				if node.IsLeafNode() {
-					leafNode := node.AsLeafNode()
-					reductionDone := leafNode.ApplyEliminationRule(nil)
+					reductionDone := node.AsLeafNode().ApplyEliminationRule(nil)
 					if reductionDone {
 						successCount++
 					}
 				}
-				if node.IsInternalNode() {
+				if !node.Deleted && node.IsInternalNode() {
 					useNode := node.AsInternalNode()
+					reductionDone := useNode.ApplyRuductionRule()
+					eliminationDone := false
 					if !useNode.Deleted {
-						reductionDone := useNode.ApplyRuductionRule()
-						eliminationDone := false
-						if !useNode.Deleted {
-							nodes2 := make([]*Node, 0)
-							for _, node := range nodes {
-								nodes2 = append(nodes2, node)
-							}
-							eliminationDone = useNode.ApplyEliminationRule(nodes2)
-						}
-						if reductionDone || eliminationDone {
-							successCount++
-						}
+						eliminationDone = useNode.ApplyEliminationRule(nodes)
+					}
+					if reductionDone || eliminationDone {
+						successCount++
 					}
 				}
 			}
@@ -145,13 +144,13 @@ func (n *RootNode) GetLeafNodes() []*LeafNode {
 		return []*LeafNode{}
 	}
 
-	set := n.NodesByLevel[maxLevel]
-	if set == nil {
+	set, ok := n.NodesByLevel.Get(maxLevel)
+	if !ok {
 		return []*LeafNode{}
 	}
 
-	ret := make([]*LeafNode, 0, len(set))
-	for node := range set {
+	ret := make([]*LeafNode, 0, set.Len())
+	for node := range set.IterValues() {
 		if node.IsLeafNode() {
 			leaf := node.AsLeafNode()
 			ret = append(ret, leaf)
@@ -199,7 +198,9 @@ func (n *RootNode) Resolve(fns ResolverFunctions, booleanFunctionInput string) i
 }
 
 func (n *RootNode) ensureLevelSetExists(level int) {
-	if _, ok := n.NodesByLevel[level]; !ok {
-		n.NodesByLevel[level] = map[*Node]struct{}{}
+	set, ok := n.NodesByLevel.Get(level)
+	if !ok {
+		set = orderedset.NewOrderedSet[*Node]()
+		n.NodesByLevel.Set(level, set)
 	}
 }

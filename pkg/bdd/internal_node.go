@@ -1,7 +1,5 @@
 package bdd
 
-import "fmt"
-
 type InternalNode struct {
 	*BaseNode
 	Branches *Branches
@@ -16,7 +14,6 @@ func NewInternalNode(level int, rootNode *RootNode, parent *NonLeafNode) *Intern
 	ret.Branches = NewBranches(ret.AsNode())
 	ret.Parents = NewParents(ret.AsNode())
 	ret.Parents.Add(parent)
-	fmt.Println("NewInternalNode", ret.Id)
 	return ret
 }
 
@@ -35,11 +32,8 @@ func (n *InternalNode) ApplyRuductionRule() bool {
 
 			n.Parents.Remove(parent)
 
-			if parent.IsInternalNode() {
-				internalNode := parent.AsInternalNode()
-				if internalNode.Branches.AreBranchesStrictEqual() {
-					internalNode.ApplyRuductionRule()
-				}
+			if parent.GetBranches().AreBranchesStrictEqual() && parent.IsInternalNode() {
+				parent.AsInternalNode().ApplyRuductionRule()
 			}
 		}
 

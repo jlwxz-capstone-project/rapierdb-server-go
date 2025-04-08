@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -20,26 +21,26 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 		levelNodes := bdd.GetNodesOfLevel(level)
 		for _, node := range levelNodes {
 			allNodes = append(allNodes, node)
-			nodesById[node.Id] = node
+			nodesById[strconv.Itoa(node.Id)] = node
 		}
 	}
 
 	recursiveNodes := getNodesRecursive(bdd)
 
 	if len(allNodes) != len(recursiveNodes) {
-		allNodesIds := make([]string, 0, len(allNodes))
+		allNodesIds := make([]int, 0, len(allNodes))
 		for _, node := range allNodes {
 			allNodesIds = append(allNodesIds, node.Id)
 		}
-		sort.Strings(allNodesIds)
+		sort.Ints(allNodesIds)
 
-		recursiveNodesIds := make([]string, 0, len(recursiveNodes))
+		recursiveNodesIds := make([]int, 0, len(recursiveNodes))
 		for node := range recursiveNodes {
 			recursiveNodesIds = append(recursiveNodesIds, node.Id)
 		}
-		sort.Strings(recursiveNodesIds)
+		sort.Ints(recursiveNodesIds)
 
-		nodesOnlyInRecursive := make([]string, 0)
+		nodesOnlyInRecursive := make([]int, 0)
 		for _, nodeId := range recursiveNodesIds {
 			found := false
 			for _, allNodeId := range allNodesIds {
@@ -70,8 +71,8 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 		}
 
 		return fmt.Errorf(
-			"ensureCorrectBdd() nodes in list not equal size to recursive nodes. allNodes: %d recursiveNodes: %d nodesOnlyInRecursive: %s",
-			len(allNodes), len(recursiveNodes), strings.Join(nodesOnlyInRecursive, ", "),
+			"ensureCorrectBdd() nodes in list not equal size to recursive nodes. allNodes: %d recursiveNodes: %d",
+			len(allNodes), len(recursiveNodes),
 		)
 	}
 
@@ -96,7 +97,7 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 			if internalNode.GetBranches().AreBranchesStrictEqual() {
 				branchIds := make([]string, 0, len(bothBranches))
 				for _, branch := range bothBranches {
-					branchIds = append(branchIds, branch.Id)
+					branchIds = append(branchIds, strconv.Itoa(branch.Id))
 				}
 				return fmt.Errorf("ensureCorrectBdd() node has two equal branches: %s", strings.Join(branchIds, ", "))
 			}

@@ -1,6 +1,7 @@
 package bdd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 )
@@ -9,7 +10,7 @@ type Node struct {
 	outermostInstance interface {
 		AsNode() *Node
 	}
-	Id       string
+	Id       int
 	Deleted  bool
 	RootNode *RootNode
 	Level    int
@@ -79,7 +80,7 @@ func (n *Node) Remove() {
 }
 
 func (n *Node) ToJson(withId bool) NodeJson {
-	var id *string = nil
+	var id *int = nil
 	if withId {
 		id = &n.Id
 	}
@@ -94,8 +95,8 @@ func (n *Node) ToJson(withId bool) NodeJson {
 	if withId {
 		if n.IsNonRootNode() {
 			parents := []string{}
-			for parent := range n.GetParents().Parents {
-				parents = append(parents, parent.Id)
+			for parent := range n.GetParents().Parents.IterValues() {
+				parents = append(parents, strconv.Itoa(parent.Id))
 			}
 			ret.Parents = parents
 		}
@@ -152,18 +153,14 @@ func (n *Node) TypeString() string {
 
 func (n *Node) EnsureNotDeleted(op string) {
 	if n.Deleted {
-		panic("forbidden operation " + op + " on deleted node " + n.Id)
+		panic("forbidden operation " + op + " on deleted node " + strconv.Itoa(n.Id))
 	}
 }
 
 func (n *Node) ApplyEliminationRule(nodesOfSameLevel []*Node) bool {
 	n.EnsureNotDeleted("applyEliminationRule")
 	if nodesOfSameLevel == nil {
-		nodesOfSameLevel = make([]*Node, 0)
-		tmp := n.RootNode.GetNodesOfLevel(n.Level)
-		for _, node := range tmp {
-			nodesOfSameLevel = append(nodesOfSameLevel, node)
-		}
+		nodesOfSameLevel = n.RootNode.GetNodesOfLevel(n.Level)
 	}
 
 	thisNode := n
@@ -195,11 +192,19 @@ func (n *Node) ApplyEliminationRule(nodesOfSameLevel []*Node) bool {
 }
 
 type NodeJson struct {
-	Id       *string             `json:"id,omitempty"`
+	Id       *int                `json:"id,omitempty"`
 	Deleted  bool                `json:"deleted"`
 	Level    int                 `json:"level"`
 	Type     string              `json:"type"`
 	Parents  []string            `json:"parents,omitempty"`
 	Value    *int                `json:"value,omitempty"`
 	Branches map[string]NodeJson `json:"branches,omitempty"`
+}
+
+func (n NodeJson) ToString() string {
+	jsonBytes, err := json.MarshalIndent(n, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Error marshaling NodeJson: %v", err)
+	}
+	return string(jsonBytes)
 }

@@ -1,7 +1,5 @@
 package bdd
 
-import "fmt"
-
 type LeafNode struct {
 	*BaseNode
 	Parents *Parents
@@ -17,7 +15,6 @@ func NewLeafNode(level int, rootNode *RootNode, value int, parent *NonLeafNode) 
 	ret.outermostInstance = ret
 	ret.Parents = NewParents(ret.AsNode())
 	ret.Parents.Add(parent)
-	fmt.Println("NewLeafNode", ret.Id)
 	return ret
 }
 

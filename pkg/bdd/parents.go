@@ -1,21 +1,26 @@
 package bdd
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/orderedset"
+)
 
 type Parents struct {
 	Node    *NonRootNode
-	Parents map[*NonLeafNode]struct{}
+	Parents *orderedset.OrderedSet[*NonLeafNode]
 }
 
 func NewParents(node *NonRootNode) *Parents {
 	return &Parents{
 		Node:    node,
-		Parents: map[*NonLeafNode]struct{}{},
+		Parents: orderedset.NewOrderedSet[*NonLeafNode](),
 	}
 }
 
 func (p *Parents) Remove(node *NonLeafNode) {
-	delete(p.Parents, node)
+	p.Parents.Remove(node)
 
 	if p.Size() == 0 {
 		p.Node.Remove()
@@ -23,8 +28,8 @@ func (p *Parents) Remove(node *NonLeafNode) {
 }
 
 func (p *Parents) GetAll() []*NonLeafNode {
-	result := make([]*NonLeafNode, 0, len(p.Parents))
-	for parent := range p.Parents {
+	result := make([]*NonLeafNode, 0, p.Parents.Len())
+	for parent := range p.Parents.IterValues() {
 		result = append(result, parent)
 	}
 	return result
@@ -34,22 +39,21 @@ func (p *Parents) Add(node *NonLeafNode) {
 	if p.Node.Level == node.Level {
 		panic("a node cannot be parent of a node with the same level")
 	}
-	p.Parents[node] = struct{}{}
+	p.Parents.Add(node)
 }
 
 func (p *Parents) Has(node *NonLeafNode) bool {
-	_, ok := p.Parents[node]
-	return ok
+	return p.Parents.Contains(node)
 }
 
 func (p *Parents) Size() int {
-	return len(p.Parents)
+	return p.Parents.Len()
 }
 
 func (p *Parents) ToString() string {
-	ret := make([]string, 0, len(p.Parents))
-	for parent := range p.Parents {
-		ret = append(ret, parent.Id)
+	ret := make([]string, 0, p.Parents.Len())
+	for parent := range p.Parents.IterValues() {
+		ret = append(ret, strconv.Itoa(parent.Id))
 	}
 	return strings.Join(ret, ", ")
 }

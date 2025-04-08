@@ -1,7 +1,5 @@
 package bdd
 
-import "fmt"
-
 // CreateBddFromTruthTable 从真值表创建二进制决策图
 func CreateBddFromTruthTable(truthTable TruthTable) *RootNode {
 	root := NewRootNode()
@@ -43,7 +41,7 @@ func CreateBddFromTruthTable(truthTable TruthTable) *RootNode {
 		lastNode.GetBranches().SetBranch(lastState, leafNode.AsNode())
 	}
 
-	fmt.Printf("root: %+v\n", root.ToJson(true))
+	// fmt.Println(root.ToJson(true).ToString())
 
 	return root
 }

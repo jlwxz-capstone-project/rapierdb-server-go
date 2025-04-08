@@ -3,29 +3,32 @@ package bdd
 import (
 	"bytes"
 	"encoding/json"
+
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/orderedmap"
 )
 
 type Branches struct {
-	Deleted  bool
-	Branches map[string]*NonRootNode
+	Deleted bool
+	// Branches map[string]*NonRootNode
+	Branches *orderedmap.OrderedMap[string, *NonRootNode]
 	Node     *NonLeafNode
 }
 
 func NewBranches(node *NonLeafNode) *Branches {
 	return &Branches{
 		Deleted:  false,
-		Branches: map[string]*NonRootNode{},
+		Branches: orderedmap.NewOrderedMap[string, *NonRootNode](),
 		Node:     node,
 	}
 }
 
 func (b *Branches) SetBranch(which string, branchNode *NonRootNode) {
-	previous, exists := b.Branches[which]
-	if exists && previous == branchNode {
+	previous, ok := b.Branches.Get(which)
+	if ok && previous == branchNode {
 		return
 	}
 
-	b.Branches[which] = branchNode
+	b.Branches.Set(which, branchNode)
 	branchNode.GetParents().Add(b.Node)
 }
 
@@ -40,7 +43,7 @@ func (b *Branches) GetKeyOfNode(node *NonRootNode) string {
 }
 
 func (b *Branches) GetBranch(which string) *NonRootNode {
-	return b.Branches[which]
+	return b.Branches.MustGet(which)
 }
 
 func (b *Branches) GetBothBranches() []*NonRootNode {
@@ -57,7 +60,7 @@ func (b *Branches) HasBranchAsNode(node *Node) bool {
 	return false
 }
 
-func (b *Branches) HasNodeIdAsBranch(id string) bool {
+func (b *Branches) HasNodeIdAsBranch(id int) bool {
 	if b.GetBranch("0").Id == id || b.GetBranch("1").Id == id {
 		return true
 	}
@@ -65,12 +68,12 @@ func (b *Branches) HasNodeIdAsBranch(id string) bool {
 }
 
 func (b *Branches) AreBranchesStrictEqual() bool {
-	return b.Branches["0"] == b.Branches["1"]
+	return b.Branches.MustGet("0") == b.Branches.MustGet("1")
 }
 
 func (b *Branches) HasEqualBranches() bool {
-	branch0Json := b.Branches["0"].ToJson(false)
-	branch1Json := b.Branches["1"].ToJson(false)
+	branch0Json := b.Branches.MustGet("0").ToJson(true)
+	branch1Json := b.Branches.MustGet("1").ToJson(true)
 	branch0JsonString, err := json.Marshal(branch0Json)
 	if err != nil {
 		panic("error marshalling branch0Json: " + err.Error())
