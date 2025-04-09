@@ -73,15 +73,7 @@ func (n *RootNode) GetSortedLevels() []int {
 func (n *RootNode) GetNodesOfLevel(level int) []*NonRootNode {
 	n.ensureLevelSetExists(level)
 	set := n.NodesByLevel.MustGet(level)
-	ret := make([]*NonRootNode, 0, set.Len())
-	for node := range set.IterValues() {
-		ret = append(ret, node)
-	}
-	// 按照 id 从小到大排序，保证和 Js 实现一致
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].Id < ret[j].Id
-	})
-	return ret
+	return set.Elements()
 }
 
 func (n *RootNode) CountNodes() int {

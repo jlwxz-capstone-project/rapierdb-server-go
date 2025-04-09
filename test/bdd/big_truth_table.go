@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/bdd"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/orderedmap"
 )
 
 // BigTruthTable 示例大型真值表
@@ -586,16 +587,18 @@ var BigTruthTable = map[string]int{
 
 // GetBigTruthTable 获取大的真值表
 func GetBigTruthTable() bdd.TruthTable {
+	tt := orderedmap.FromMap(BigTruthTable)
+
 	var firstKey string
-	for k := range BigTruthTable {
+	for k := range tt.IterKeys() {
 		firstKey = k
 		break
 	}
 
 	if firstKey != "" {
 		keyLength := len(firstKey)
-		bdd.FillTruthTable(BigTruthTable, keyLength, bdd.Unknown)
+		bdd.FillTruthTable(tt, keyLength, bdd.Unknown)
 	}
 
-	return BigTruthTable
+	return tt
 }

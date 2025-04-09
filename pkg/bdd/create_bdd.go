@@ -5,7 +5,7 @@ func CreateBddFromTruthTable(truthTable TruthTable) *RootNode {
 	root := NewRootNode()
 
 	var firstKey string
-	for k := range truthTable {
+	for k := range truthTable.IterKeys() {
 		firstKey = k
 		break
 	}
@@ -13,11 +13,11 @@ func CreateBddFromTruthTable(truthTable TruthTable) *RootNode {
 	keyLength := len(firstKey)
 	mustBeSize := 1 << keyLength // 2^keyLength
 
-	if len(truthTable) != mustBeSize {
+	if truthTable.Len() != mustBeSize {
 		panic("truth table has missing entries")
 	}
 
-	for stateSet, value := range truthTable {
+	for stateSet, value := range truthTable.IterEntries() {
 		var lastNode *NonLeafNode = root.AsNode()
 
 		for i := 0; i < (len(stateSet) - 1); i++ {

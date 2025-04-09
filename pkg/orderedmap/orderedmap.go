@@ -28,6 +28,15 @@ func NewOrderedMap[K comparable, V any]() *OrderedMap[K, V] {
 	}
 }
 
+// FromMap 从 map 创建一个新的 OrderedMap
+func FromMap[K comparable, V any](m map[K]V) *OrderedMap[K, V] {
+	ret := NewOrderedMap[K, V]()
+	for k, v := range m {
+		ret.Set(k, v)
+	}
+	return ret
+}
+
 // Set 设置键值对，如果键已存在则更新值
 func (m *OrderedMap[K, V]) Set(key K, value V) {
 	if element, exists := m.store[key]; exists {

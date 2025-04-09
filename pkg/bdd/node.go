@@ -10,7 +10,7 @@ type Node struct {
 	outermostInstance interface {
 		AsNode() *Node
 	}
-	Id       int
+	Id       string
 	Deleted  bool
 	RootNode *RootNode
 	Level    int
@@ -80,7 +80,7 @@ func (n *Node) Remove() {
 }
 
 func (n *Node) ToJson(withId bool) NodeJson {
-	var id *int = nil
+	var id *string = nil
 	if withId {
 		id = &n.Id
 	}
@@ -96,7 +96,7 @@ func (n *Node) ToJson(withId bool) NodeJson {
 		if n.IsNonRootNode() {
 			parents := []string{}
 			for parent := range n.GetParents().Parents.IterValues() {
-				parents = append(parents, strconv.Itoa(parent.Id))
+				parents = append(parents, parent.Id)
 			}
 			ret.Parents = parents
 		}
@@ -131,7 +131,8 @@ func (n *Node) ToString() string {
 		ret += "|1" + branches.GetBranch("1").ToString()
 	}
 
-	if leafNode, ok := any(n).(*LeafNode); ok {
+	if n.IsLeafNode() {
+		leafNode := n.AsLeafNode()
 		ret += "|v" + strconv.Itoa(leafNode.Value)
 	}
 
@@ -153,11 +154,12 @@ func (n *Node) TypeString() string {
 
 func (n *Node) EnsureNotDeleted(op string) {
 	if n.Deleted {
-		panic("forbidden operation " + op + " on deleted node " + strconv.Itoa(n.Id))
+		panic("forbidden operation " + op + " on deleted node " + n.Id)
 	}
 }
 
 func (n *Node) ApplyEliminationRule(nodesOfSameLevel []*Node) bool {
+	// fmt.Println("applyEliminationRule on", n.Id)
 	n.EnsureNotDeleted("applyEliminationRule")
 	if nodesOfSameLevel == nil {
 		nodesOfSameLevel = n.RootNode.GetNodesOfLevel(n.Level)
@@ -192,7 +194,7 @@ func (n *Node) ApplyEliminationRule(nodesOfSameLevel []*Node) bool {
 }
 
 type NodeJson struct {
-	Id       *int                `json:"id,omitempty"`
+	Id       *string             `json:"id,omitempty"`
 	Deleted  bool                `json:"deleted"`
 	Level    int                 `json:"level"`
 	Type     string              `json:"type"`

@@ -21,6 +21,7 @@ func (n *Node) IsInternalNode() bool          { _, ok := n.outermostInstance.(*I
 func (n *Node) AsInternalNode() *InternalNode { return n.outermostInstance.(*InternalNode) }
 
 func (n *InternalNode) ApplyRuductionRule() bool {
+	// fmt.Println("applyRuductionRule on", n.Id)
 	if n.Branches.HasEqualBranches() {
 		n.EnsureNotDeleted("applyRuductionRule")
 		keepBranch := n.Branches.GetBranch("0")

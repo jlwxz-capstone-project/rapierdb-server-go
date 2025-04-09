@@ -19,6 +19,15 @@ func NewOrderedSet[T comparable]() *OrderedSet[T] {
 	}
 }
 
+// FromMap 从 map 创建一个新的 OrderedSet
+func FromMap[T comparable, V struct{} | bool](m map[T]V) *OrderedSet[T] {
+	ret := NewOrderedSet[T]()
+	for k := range m {
+		ret.Add(k)
+	}
+	return ret
+}
+
 // Add 添加元素到集合中
 func (s *OrderedSet[T]) Add(value T) {
 	s.store.Set(value, struct{}{})

@@ -60,7 +60,7 @@ func (b *Branches) HasBranchAsNode(node *Node) bool {
 	return false
 }
 
-func (b *Branches) HasNodeIdAsBranch(id int) bool {
+func (b *Branches) HasNodeIdAsBranch(id string) bool {
 	if b.GetBranch("0").Id == id || b.GetBranch("1").Id == id {
 		return true
 	}
@@ -72,8 +72,8 @@ func (b *Branches) AreBranchesStrictEqual() bool {
 }
 
 func (b *Branches) HasEqualBranches() bool {
-	branch0Json := b.Branches.MustGet("0").ToJson(true)
-	branch1Json := b.Branches.MustGet("1").ToJson(true)
+	branch0Json := b.Branches.MustGet("0").ToJson(false)
+	branch1Json := b.Branches.MustGet("1").ToJson(false)
 	branch0JsonString, err := json.Marshal(branch0Json)
 	if err != nil {
 		panic("error marshalling branch0Json: " + err.Error())

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -21,26 +20,26 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 		levelNodes := bdd.GetNodesOfLevel(level)
 		for _, node := range levelNodes {
 			allNodes = append(allNodes, node)
-			nodesById[strconv.Itoa(node.Id)] = node
+			nodesById[node.Id] = node
 		}
 	}
 
 	recursiveNodes := getNodesRecursive(bdd)
 
 	if len(allNodes) != len(recursiveNodes) {
-		allNodesIds := make([]int, 0, len(allNodes))
+		allNodesIds := make([]string, 0, len(allNodes))
 		for _, node := range allNodes {
 			allNodesIds = append(allNodesIds, node.Id)
 		}
-		sort.Ints(allNodesIds)
+		sort.Strings(allNodesIds)
 
-		recursiveNodesIds := make([]int, 0, len(recursiveNodes))
+		recursiveNodesIds := make([]string, 0, len(recursiveNodes))
 		for node := range recursiveNodes {
 			recursiveNodesIds = append(recursiveNodesIds, node.Id)
 		}
-		sort.Ints(recursiveNodesIds)
+		sort.Strings(recursiveNodesIds)
 
-		nodesOnlyInRecursive := make([]int, 0)
+		nodesOnlyInRecursive := make([]string, 0)
 		for _, nodeId := range recursiveNodesIds {
 			found := false
 			for _, allNodeId := range allNodesIds {
@@ -97,7 +96,7 @@ func EnsureCorrectBdd(bdd *RootNode) error {
 			if internalNode.GetBranches().AreBranchesStrictEqual() {
 				branchIds := make([]string, 0, len(bothBranches))
 				for _, branch := range bothBranches {
-					branchIds = append(branchIds, strconv.Itoa(branch.Id))
+					branchIds = append(branchIds, branch.Id)
 				}
 				return fmt.Errorf("ensureCorrectBdd() node has two equal branches: %s", strings.Join(branchIds, ", "))
 			}

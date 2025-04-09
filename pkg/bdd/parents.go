@@ -1,7 +1,6 @@
 package bdd
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/orderedset"
@@ -53,7 +52,7 @@ func (p *Parents) Size() int {
 func (p *Parents) ToString() string {
 	ret := make([]string, 0, p.Parents.Len())
 	for parent := range p.Parents.IterValues() {
-		ret = append(ret, strconv.Itoa(parent.Id))
+		ret = append(ret, parent.Id)
 	}
 	return strings.Join(ret, ", ")
 }
