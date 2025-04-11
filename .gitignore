@@ -42,3 +42,5 @@ __snapshots__/
 /loro-c-ffi/target/
 *.swp
 *.swo 
+
+.specstory/
