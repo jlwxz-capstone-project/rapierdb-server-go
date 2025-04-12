@@ -42,6 +42,7 @@ type Synchronizer struct {
 	permission          *query.Permissions
 	ctx                 context.Context
 	cancel              context.CancelFunc
+	queryManager        *QueryManager
 
 	// 状态相关字段
 	status     SynchronizerStatus
@@ -74,14 +75,15 @@ func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engi
 	// 创建上下文
 	ctx, cancel := context.WithCancel(ctx)
 
+	queryExecutor := query.NewQueryExecutor(storageEngine)
 	synchronizer := &Synchronizer{
 		storageEngine:       storageEngine,
 		storageEngineEvents: &StorageEngineEvents{},
-		queryExecutor:       query.NewQueryExecutor(storageEngine),
+		queryExecutor:       queryExecutor,
 		channel:             channel,
 		config:              *config,
 		permission:          permission,
-		activeSet:           make(map[string]map[string]ListeningQuery),
+		queryManager:        NewQueryManager(queryExecutor, permission),
 		ctx:                 ctx,
 		cancel:              cancel,
 		status:              SynchronizerStatusStopped,
@@ -196,7 +198,7 @@ func (s *Synchronizer) Start() error {
 			// 处理移除的订阅
 			for _, q := range msg.Removed {
 				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q.DebugPrint())
-				err := s.activeSet.RemoveSubscription(clientId, q)
+				err := s.queryManager.RemoveSubscriptedQuery(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 移除订阅失败: %v", err)
 				}
@@ -206,7 +208,7 @@ func (s *Synchronizer) Start() error {
 			vqm := message.NewVersionQueryMessageV1()
 			for _, q := range msg.Added {
 				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q.DebugPrint())
-				err := s.activeSet.AddSubscription(clientId, q)
+				err := s.queryManager.SubscribeNewQuery(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 添加订阅失败: %v", err)
 				}
@@ -305,6 +307,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 		return
 	}
 	log.Debugf("handleTransactionCommitted: 处理事务 %s 提交事件，提交者 %s", event.Transaction.TxID, event.Committer)
+
 	// 哪个节点提交的事务，就向这个节点发送 AckTransactionMessage
 	ackMsg := message.AckTransactionMessageV1{
 		TxID: event.Transaction.TxID,
@@ -318,6 +321,7 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 	if err != nil {
 		log.Errorf("handleTransactionCommitted: 发送确认消息失败", err)
 	}
+
 	// 遍历所有节点，对每个节点，检查本次事务改动的文档是否在这个节点订阅的集合中
 	// 并且对这个节点可见。如果对一个节点，存在这样的文档，则将这些文档通过
 	// PostUpdateMessage 发送给这个节点

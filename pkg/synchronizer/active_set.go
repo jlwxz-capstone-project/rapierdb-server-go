@@ -17,14 +17,16 @@ type QueryManager struct {
 	// clientId -> queryHash -> query
 	subscriptions map[string]map[string]ListeningQuery
 	queryExecutor *query.QueryExecutor
+	permissions   *query.Permissions
 	eventReducer  EventReducer
 }
 
 // NewQueryManager 创建并返回一个新的 QueryManager 实例
-func NewQueryManager(queryExecutor *query.QueryExecutor) *QueryManager {
+func NewQueryManager(queryExecutor *query.QueryExecutor, permissions *query.Permissions) *QueryManager {
 	return &QueryManager{
 		subscriptions: make(map[string]map[string]ListeningQuery),
 		queryExecutor: queryExecutor,
+		permissions:   permissions,
 	}
 }
 
@@ -134,8 +136,9 @@ func (a *QueryManager) HandleTransaction(txn *storage_engine.Transaction) map[st
 				actionFunc := GetActionFunction(action)
 				// 执行 ActionFunction
 				actionFunc(ActionFunctionInput{
+					clientId:       clientId,
+					permissions:    a.permissions,
 					listeningQuery: lq,
-					queryExecutor:  a.queryExecutor,
 					op:             op,
 					clientUpdates:  clientUpdates,
 				})

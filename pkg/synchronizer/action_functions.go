@@ -10,8 +10,9 @@ import (
 )
 
 type ActionFunctionInput struct {
+	clientId       string
 	listeningQuery ListeningQuery
-	queryExecutor  *query.QueryExecutor
+	permissions    *query.Permissions
 	op             storage_engine.TransactionOp
 	clientUpdates  *ClientUpdates
 }
