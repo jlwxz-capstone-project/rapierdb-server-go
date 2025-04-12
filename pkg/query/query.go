@@ -171,6 +171,8 @@ func (q *FindManyQuery) Match(doc *loro.LoroDoc) (bool, error) {
 //   - 如果 doc1 < doc2，返回 -1
 //   - 如果 doc1 = doc2，返回 0
 //   - 如果 doc1 > doc2，返回 1
+//
+// TODO 不支持深度排序，比如按 `a.b.c` 排序
 func (q *FindManyQuery) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 	for _, sort := range q.Sort {
 		// 获取字段值

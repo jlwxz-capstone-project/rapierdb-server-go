@@ -1,66 +1,85 @@
 package synchronizer
 
-import "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
+import (
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/types"
+)
 
-// ActiveSet 是一个活跃集合，用于
-// 存储每个客户端订阅的查询
-type ActiveSet struct {
+// 一个 EventReducer 会根据 ListeningQuery lq 和 TransactionOp
+// 计算出应该采取什么 Action 更新 lq 的结果集
+type EventReducer interface {
+	Reduce(lq ListeningQuery, op storage_engine.TransactionOp) types.ActionName
+}
+
+type QueryManager struct {
+	// 每个客户端订阅的查询
 	// clientId -> queryHash -> query
-	subscriptions map[string]map[string]query.Query
+	subscriptions map[string]map[string]ListeningQuery
+	queryExecutor *query.QueryExecutor
+	eventReducer  EventReducer
 }
 
-// NewActiveSet 创建并返回一个新的 ActiveSet 实例
-func NewActiveSet() *ActiveSet {
-	return &ActiveSet{
-		subscriptions: make(map[string]map[string]query.Query),
+// NewQueryManager 创建并返回一个新的 QueryManager 实例
+func NewQueryManager(queryExecutor *query.QueryExecutor) *QueryManager {
+	return &QueryManager{
+		subscriptions: make(map[string]map[string]ListeningQuery),
+		queryExecutor: queryExecutor,
 	}
 }
 
-// UpdateSubscription 更新指定客户端的查询订阅
-func (s *ActiveSet) UpdateSubscription(clientId string, newQueries []query.Query) error {
-	clientSubscriptions, ok := s.subscriptions[clientId]
-	if !ok {
-		clientSubscriptions = make(map[string]query.Query)
-		s.subscriptions[clientId] = clientSubscriptions
-	}
-	for _, q := range newQueries {
-		queryHash, err := query.StableStringify(q)
+// createListeningQuery 创建一个 ListeningQuery 实例，会执行查询放到 Result 中
+func (m *QueryManager) createListeningQuery(q query.Query) (ListeningQuery, error) {
+	switch q := q.(type) {
+	case *query.FindOneQuery:
+		res, err := m.queryExecutor.FindOne(q)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		clientSubscriptions[queryHash] = q
+		return &FindOneListeningQuery{
+			Query:  q,
+			Error:  nil,
+			Result: res,
+		}, nil
+	case *query.FindManyQuery:
+		res, err := m.queryExecutor.FindMany(q)
+		if err != nil {
+			return nil, err
+		}
+		return &FindManyListeningQuery{
+			Query:  q,
+			Error:  nil,
+			Result: res,
+		}, nil
+	default:
+		panic("unknown query type")
 	}
-	return nil
 }
 
-// AddSubscription 为指定客户端添加一个查询订阅
-// 参数:
-//   - clientId: 客户端标识符
-//   - q: 要添加的查询
-//
-// 返回:
-//   - 如果查询哈希生成失败，返回错误
-func (s *ActiveSet) AddSubscription(clientId string, q query.Query) error {
-	queryHash, err := query.StableStringify(q)
+// SubscribeNewQuery 订阅新的查询
+func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) error {
+	ss, ok := s.subscriptions[clientId]
+	if !ok {
+		ss = make(map[string]ListeningQuery)
+		s.subscriptions[clientId] = ss
+	}
+
+	queryHash, err := query.StableStringify(newQuery)
 	if err != nil {
 		return err
 	}
 
-	if _, ok := s.subscriptions[clientId]; !ok {
-		s.subscriptions[clientId] = make(map[string]query.Query)
+	lq, err := s.createListeningQuery(newQuery)
+	if err != nil {
+		return err
 	}
-	s.subscriptions[clientId][queryHash] = q
+	ss[queryHash] = lq
+
 	return nil
 }
 
-// RemoveSubscription 移除指定客户端的查询订阅
-// 参数:
-//   - clientId: 客户端标识符
-//   - q: 要移除的查询
-//
-// 返回:
-//   - 如果查询哈希生成失败，返回错误
-func (s *ActiveSet) RemoveSubscription(clientId string, q query.Query) error {
+// RemoveSubscriptedQuery 移除指定客户端的查询订阅
+func (s *QueryManager) RemoveSubscriptedQuery(clientId string, q query.Query) error {
 	queryHash, err := query.StableStringify(q)
 	if err != nil {
 		return err
@@ -72,15 +91,8 @@ func (s *ActiveSet) RemoveSubscription(clientId string, q query.Query) error {
 	return nil
 }
 
-// Contains 检查指定客户端是否订阅了给定的查询
-// 参数:
-//   - clientId: 客户端标识符
-//   - q: 要检查的查询
-//
-// 返回:
-//   - 布尔值表示是否包含该订阅
-//   - 如果查询哈希生成失败，返回错误
-func (a *ActiveSet) Contains(clientId string, q query.Query) (bool, error) {
+// CheckSubscriptedQuery 检查指定客户端是否订阅了给定的查询
+func (a *QueryManager) CheckSubscriptedQuery(clientId string, q query.Query) (bool, error) {
 	queryHash, err := query.StableStringify(q)
 	if err != nil {
 		return false, err
@@ -93,21 +105,42 @@ func (a *ActiveSet) Contains(clientId string, q query.Query) (bool, error) {
 	return clientMap[queryHash] != nil, nil
 }
 
-// GetSubscriptions 获取指定客户端的所有查询订阅
-// 参数:
-//   - clientId: 客户端标识符
-//
-// 返回:
-//   - 该客户端的所有查询订阅列表
-func (a *ActiveSet) GetSubscriptions(clientId string) []query.Query {
-	clientMap, ok := a.subscriptions[clientId]
-	if !ok {
-		return []query.Query{}
-	}
+type ClientUpdates struct {
+	Updates map[string][]byte
+	Deletes map[string]struct{}
+}
 
-	subscriptions := make([]query.Query, 0, len(clientMap))
-	for _, q := range clientMap {
-		subscriptions = append(subscriptions, q.(query.Query))
+func (cu *ClientUpdates) IsEmpty() bool {
+	return len(cu.Updates) == 0 && len(cu.Deletes) == 0
+}
+
+func (a *QueryManager) HandleTransaction(txn *storage_engine.Transaction) map[string]*ClientUpdates {
+	cu := make(map[string]*ClientUpdates)
+	for _, op := range txn.Operations {
+		for clientId, queries := range a.subscriptions {
+			clientUpdates, ok := cu[clientId]
+			if !ok {
+				clientUpdates = &ClientUpdates{
+					Updates: make(map[string][]byte),
+					Deletes: make(map[string]struct{}),
+				}
+				cu[clientId] = clientUpdates
+			}
+
+			for _, lq := range queries {
+				// 使用 EventReduce 算法计算更新结果集应该采取的 Action
+				action := a.eventReducer.Reduce(lq, op)
+				// 根据 Action 获取对应的 ActionFunction
+				actionFunc := GetActionFunction(action)
+				// 执行 ActionFunction
+				actionFunc(ActionFunctionInput{
+					listeningQuery: lq,
+					queryExecutor:  a.queryExecutor,
+					op:             op,
+					clientUpdates:  clientUpdates,
+				})
+			}
+		}
 	}
-	return subscriptions
+	return cu
 }

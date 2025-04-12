@@ -36,10 +36,10 @@ type SynchronizerConfig struct {
 type Synchronizer struct {
 	storageEngine       *storage_engine.StorageEngine
 	storageEngineEvents *StorageEngineEvents
+	queryExecutor       *query.QueryExecutor
 	channel             network_server.Channel
 	config              SynchronizerConfig
 	permission          *query.Permissions
-	activeSet           *ActiveSet
 	ctx                 context.Context
 	cancel              context.CancelFunc
 
@@ -77,10 +77,11 @@ func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engi
 	synchronizer := &Synchronizer{
 		storageEngine:       storageEngine,
 		storageEngineEvents: &StorageEngineEvents{},
+		queryExecutor:       query.NewQueryExecutor(storageEngine),
 		channel:             channel,
 		config:              *config,
 		permission:          permission,
-		activeSet:           NewActiveSet(),
+		activeSet:           make(map[string]map[string]ListeningQuery),
 		ctx:                 ctx,
 		cancel:              cancel,
 		status:              SynchronizerStatusStopped,
@@ -572,4 +573,16 @@ func (s *Synchronizer) Stop() {
 
 	s.setStatus(SynchronizerStatusStopped)
 	log.Debugf("Synchronizer.Stop: 同步器已停止")
+}
+
+func (s *Synchronizer) RemoveSubscription(clientId string, q query.Query) error {
+	queryHash, err := query.StableStringify(q)
+	if err != nil {
+		return err
+	}
+
+	if clientMap, ok := s.activeSet[clientId]; ok {
+		delete(clientMap, queryHash)
+	}
+	return nil
 }
