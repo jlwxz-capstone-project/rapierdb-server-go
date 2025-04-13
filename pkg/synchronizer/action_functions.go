@@ -15,9 +15,10 @@ type ActionFunctionInput struct {
 	permissions    *query.Permissions
 	op             storage_engine.TransactionOp
 	clientUpdates  *ClientUpdates
+	queryExecutor  *query.QueryExecutor
 }
 
-type ActionFunction func(input ActionFunctionInput)
+type ActionFunction func(in ActionFunctionInput)
 
 func GetActionFunction(actionName types.ActionName) ActionFunction {
 	switch actionName {
@@ -54,12 +55,50 @@ func GetActionFunction(actionName types.ActionName) ActionFunction {
 	}
 }
 
-func ActionDoNothing(input ActionFunctionInput) {
+func updateClientUpdates(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	if !isFindMany {
+		panic("find one query is not supported")
+	}
+
+	switch op := in.op.(type) {
+	case *storage_engine.InsertOp:
+		key, err := storage_engine.CalcDocKey(lq.Query.Collection, op.DocID)
+		if err != nil {
+			panic(fmt.Sprintf("calc doc key error: %v", err))
+		}
+		stringKey := string(key)
+		// 如果该键已在删除集合中，先从删除集合中移除（虽然一般不会出现这种情况）
+		delete(in.clientUpdates.Deletes, stringKey)
+		in.clientUpdates.Updates[stringKey] = op.Snapshot
+	case *storage_engine.UpdateOp:
+		key, err := storage_engine.CalcDocKey(lq.Query.Collection, op.DocID)
+		if err != nil {
+			panic(fmt.Sprintf("calc doc key error: %v", err))
+		}
+		stringKey := string(key)
+		// 如果该键已在删除集合中，则不应再更新它
+		if _, exists := in.clientUpdates.Deletes[stringKey]; !exists {
+			in.clientUpdates.Updates[stringKey] = op.Update
+		}
+	case *storage_engine.DeleteOp:
+		key, err := storage_engine.CalcDocKey(lq.Query.Collection, op.DocID)
+		if err != nil {
+			panic(fmt.Sprintf("calc doc key error: %v", err))
+		}
+		stringKey := string(key)
+		// 删除操作具有最高优先级，从更新映射中移除该键并添加到删除集合中
+		delete(in.clientUpdates.Updates, stringKey)
+		in.clientUpdates.Deletes[stringKey] = struct{}{}
+	}
 }
 
-func ActionInsertFirst(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
-	insertOp, isInsertOp := input.op.(*storage_engine.InsertOp)
+func ActionDoNothing(in ActionFunctionInput) {
+}
+
+func ActionInsertFirst(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
 	if isFindMany {
 		if isInsertOp {
 			doc := loro.NewLoroDoc()
@@ -69,6 +108,7 @@ func ActionInsertFirst(input ActionFunctionInput) {
 				Doc:   doc,
 			}
 			lq.Result = append([]*query.DocWithId{docWithId}, lq.Result...)
+			updateClientUpdates(in)
 		} else {
 			panic("unexpected operation")
 		}
@@ -77,9 +117,9 @@ func ActionInsertFirst(input ActionFunctionInput) {
 	}
 }
 
-func ActionInsertLast(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
-	insertOp, isInsertOp := input.op.(*storage_engine.InsertOp)
+func ActionInsertLast(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
 	if isFindMany {
 		if isInsertOp {
 			doc := loro.NewLoroDoc()
@@ -89,6 +129,7 @@ func ActionInsertLast(input ActionFunctionInput) {
 				Doc:   doc,
 			}
 			lq.Result = append(lq.Result, docWithId)
+			updateClientUpdates(in)
 		} else {
 			panic("unexpected operation")
 		}
@@ -97,56 +138,58 @@ func ActionInsertLast(input ActionFunctionInput) {
 	}
 }
 
-func ActionRemoveFirstItem(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
+func ActionRemoveFirstItem(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
 	if isFindMany {
 		if len(lq.Result) > 0 {
 			lq.Result = lq.Result[1:]
+			updateClientUpdates(in)
 		}
 	} else {
 		panic("find one query is not supported")
 	}
 }
 
-func ActionRemoveLastItem(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
+func ActionRemoveLastItem(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
 	if isFindMany {
 		if len(lq.Result) > 0 {
 			lq.Result = lq.Result[:len(lq.Result)-1]
+			updateClientUpdates(in)
 		}
 	} else {
 		panic("find one query is not supported")
 	}
 }
 
-func ActionRemoveFirstInsertLast(input ActionFunctionInput) {
-	ActionRemoveFirstItem(input)
-	ActionInsertLast(input)
+func ActionRemoveFirstInsertLast(in ActionFunctionInput) {
+	ActionRemoveFirstItem(in)
+	ActionInsertLast(in)
 }
 
-func ActionRemoveLastInsertFirst(input ActionFunctionInput) {
-	ActionRemoveLastItem(input)
-	ActionInsertFirst(input)
+func ActionRemoveLastInsertFirst(in ActionFunctionInput) {
+	ActionRemoveLastItem(in)
+	ActionInsertFirst(in)
 }
 
-func ActionRemoveFirstInsertFirst(input ActionFunctionInput) {
-	ActionRemoveFirstItem(input)
-	ActionInsertFirst(input)
+func ActionRemoveFirstInsertFirst(in ActionFunctionInput) {
+	ActionRemoveFirstItem(in)
+	ActionInsertFirst(in)
 }
 
-func ActionRemoveLastInsertLast(input ActionFunctionInput) {
-	ActionRemoveLastItem(input)
-	ActionInsertLast(input)
+func ActionRemoveLastInsertLast(in ActionFunctionInput) {
+	ActionRemoveLastItem(in)
+	ActionInsertLast(in)
 }
 
-func ActionRemoveExisting(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
+func ActionRemoveExisting(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
 	if !isFindMany {
 		panic("find one query is not supported")
 	}
 
 	// XXX 二分搜索
-	docId := getDocId(input.op)
+	docId := getDocId(in.op)
 	idx := -1
 	for i, doc := range lq.Result {
 		if doc.DocId == docId {
@@ -157,12 +200,13 @@ func ActionRemoveExisting(input ActionFunctionInput) {
 
 	if idx != -1 {
 		lq.Result = append(lq.Result[:idx], lq.Result[idx+1:]...)
+		updateClientUpdates(in)
 	}
 }
 
-func ActionReplaceExisting(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
-	op, isUpdateOp := input.op.(*storage_engine.UpdateOp)
+func ActionReplaceExisting(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	op, isUpdateOp := in.op.(*storage_engine.UpdateOp)
 	if isFindMany {
 		if isUpdateOp {
 			idx := -1
@@ -175,6 +219,7 @@ func ActionReplaceExisting(input ActionFunctionInput) {
 
 			if idx != -1 {
 				lq.Result[idx].Doc.Import(op.Update)
+				updateClientUpdates(in)
 			}
 		} else {
 			panic("unexpected operation")
@@ -184,13 +229,13 @@ func ActionReplaceExisting(input ActionFunctionInput) {
 	}
 }
 
-func ActionAlwaysWrong(input ActionFunctionInput) {
+func ActionAlwaysWrong(in ActionFunctionInput) {
 	panic("not implemented")
 }
 
-func ActionInsertAtSortPosition(input ActionFunctionInput) {
-	lq, isFindMany := input.listeningQuery.(*FindManyListeningQuery)
-	insertOp, isInsertOp := input.op.(*storage_engine.InsertOp)
+func ActionInsertAtSortPosition(in ActionFunctionInput) {
+	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
 	if isFindMany {
 		if isInsertOp {
 			doc := loro.NewLoroDoc()
@@ -207,6 +252,7 @@ func ActionInsertAtSortPosition(input ActionFunctionInput) {
 				return cmp
 			}
 			pushAtSortPos(&lq.Result, docWithId, cmp, 0)
+			updateClientUpdates(in)
 		} else {
 			panic("unexpected operation")
 		}
@@ -215,17 +261,27 @@ func ActionInsertAtSortPosition(input ActionFunctionInput) {
 	}
 }
 
-func ActionRemoveExistingAndInsertAtSortPosition(input ActionFunctionInput) {
-	ActionRemoveExisting(input)
-	ActionInsertAtSortPosition(input)
+func ActionRemoveExistingAndInsertAtSortPosition(in ActionFunctionInput) {
+	ActionRemoveExisting(in)
+	ActionInsertAtSortPosition(in)
 }
 
-func ActionRunFullQueryAgain(input ActionFunctionInput) {
-	panic("not implemented")
+func ActionRunFullQueryAgain(in ActionFunctionInput) {
+	switch lq := in.listeningQuery.(type) {
+	case *FindOneListeningQuery:
+		panic("find one query is not supported")
+	case *FindManyListeningQuery:
+		res, err := in.queryExecutor.FindMany(lq.Query)
+		if err != nil {
+			panic(fmt.Sprintf("find many error: %v", err))
+		}
+		lq.Result = res
+		updateClientUpdates(in)
+	}
 }
 
-func ActionUnknownAction(input ActionFunctionInput) {
-	panic("not implemented")
+func ActionUnknownAction(in ActionFunctionInput) {
+	panic("unknown action")
 }
 
 func getDocId(op storage_engine.TransactionOp) string {

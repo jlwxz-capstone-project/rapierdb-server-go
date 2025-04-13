@@ -322,147 +322,31 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 		log.Errorf("handleTransactionCommitted: 发送确认消息失败", err)
 	}
 
-	// 遍历所有节点，对每个节点，检查本次事务改动的文档是否在这个节点订阅的集合中
-	// 并且对这个节点可见。如果对一个节点，存在这样的文档，则将这些文档通过
-	// PostUpdateMessage 发送给这个节点
-	clientIds := s.channel.GetAllConnectedClientIds()
-	log.Debugf("handleTransactionCommitted: 当前连接的客户端数量: %d", len(clientIds))
-	for _, clientId := range clientIds {
+	// 将事务告诉 queryManager
+	// queryManager 直接根据事务更新所有查询的结果
+	// 并将每个客户端能看到的更新放到 cus 里返回
+	cus := s.queryManager.HandleTransaction(event.Transaction)
+	for clientId, cu := range cus {
 		// 跳过提交事务的客户端，因为它已经收到了确认消息
 		if clientId == event.Committer {
 			log.Debugf("handleTransactionCommitted: 跳过提交者 %s", clientId)
 			continue
 		}
 
-		// 获取客户端订阅的集合
-		queries := s.activeSet.GetSubscriptions(clientId)
-		// TODO: 这里之后应该采用 Event Reduce 算法
-		// 现在暂时找出订阅的查询涉及的所有集合
-		collections := make(map[string]struct{})
-		for _, q := range queries {
-			switch q := q.(type) {
-			case *query.FindManyQuery:
-				collections[q.Collection] = struct{}{}
-			case *query.FindOneQuery:
-				collections[q.Collection] = struct{}{}
-			}
-		}
-
-		// 遍历事务中的所有操作，查找修改的文档
-		upsertDocs := make(map[string][]byte)
-		deleteDocs := make([]string, 0)
-
-		for _, op := range event.Transaction.Operations {
-			switch operation := op.(type) {
-			case *storage_engine.InsertOp:
-				// 检查该集合是否被订阅
-				if _, subscribed := collections[operation.Collection]; !subscribed {
-					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
-					continue
-				}
-				log.Debugf("handleTransactionCommitted: 处理插入操作 %s/%s", operation.Collection, operation.DocID)
-
-				doc, err := s.storageEngine.LoadDoc(operation.Collection, operation.DocID)
-				if err != nil {
-					log.Errorf("handleTransactionCommitted: 加载文档 %s/%s 失败: %v",
-						operation.Collection, operation.DocID, err)
-					continue
-				}
-
-				// 检查客户端是否有权限查看此文档
-				canViewParams := query.CanViewParams{
-					Collection: operation.Collection,
-					DocId:      operation.DocID,
-					Doc:        doc,
-					ClientId:   clientId,
-				}
-				canView := s.permission.CanView(canViewParams)
-				if !canView {
-					log.Debugf("handleTransactionCommitted: 客户端 %s 无权查看文档 %s/%s", clientId, operation.Collection, operation.DocID)
-					continue
-				}
-				log.Debugf("handleTransactionCommitted: 客户端 %s 可以查看文档 %s/%s", clientId, operation.Collection, operation.DocID)
-
-				// 文档可见，添加到upsert列表
-				docKeyBytes, err := storage_engine.CalcDocKey(operation.Collection, operation.DocID)
-				if err != nil {
-					log.Errorf("handleTransactionCommitted: 计算文档键 %s/%s 失败: %v",
-						operation.Collection, operation.DocID, err)
-					continue
-				}
-				docKey := util.Bytes2String(docKeyBytes)
-				upsertDocs[docKey] = operation.Snapshot
-				log.Debugf("handleTransactionCommitted: 添加文档 %s/%s 到 upsert 列表", operation.Collection, operation.DocID)
-
-			case *storage_engine.UpdateOp:
-				// 检查该集合是否被订阅
-				if _, subscribed := collections[operation.Collection]; !subscribed {
-					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
-					continue
-				}
-				log.Debugf("handleTransactionCommitted: 处理更新操作 %s/%s", operation.Collection, operation.DocID)
-
-				doc, err := s.storageEngine.LoadDoc(operation.Collection, operation.DocID)
-				if err != nil {
-					log.Errorf("handleTransactionCommitted: 加载文档 %s/%s 失败: %v",
-						operation.Collection, operation.DocID, err)
-					continue
-				}
-
-				// 检查客户端是否有权限查看此文档
-				canViewParams := query.CanViewParams{
-					Collection: operation.Collection,
-					DocId:      operation.DocID,
-					Doc:        doc,
-					ClientId:   clientId,
-				}
-				canView := s.permission.CanView(canViewParams)
-				if !canView {
-					log.Debugf("handleTransactionCommitted: 客户端 %s 无权查看文档 %s/%s", clientId, operation.Collection, operation.DocID)
-					continue
-				}
-				log.Debugf("handleTransactionCommitted: 客户端 %s 可以查看文档 %s/%s", clientId, operation.Collection, operation.DocID)
-
-				// 文档可见，添加到upsert列表
-				docKeyBytes, err := storage_engine.CalcDocKey(operation.Collection, operation.DocID)
-				if err != nil {
-					log.Errorf("handleTransactionCommitted: 计算文档键 %s/%s 失败: %v",
-						operation.Collection, operation.DocID, err)
-					continue
-				}
-				docKey := util.Bytes2String(docKeyBytes)
-				snapshot := doc.ExportSnapshot()
-				upsertDocs[docKey] = snapshot.Bytes()
-				log.Debugf("handleTransactionCommitted: 添加文档 %s/%s 到 upsert 列表", operation.Collection, operation.DocID)
-
-			case *storage_engine.DeleteOp:
-				// 检查该集合是否被订阅
-				if _, subscribed := collections[operation.Collection]; !subscribed {
-					log.Debugf("handleTransactionCommitted: 客户端 %s 未订阅集合 %s，跳过", clientId, operation.Collection)
-					continue
-				}
-				log.Debugf("handleTransactionCommitted: 处理删除操作 %s/%s", operation.Collection, operation.DocID)
-
-				// 被删除的文档添加到 delete 列表
-				docKeyBytes, err := storage_engine.CalcDocKey(operation.Collection, operation.DocID)
-				if err != nil {
-					log.Errorf("handleTransactionCommitted: 计算文档键 %s/%s 失败: %v",
-						operation.Collection, operation.DocID, err)
-					continue
-				}
-				docKey := util.Bytes2String(docKeyBytes)
-				deleteDocs = append(deleteDocs, docKey)
-				log.Debugf("handleTransactionCommitted: 添加文档 %s/%s 到 delete 列表", operation.Collection, operation.DocID)
-			}
-		}
-
-		// 如果有需要同步的文档，则发送同步消息
-		if len(upsertDocs) > 0 || len(deleteDocs) > 0 {
+		if cu.IsEmpty() {
+			log.Debugf("handleTransactionCommitted: 客户端 %s 没有需要同步的文档", clientId)
+		} else {
 			log.Debugf("handleTransactionCommitted: 向客户端 %s 发送同步消息，upsert: %d, delete: %d",
-				clientId, len(upsertDocs), len(deleteDocs))
+				clientId, len(cu.Updates), len(cu.Deletes))
+
+			deletedKeys := make([]string, 0, len(cu.Deletes))
+			for docKey := range cu.Deletes {
+				deletedKeys = append(deletedKeys, docKey)
+			}
+
 			syncMsg := message.PostDocMessageV1{
-				Upsert: upsertDocs,
-				Delete: deleteDocs,
+				Upsert: cu.Updates,
+				Delete: deletedKeys,
 			}
 
 			syncMsgBytes, err := syncMsg.Encode()
@@ -479,10 +363,9 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 			} else {
 				log.Debugf("handleTransactionCommitted: 成功向客户端 %s 发送同步消息", clientId)
 			}
-		} else {
-			log.Debugf("handleTransactionCommitted: 客户端 %s 没有需要同步的文档", clientId)
 		}
 	}
+
 	log.Debugf("handleTransactionCommitted: 事务 %s 处理完成", event.Transaction.TxID)
 }
 
@@ -577,16 +460,4 @@ func (s *Synchronizer) Stop() {
 
 	s.setStatus(SynchronizerStatusStopped)
 	log.Debugf("Synchronizer.Stop: 同步器已停止")
-}
-
-func (s *Synchronizer) RemoveSubscription(clientId string, q query.Query) error {
-	queryHash, err := query.StableStringify(q)
-	if err != nil {
-		return err
-	}
-
-	if clientMap, ok := s.activeSet[clientId]; ok {
-		delete(clientMap, queryHash)
-	}
-	return nil
 }

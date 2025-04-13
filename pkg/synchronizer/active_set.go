@@ -1,16 +1,11 @@
 package synchronizer
 
 import (
+	"sync"
+
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/types"
 )
-
-// 一个 EventReducer 会根据 ListeningQuery lq 和 TransactionOp
-// 计算出应该采取什么 Action 更新 lq 的结果集
-type EventReducer interface {
-	Reduce(lq ListeningQuery, op storage_engine.TransactionOp) types.ActionName
-}
 
 type QueryManager struct {
 	// 每个客户端订阅的查询
@@ -19,6 +14,7 @@ type QueryManager struct {
 	queryExecutor *query.QueryExecutor
 	permissions   *query.Permissions
 	eventReducer  EventReducer
+	mu            sync.RWMutex // 保护 subscriptions 的并发访问
 }
 
 // NewQueryManager 创建并返回一个新的 QueryManager 实例
@@ -27,6 +23,7 @@ func NewQueryManager(queryExecutor *query.QueryExecutor, permissions *query.Perm
 		subscriptions: make(map[string]map[string]ListeningQuery),
 		queryExecutor: queryExecutor,
 		permissions:   permissions,
+		mu:            sync.RWMutex{},
 	}
 }
 
@@ -60,6 +57,9 @@ func (m *QueryManager) createListeningQuery(q query.Query) (ListeningQuery, erro
 
 // SubscribeNewQuery 订阅新的查询
 func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	ss, ok := s.subscriptions[clientId]
 	if !ok {
 		ss = make(map[string]ListeningQuery)
@@ -82,6 +82,9 @@ func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) 
 
 // RemoveSubscriptedQuery 移除指定客户端的查询订阅
 func (s *QueryManager) RemoveSubscriptedQuery(clientId string, q query.Query) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	queryHash, err := query.StableStringify(q)
 	if err != nil {
 		return err
@@ -95,6 +98,9 @@ func (s *QueryManager) RemoveSubscriptedQuery(clientId string, q query.Query) er
 
 // CheckSubscriptedQuery 检查指定客户端是否订阅了给定的查询
 func (a *QueryManager) CheckSubscriptedQuery(clientId string, q query.Query) (bool, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	queryHash, err := query.StableStringify(q)
 	if err != nil {
 		return false, err
@@ -117,6 +123,9 @@ func (cu *ClientUpdates) IsEmpty() bool {
 }
 
 func (a *QueryManager) HandleTransaction(txn *storage_engine.Transaction) map[string]*ClientUpdates {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	cu := make(map[string]*ClientUpdates)
 	for _, op := range txn.Operations {
 		for clientId, queries := range a.subscriptions {
@@ -141,6 +150,7 @@ func (a *QueryManager) HandleTransaction(txn *storage_engine.Transaction) map[st
 					listeningQuery: lq,
 					op:             op,
 					clientUpdates:  clientUpdates,
+					queryExecutor:  a.queryExecutor,
 				})
 			}
 		}
