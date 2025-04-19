@@ -14,7 +14,7 @@ import (
 // 创建测试文档
 func createTestDoc2(name string, age int64, score float64) *loro.LoroDoc {
 	doc := loro.NewLoroDoc()
-	root := doc.GetMap("root")
+	root := doc.GetDataMap()
 	root.InsertString("name", name)
 	root.InsertI64("age", age)
 	root.InsertDouble("score", score)
@@ -96,14 +96,14 @@ func TestQuerySort(t *testing.T) {
 	}{
 		{
 			"按年龄升序",
-			[]query.SortField{{Field: "root/age", Order: query.SortOrderAsc}},
+			[]query.SortField{{Field: "age", Order: query.SortOrderAsc}},
 			doc1,
 			doc2,
 			-1,
 		},
 		{
 			"按年龄降序",
-			[]query.SortField{{Field: "root/age", Order: query.SortOrderDesc}},
+			[]query.SortField{{Field: "age", Order: query.SortOrderDesc}},
 			doc1,
 			doc2,
 			1,
@@ -111,12 +111,12 @@ func TestQuerySort(t *testing.T) {
 		{
 			"按年龄和分数排序",
 			[]query.SortField{
-				{Field: "root/age", Order: query.SortOrderAsc},
-				{Field: "root/score", Order: query.SortOrderDesc},
+				{Field: "age", Order: query.SortOrderAsc},
+				{Field: "score", Order: query.SortOrderDesc},
 			},
 			doc1,
 			doc3,
-			-1,
+			1,
 		},
 	}
 

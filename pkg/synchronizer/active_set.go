@@ -3,6 +3,7 @@ package synchronizer
 import (
 	"sync"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/eventreduce"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 )
@@ -10,32 +11,33 @@ import (
 type QueryManager struct {
 	// 每个客户端订阅的查询
 	// clientId -> queryHash -> query
-	subscriptions map[string]map[string]ListeningQuery
+	subscriptions map[string]map[string]query.ListeningQuery
 	queryExecutor *query.QueryExecutor
 	permissions   *query.Permissions
-	eventReducer  EventReducer
+	eventReducer  eventreduce.EventReducer
 	mu            sync.RWMutex // 保护 subscriptions 的并发访问
 }
 
 // NewQueryManager 创建并返回一个新的 QueryManager 实例
 func NewQueryManager(queryExecutor *query.QueryExecutor, permissions *query.Permissions) *QueryManager {
 	return &QueryManager{
-		subscriptions: make(map[string]map[string]ListeningQuery),
+		subscriptions: make(map[string]map[string]query.ListeningQuery),
 		queryExecutor: queryExecutor,
 		permissions:   permissions,
+		eventReducer:  eventreduce.GetEventReducer(),
 		mu:            sync.RWMutex{},
 	}
 }
 
 // createListeningQuery 创建一个 ListeningQuery 实例，会执行查询放到 Result 中
-func (m *QueryManager) createListeningQuery(q query.Query) (ListeningQuery, error) {
+func (m *QueryManager) createListeningQuery(q query.Query) (query.ListeningQuery, error) {
 	switch q := q.(type) {
 	case *query.FindOneQuery:
 		res, err := m.queryExecutor.FindOne(q)
 		if err != nil {
 			return nil, err
 		}
-		return &FindOneListeningQuery{
+		return &query.FindOneListeningQuery{
 			Query:  q,
 			Error:  nil,
 			Result: res,
@@ -45,7 +47,7 @@ func (m *QueryManager) createListeningQuery(q query.Query) (ListeningQuery, erro
 		if err != nil {
 			return nil, err
 		}
-		return &FindManyListeningQuery{
+		return &query.FindManyListeningQuery{
 			Query:  q,
 			Error:  nil,
 			Result: res,
@@ -62,7 +64,7 @@ func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) 
 
 	ss, ok := s.subscriptions[clientId]
 	if !ok {
-		ss = make(map[string]ListeningQuery)
+		ss = make(map[string]query.ListeningQuery)
 		s.subscriptions[clientId] = ss
 	}
 

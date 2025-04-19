@@ -26,6 +26,24 @@ func NewQueryExecutor(storageEngine *storage_engine.StorageEngine) *QueryExecuto
 	}
 }
 
+func (q *QueryExecutor) FindOneById(collection string, id string) (FindOneResult, error) {
+	// TODO: 全部载入内存肯定是不好的
+	docs, err := q.StorageEngine.LoadAllDocsInCollection(collection, true)
+	if err != nil {
+		return nil, err
+	}
+
+	doc, ok := docs[id]
+	if !ok {
+		return nil, nil
+	}
+
+	return &DocWithId{
+		DocId: id,
+		Doc:   doc,
+	}, nil
+}
+
 func (q *QueryExecutor) FindOne(query *FindOneQuery) (FindOneResult, error) {
 	// TODO: 全部载入内存肯定是不好的
 	docs, err := q.StorageEngine.LoadAllDocsInCollection(query.Collection, true)
@@ -79,6 +97,12 @@ func (q *QueryExecutor) FindMany(query *FindManyQuery) (FindManyResult, error) {
 				return i < j
 			}
 			return cmp < 0 // 小于0表示i应该排在j前面
+		})
+	} else {
+		// 如果没有指定排序，则按照文档 ID（主键）排序
+		// 这非常重要，因为 EventReduce 算法依赖于结果集中文档的顺序
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].DocId < result[j].DocId
 		})
 	}
 

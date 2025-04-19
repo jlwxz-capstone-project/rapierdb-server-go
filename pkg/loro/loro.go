@@ -7,6 +7,7 @@ package loro
 */
 import "C"
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -36,6 +37,8 @@ var (
 	ErrLoroDecodeFailed    = errors.New("loro decode failed")
 	ErrInspectImportFailed = errors.New("inspect import failed")
 )
+
+const DATA_MAP_NAME = "root"
 
 // ----------- Rust Bytes Vec -----------
 
@@ -146,6 +149,10 @@ func NewLoroDoc() *LoroDoc {
 		doc.Destroy()
 	})
 	return loroDoc
+}
+
+func (doc *LoroDoc) GetDataMap() *LoroMap {
+	return doc.GetMap(DATA_MAP_NAME)
 }
 
 // 获取指定 ID 的文本容器。如果指定 ID 的文本容器不存在，
@@ -1946,6 +1953,129 @@ func (lv *LoroValue) Unwrap() (any, error) {
 	return nil, pe.WithStack(fmt.Errorf("unknown loro value type: %d", t))
 }
 
+func (lv *LoroValue) IsComparable() bool {
+	t := lv.GetType()
+	return t != LORO_MAP_VALUE && t != LORO_LIST_VALUE
+}
+
+func (lv *LoroValue) Compare(lv2 *LoroValue) (int, error) {
+	if !lv.IsComparable() || !lv2.IsComparable() {
+		return 0, pe.WithStack(fmt.Errorf("comparable type required for comparison"))
+	}
+
+	t1 := lv.GetType()
+	t2 := lv2.GetType()
+
+	if t1 == LORO_NULL_VALUE {
+		if t2 == LORO_NULL_VALUE {
+			return 0, nil
+		} else {
+			return -1, nil
+		}
+	}
+
+	if t2 == LORO_NULL_VALUE {
+		return 1, nil
+	}
+
+	if t1 == LORO_BOOL_VALUE && t2 == LORO_BOOL_VALUE {
+		val1, err := lv.GetBool()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get bool value: %w", err))
+		}
+		val2, err := lv2.GetBool()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get bool value: %w", err))
+		}
+		if val1 && !val2 {
+			return -1, nil
+		} else if !val1 && val2 {
+			return 1, nil
+		} else {
+			return 0, nil
+		}
+	}
+
+	if t1 == LORO_DOUBLE_VALUE && t2 == LORO_DOUBLE_VALUE {
+		val1, err := lv.GetDouble()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get double value: %w", err))
+		}
+		val2, err := lv2.GetDouble()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get double value: %w", err))
+		}
+		if val1 < val2 {
+			return -1, nil
+		} else if val1 > val2 {
+			return 1, nil
+		} else {
+			return 0, nil
+		}
+	}
+
+	if t1 == LORO_I64_VALUE && t2 == LORO_I64_VALUE {
+		val1, err := lv.GetI64()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get i64 value: %w", err))
+		}
+		val2, err := lv2.GetI64()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get i64 value: %w", err))
+		}
+		if val1 < val2 {
+			return -1, nil
+		} else if val1 > val2 {
+			return 1, nil
+		} else {
+			return 0, nil
+		}
+	}
+
+	if t1 == LORO_STRING_VALUE && t2 == LORO_STRING_VALUE {
+		val1, err := lv.GetString()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get string value: %w", err))
+		}
+		val2, err := lv2.GetString()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get string value: %w", err))
+		}
+		if val1 < val2 {
+			return -1, nil
+		} else if val1 > val2 {
+			return 1, nil
+		} else {
+			return 0, nil
+		}
+	}
+
+	if t1 == LORO_BINARY_VALUE && t2 == LORO_BINARY_VALUE {
+		val1, err := lv.GetBinary()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get binary value: %w", err))
+		}
+		val2, err := lv2.GetBinary()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("get binary value: %w", err))
+		}
+		val1Bytes := val1.Bytes()
+		val2Bytes := val2.Bytes()
+		cmp := bytes.Compare(val1Bytes, val2Bytes)
+		return cmp, nil
+	}
+
+	return 0, pe.WithStack(fmt.Errorf("unknown loro value type: %d", t1))
+}
+
+func (lv *LoroValue) MustCompare(lv2 *LoroValue) int {
+	cmp, err := lv.Compare(lv2)
+	if err != nil {
+		panic(err)
+	}
+	return cmp
+}
+
 func NewLoroValueFromJson(json string) (*LoroValue, error) {
 	ptr := C.loro_value_from_json(C.CString(json))
 	if ptr == nil {
@@ -2540,6 +2670,14 @@ func (lv *LoroContainerOrValue) Destroy() {
 func (lv *LoroContainerOrValue) GetType() int {
 	t := C.loro_container_value_get_type(lv.ptr)
 	return int(t)
+}
+
+func (lv *LoroContainerOrValue) IsValue() bool {
+	return lv.GetType() == LORO_VALUE_TYPE
+}
+
+func (lv *LoroContainerOrValue) IsContainer() bool {
+	return lv.GetType() == LORO_CONTAINER_TYPE
 }
 
 func (lv *LoroContainerOrValue) GetContainer() (*LoroContainer, error) {

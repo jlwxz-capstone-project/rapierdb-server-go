@@ -269,6 +269,7 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 
 // LoadAllDocsInCollection 加载指定集合中的所有文档
 // updateCache: 是否更新缓存
+// 返回值: 文档ID到文档的映射
 func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCache bool) (map[string]*loro.LoroDoc, error) {
 	lowerbound, err := CalcCollectionLowerBound(collectionName)
 	if err != nil {

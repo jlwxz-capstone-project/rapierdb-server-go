@@ -31,6 +31,11 @@ func FillTruthTable(truthTable TruthTable, inputLength int, value int) {
 	}
 }
 
+// NewEmptyTruthTable 创建空真值表
+func NewEmptyTruthTable() TruthTable {
+	return orderedmap.NewOrderedMap[string, int]()
+}
+
 // NewExampleTruthTable 创建示例真值表
 func NewExampleTruthTable(stateLength int) TruthTable {
 	lastID := 0

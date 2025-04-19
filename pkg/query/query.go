@@ -176,36 +176,50 @@ func (q *FindManyQuery) Match(doc *loro.LoroDoc) (bool, error) {
 func (q *FindManyQuery) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 	for _, sort := range q.Sort {
 		// 获取字段值
-		field1 := doc1.GetMap("root").Get(sort.Field)
-		field2 := doc2.GetMap("root").Get(sort.Field)
+		field1 := doc1.GetDataMap().Get(sort.Field)
+		field2 := doc2.GetDataMap().Get(sort.Field)
 
-		// 获取实际值
-		value1, err := field1.ToGoObject()
-		if err != nil {
-			return 0, fmt.Errorf("getting value from first document: %v", err)
+		if field1 == nil {
+			return 0, pe.WithStack(fmt.Errorf("field1 %s not found", sort.Field))
+		}
+		if field2 == nil {
+			return 0, pe.WithStack(fmt.Errorf("field2 %s not found", sort.Field))
 		}
 
-		value2, err := field2.ToGoObject()
-		if err != nil {
-			return 0, fmt.Errorf("getting value from second document: %v", err)
+		if field1.IsContainer() || field2.IsContainer() {
+			return 0, pe.WithStack(fmt.Errorf("container type not supported for sorting"))
 		}
 
-		// 比较字段值
-		cmp, err := util.CompareValues(value1, value2)
+		field1Value, err := field1.GetValue()
 		if err != nil {
-			return 0, fmt.Errorf("comparing field '%s': %v", sort.Field, err)
+			return 0, pe.WithStack(fmt.Errorf("getting value from first document: %v", err))
+		}
+		if !field1Value.IsComparable() {
+			return 0, pe.WithStack(fmt.Errorf("comparable type required for sorting"))
 		}
 
-		// 如果字段值不相等，根据排序顺序返回比较结果
+		field2Value, err := field2.GetValue()
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("getting value from second document: %v", err))
+		}
+		if !field2Value.IsComparable() {
+			return 0, pe.WithStack(fmt.Errorf("comparable type required for sorting"))
+		}
+
+		cmp, err := field1Value.Compare(field2Value)
+		if err != nil {
+			return 0, pe.WithStack(fmt.Errorf("comparing values: %v", err))
+		}
+
 		if cmp != 0 {
-			if sort.Order == SortOrderDesc {
-				cmp = -cmp
+			if sort.Order == SortOrderAsc {
+				return cmp, nil
+			} else {
+				return -cmp, nil
 			}
-			return cmp, nil
 		}
 	}
 
-	// 所有字段都相等
 	return 0, nil
 }
 

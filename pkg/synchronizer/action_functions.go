@@ -3,15 +3,15 @@ package synchronizer
 import (
 	"fmt"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/eventreduce"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/types"
 )
 
 type ActionFunctionInput struct {
 	clientId       string
-	listeningQuery ListeningQuery
+	listeningQuery query.ListeningQuery
 	permissions    *query.Permissions
 	op             storage_engine.TransactionOp
 	clientUpdates  *ClientUpdates
@@ -20,35 +20,35 @@ type ActionFunctionInput struct {
 
 type ActionFunction func(in ActionFunctionInput)
 
-func GetActionFunction(actionName types.ActionName) ActionFunction {
+func GetActionFunction(actionName eventreduce.ActionName) ActionFunction {
 	switch actionName {
-	case types.ActionDoNothing:
+	case eventreduce.ActionDoNothing:
 		return ActionDoNothing
-	case types.ActionInsertFirst:
+	case eventreduce.ActionInsertFirst:
 		return ActionInsertFirst
-	case types.ActionInsertLast:
+	case eventreduce.ActionInsertLast:
 		return ActionInsertLast
-	case types.ActionRemoveFirstItem:
+	case eventreduce.ActionRemoveFirstItem:
 		return ActionRemoveFirstItem
-	case types.ActionRemoveLastItem:
+	case eventreduce.ActionRemoveLastItem:
 		return ActionRemoveLastItem
-	case types.ActionRemoveFirstInsertLast:
+	case eventreduce.ActionRemoveFirstInsertLast:
 		return ActionRemoveFirstInsertLast
-	case types.ActionRemoveLastInsertFirst:
+	case eventreduce.ActionRemoveLastInsertFirst:
 		return ActionRemoveLastInsertFirst
-	case types.ActionRemoveFirstInsertFirst:
+	case eventreduce.ActionRemoveFirstInsertFirst:
 		return ActionRemoveFirstInsertFirst
-	case types.ActionRemoveLastInsertLast:
+	case eventreduce.ActionRemoveLastInsertLast:
 		return ActionRemoveLastInsertLast
-	case types.ActionRemoveExisting:
+	case eventreduce.ActionRemoveExisting:
 		return ActionRemoveExisting
-	case types.ActionReplaceExisting:
+	case eventreduce.ActionReplaceExisting:
 		return ActionReplaceExisting
-	case types.ActionInsertAtSortPosition:
+	case eventreduce.ActionInsertAtSortPosition:
 		return ActionInsertAtSortPosition
-	case types.ActionRemoveExistingAndInsertAtSortPosition:
+	case eventreduce.ActionRemoveExistingAndInsertAtSortPosition:
 		return ActionRemoveExistingAndInsertAtSortPosition
-	case types.ActionRunFullQueryAgain:
+	case eventreduce.ActionRunFullQueryAgain:
 		return ActionRunFullQueryAgain
 	default:
 		panic(fmt.Sprintf("unsupport action: %v", actionName))
@@ -56,7 +56,7 @@ func GetActionFunction(actionName types.ActionName) ActionFunction {
 }
 
 func updateClientUpdates(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	if !isFindMany {
 		panic("find one query is not supported")
 	}
@@ -97,7 +97,7 @@ func ActionDoNothing(in ActionFunctionInput) {
 }
 
 func ActionInsertFirst(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
 	if isFindMany {
 		if isInsertOp {
@@ -118,7 +118,7 @@ func ActionInsertFirst(in ActionFunctionInput) {
 }
 
 func ActionInsertLast(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
 	if isFindMany {
 		if isInsertOp {
@@ -139,7 +139,7 @@ func ActionInsertLast(in ActionFunctionInput) {
 }
 
 func ActionRemoveFirstItem(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	if isFindMany {
 		if len(lq.Result) > 0 {
 			lq.Result = lq.Result[1:]
@@ -151,7 +151,7 @@ func ActionRemoveFirstItem(in ActionFunctionInput) {
 }
 
 func ActionRemoveLastItem(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	if isFindMany {
 		if len(lq.Result) > 0 {
 			lq.Result = lq.Result[:len(lq.Result)-1]
@@ -183,7 +183,7 @@ func ActionRemoveLastInsertLast(in ActionFunctionInput) {
 }
 
 func ActionRemoveExisting(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	if !isFindMany {
 		panic("find one query is not supported")
 	}
@@ -205,7 +205,7 @@ func ActionRemoveExisting(in ActionFunctionInput) {
 }
 
 func ActionReplaceExisting(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	op, isUpdateOp := in.op.(*storage_engine.UpdateOp)
 	if isFindMany {
 		if isUpdateOp {
@@ -234,7 +234,7 @@ func ActionAlwaysWrong(in ActionFunctionInput) {
 }
 
 func ActionInsertAtSortPosition(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*FindManyListeningQuery)
+	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
 	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
 	if isFindMany {
 		if isInsertOp {
@@ -268,9 +268,9 @@ func ActionRemoveExistingAndInsertAtSortPosition(in ActionFunctionInput) {
 
 func ActionRunFullQueryAgain(in ActionFunctionInput) {
 	switch lq := in.listeningQuery.(type) {
-	case *FindOneListeningQuery:
+	case *query.FindOneListeningQuery:
 		panic("find one query is not supported")
-	case *FindManyListeningQuery:
+	case *query.FindManyListeningQuery:
 		res, err := in.queryExecutor.FindMany(lq.Query)
 		if err != nil {
 			panic(fmt.Sprintf("find many error: %v", err))
