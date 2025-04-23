@@ -11,7 +11,15 @@ import (
 
 // OrExpr 逻辑或
 type OrExpr struct {
-	Exprs []QueryFilterExpr
+	Type  QueryFilterExprType `json:"type"`
+	Exprs []QueryFilterExpr   `json:"exprs"`
+}
+
+func NewOrExpr(exprs []QueryFilterExpr) *OrExpr {
+	return &OrExpr{
+		Type:  ExprTypeOr,
+		Exprs: exprs,
+	}
 }
 
 func (e *OrExpr) DebugPrint() string {
@@ -41,41 +49,5 @@ func (e *OrExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *OrExpr) MarshalJSON() ([]byte, error) {
-	list := make([]json.RawMessage, len(e.Exprs))
-	for i, expr := range e.Exprs {
-		data, err := expr.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-		list[i] = data
-	}
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeOr,
-		List: list,
-	})
-}
-
-func (e *OrExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeOr {
-		return fmt.Errorf("expected OR expression, got %s", s.Type)
-	}
-	if len(s.List) == 0 {
-		return fmt.Errorf("missing operands for OR expression")
-	}
-
-	exprs := make([]QueryFilterExpr, len(s.List))
-	for i, item := range s.List {
-		expr, err := UnmarshalQueryFilterExpr(item)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal expression %d: %v", i, err)
-		}
-		exprs[i] = expr
-	}
-
-	e.Exprs = exprs
-	return nil
+	return json.Marshal(e)
 }

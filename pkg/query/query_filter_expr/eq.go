@@ -10,8 +10,17 @@ import (
 
 // EqExpr 相等比较
 type EqExpr struct {
-	O1 QueryFilterExpr
-	O2 QueryFilterExpr
+	Type QueryFilterExprType `json:"type"`
+	O1   QueryFilterExpr     `json:"o1"`
+	O2   QueryFilterExpr     `json:"o2"`
+}
+
+func NewEqExpr(o1 QueryFilterExpr, o2 QueryFilterExpr) *EqExpr {
+	return &EqExpr{
+		Type: ExprTypeEq,
+		O1:   o1,
+		O2:   o2,
+	}
 }
 
 func (e *EqExpr) DebugPrint() string {
@@ -35,43 +44,5 @@ func (e *EqExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *EqExpr) MarshalJSON() ([]byte, error) {
-	o1Data, err := e.O1.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	o2Data, err := e.O2.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeEq,
-		O1:   o1Data,
-		O2:   o2Data,
-	})
-}
-
-func (e *EqExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeEq {
-		return fmt.Errorf("expected EQ expression, got %s", s.Type)
-	}
-	if s.O1 == nil || s.O2 == nil {
-		return fmt.Errorf("missing operands for EQ expression")
-	}
-
-	o1, err := UnmarshalQueryFilterExpr(s.O1)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal left operand: %v", err)
-	}
-	o2, err := UnmarshalQueryFilterExpr(s.O2)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal right operand: %v", err)
-	}
-
-	e.O1 = o1
-	e.O2 = o2
-	return nil
+	return json.Marshal(e)
 }

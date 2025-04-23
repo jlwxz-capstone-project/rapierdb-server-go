@@ -12,8 +12,9 @@ import (
 
 // AllExpr 检查数组是否包含所有指定元素
 type AllExpr struct {
-	Field QueryFilterExpr
-	Items []QueryFilterExpr
+	Type   QueryFilterExprType `json:"type"`
+	Target QueryFilterExpr     `json:"target"`
+	Items  []QueryFilterExpr   `json:"items"`
 }
 
 func (e *AllExpr) DebugPrint() string {
@@ -22,20 +23,20 @@ func (e *AllExpr) DebugPrint() string {
 		items[i] = item.DebugPrint()
 	}
 	itemsStr := fmt.Sprintf("[%s]", strings.Join(items, ", "))
-	return fmt.Sprintf("AllExpr{Field: %s, Items: %s}", e.Field.DebugPrint(), itemsStr)
+	return fmt.Sprintf("AllExpr{Target: %s, Items: %s}", e.Target.DebugPrint(), itemsStr)
 }
 
 func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
-	// 评估字段表达式
-	field, err := e.Field.Eval(doc)
+	// 评估目标表达式
+	target, err := e.Target.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating field in ALL: %v", ErrEvalError, err)
+		return nil, fmt.Errorf("%w: evaluating target in ALL: %v", ErrEvalError, err)
 	}
 
-	// 检查字段是否为数组
-	arr, ok := field.Value.([]any)
+	// 检查目标是否为数组
+	arr, ok := target.Value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected array in ALL expression, got %T", ErrTypeError, field.Value)
+		return nil, fmt.Errorf("%w: expected array in ALL expression, got %T", ErrTypeError, target.Value)
 	}
 
 	// 检查数组是否为空
@@ -74,54 +75,13 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *AllExpr) MarshalJSON() ([]byte, error) {
-	fieldData, err := e.Field.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]json.RawMessage, len(e.Items))
-	for i, item := range e.Items {
-		data, err := item.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-		items[i] = data
-	}
-
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeAll,
-		O1:   fieldData,
-		List: items,
-	})
+	return json.Marshal(e)
 }
 
-func (e *AllExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+func NewAllExpr(target QueryFilterExpr, items []QueryFilterExpr) *AllExpr {
+	return &AllExpr{
+		Type:   ExprTypeAll, // Assuming ExprTypeAll is the correct constant
+		Target: target,
+		Items:  items,
 	}
-	if s.Type != ExprTypeAll {
-		return fmt.Errorf("expected ALL expression, got %s", s.Type)
-	}
-	if s.O1 == nil || len(s.List) == 0 {
-		return fmt.Errorf("missing field or items for ALL expression")
-	}
-
-	field, err := UnmarshalQueryFilterExpr(s.O1)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal field: %v", err)
-	}
-
-	items := make([]QueryFilterExpr, len(s.List))
-	for i, item := range s.List {
-		expr, err := UnmarshalQueryFilterExpr(item)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal item %d: %v", i, err)
-		}
-		items[i] = expr
-	}
-
-	e.Field = field
-	e.Items = items
-	return nil
 }

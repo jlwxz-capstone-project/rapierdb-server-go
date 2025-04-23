@@ -11,7 +11,15 @@ import (
 
 // AndExpr 逻辑与
 type AndExpr struct {
-	Exprs []QueryFilterExpr
+	Type  QueryFilterExprType `json:"type"`
+	Exprs []QueryFilterExpr   `json:"exprs"`
+}
+
+func NewAndExpr(exprs []QueryFilterExpr) *AndExpr {
+	return &AndExpr{
+		Type:  ExprTypeAnd,
+		Exprs: exprs,
+	}
 }
 
 func (e *AndExpr) DebugPrint() string {
@@ -41,41 +49,5 @@ func (e *AndExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *AndExpr) MarshalJSON() ([]byte, error) {
-	list := make([]json.RawMessage, len(e.Exprs))
-	for i, expr := range e.Exprs {
-		data, err := expr.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-		list[i] = data
-	}
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeAnd,
-		List: list,
-	})
-}
-
-func (e *AndExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeAnd {
-		return fmt.Errorf("expected AND expression, got %s", s.Type)
-	}
-	if len(s.List) == 0 {
-		return fmt.Errorf("missing operands for AND expression")
-	}
-
-	exprs := make([]QueryFilterExpr, len(s.List))
-	for i, item := range s.List {
-		expr, err := UnmarshalQueryFilterExpr(item)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal expression %d: %v", i, err)
-		}
-		exprs[i] = expr
-	}
-
-	e.Exprs = exprs
-	return nil
+	return json.Marshal(e)
 }

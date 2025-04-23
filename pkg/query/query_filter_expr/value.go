@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // ValueExpr 表示一个值
@@ -19,7 +18,15 @@ import (
 //		  | map[string]Value
 //		  | nil
 type ValueExpr struct {
-	Value any
+	Type  QueryFilterExprType `json:"type"`
+	Value any                 `json:"value"`
+}
+
+func NewValueExpr(value any) *ValueExpr {
+	return &ValueExpr{
+		Type:  ExprTypeValue,
+		Value: value,
+	}
 }
 
 func (e *ValueExpr) DebugPrint() string {
@@ -30,41 +37,29 @@ func (e *ValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return e, nil
 }
 
-func (e *ValueExpr) MarshalJSON() ([]byte, error) {
-	// 对于整数类型，确保使用 int64
-	switch v := e.Value.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return json.Marshal(SerializedQueryFilterExpr{
-			Type:  ExprTypeValue,
-			Value: util.ToInt64(v),
-		})
-	default:
-		return json.Marshal(SerializedQueryFilterExpr{
-			Type:  ExprTypeValue,
-			Value: e.Value,
-		})
+func (e *ValueExpr) IsBool() bool    { _, ok := e.Value.(bool); return ok }
+func (e *ValueExpr) IsString() bool  { _, ok := e.Value.(string); return ok }
+func (e *ValueExpr) IsInt64() bool   { _, ok := e.Value.(int64); return ok }
+func (e *ValueExpr) IsFloat64() bool { _, ok := e.Value.(float64); return ok }
+func (e *ValueExpr) IsArray() bool   { _, ok := e.Value.([]any); return ok }
+func (e *ValueExpr) IsMap() bool     { _, ok := e.Value.(map[string]any); return ok }
+func (e *ValueExpr) IsNil() bool     { return e.Value == nil }
+func (e *ValueExpr) IsNumber() bool  { return e.IsFloat64() || e.IsInt64() }
+
+func must[T any](val T, ok bool) T {
+	if !ok {
+		panic(fmt.Errorf("unexpected conversion"))
 	}
+	return val
 }
 
-func (e *ValueExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeValue {
-		return fmt.Errorf("expected value expression, got %s", s.Type)
-	}
+func (e *ValueExpr) AsString() string      { val, ok := e.Value.(string); return must(val, ok) }
+func (e *ValueExpr) AsInt64() int64        { val, ok := e.Value.(int64); return must(val, ok) }
+func (e *ValueExpr) AsFloat64() float64    { val, ok := e.Value.(float64); return must(val, ok) }
+func (e *ValueExpr) AsBool() bool          { val, ok := e.Value.(bool); return must(val, ok) }
+func (e *ValueExpr) AsArray() []any        { val, ok := e.Value.([]any); return must(val, ok) }
+func (e *ValueExpr) AsMap() map[string]any { val, ok := e.Value.(map[string]any); return must(val, ok) }
 
-	// 处理数值类型
-	if num, ok := s.Value.(float64); ok {
-		// 检查是否是整数
-		if num == float64(int64(num)) {
-			e.Value = int64(num)
-		} else {
-			e.Value = num
-		}
-	} else {
-		e.Value = s.Value
-	}
-	return nil
+func (e *ValueExpr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e)
 }

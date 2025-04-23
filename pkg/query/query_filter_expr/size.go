@@ -9,25 +9,34 @@ import (
 
 // SizeExpr 检查数组的长度
 type SizeExpr struct {
-	Field QueryFilterExpr
-	Size  QueryFilterExpr
+	Type   QueryFilterExprType `json:"type"`
+	Target QueryFilterExpr     `json:"target"`
+	Size   QueryFilterExpr     `json:"size"`
+}
+
+func NewSizeExpr(target QueryFilterExpr, size QueryFilterExpr) *SizeExpr {
+	return &SizeExpr{
+		Type:   ExprTypeSize,
+		Target: target,
+		Size:   size,
+	}
 }
 
 func (e *SizeExpr) DebugPrint() string {
-	return fmt.Sprintf("SizeExpr{Field: %s, Size: %s}", e.Field.DebugPrint(), e.Size.DebugPrint())
+	return fmt.Sprintf("SizeExpr{Target: %s, Size: %s}", e.Target.DebugPrint(), e.Size.DebugPrint())
 }
 
 func (e *SizeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
-	field, err := e.Field.Eval(doc)
+	target, err := e.Target.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating field in SIZE: %v", ErrEvalError, err)
+		return nil, fmt.Errorf("%w: evaluating target in SIZE: %v", ErrEvalError, err)
 	}
 
 	// 检查字段是否为数组
-	arr, ok := field.Value.([]any)
+	arr, ok := target.Value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected array in SIZE expression, got %T", ErrTypeError, field.Value)
+		return nil, fmt.Errorf("%w: expected array in SIZE expression, got %T", ErrTypeError, target.Value)
 	}
 
 	// 评估大小表达式
@@ -46,46 +55,5 @@ func (e *SizeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *SizeExpr) MarshalJSON() ([]byte, error) {
-	fieldData, err := e.Field.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-
-	sizeData, err := e.Size.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeSize,
-		O1:   fieldData,
-		O2:   sizeData,
-	})
-}
-
-func (e *SizeExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeSize {
-		return fmt.Errorf("expected SIZE expression, got %s", s.Type)
-	}
-	if s.O1 == nil || s.O2 == nil {
-		return fmt.Errorf("missing field or size for SIZE expression")
-	}
-
-	field, err := UnmarshalQueryFilterExpr(s.O1)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal field: %v", err)
-	}
-
-	size, err := UnmarshalQueryFilterExpr(s.O2)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal size: %v", err)
-	}
-
-	e.Field = field
-	e.Size = size
-	return nil
+	return json.Marshal(e)
 }

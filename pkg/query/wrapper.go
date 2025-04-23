@@ -158,7 +158,7 @@ func EqWrapper(o1 any, o2 any) qfe.QueryFilterExpr {
 
 func FieldWrapper(field string) qfe.QueryFilterExpr {
 	return &qfe.FieldValueExpr{
-		Path: field,
+		Path: qfe.NewValueExpr(field),
 	}
 }
 

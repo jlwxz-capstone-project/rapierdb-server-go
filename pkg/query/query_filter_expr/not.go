@@ -10,7 +10,15 @@ import (
 
 // NotExpr 逻辑非
 type NotExpr struct {
-	Expr QueryFilterExpr
+	Type QueryFilterExprType `json:"type"`
+	Expr QueryFilterExpr     `json:"expr"`
+}
+
+func NewNotExpr(expr QueryFilterExpr) *NotExpr {
+	return &NotExpr{
+		Type: ExprTypeNot,
+		Expr: expr,
+	}
 }
 
 func (e *NotExpr) DebugPrint() string {
@@ -33,33 +41,5 @@ func (e *NotExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *NotExpr) MarshalJSON() ([]byte, error) {
-	exprData, err := e.Expr.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeNot,
-		O1:   exprData,
-	})
-}
-
-func (e *NotExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeNot {
-		return fmt.Errorf("expected NOT expression, got %s", s.Type)
-	}
-	if s.O1 == nil {
-		return fmt.Errorf("missing operand for NOT expression")
-	}
-
-	expr, err := UnmarshalQueryFilterExpr(s.O1)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal operand: %v", err)
-	}
-
-	e.Expr = expr
-	return nil
+	return json.Marshal(e)
 }

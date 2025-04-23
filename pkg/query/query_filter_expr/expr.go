@@ -3,9 +3,12 @@ package query_filter_expr
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/pkg/errors"
+	pe "github.com/pkg/errors"
 )
 
 // QueryFilterExprType 表示表达式类型的枚举
@@ -35,81 +38,172 @@ const (
 	// ExprTypeType       ExprType = "type"     // 类型检查
 )
 
+func isValidPath(path string) bool {
+	if path == "" {
+		return false
+	}
+
+	for i := 0; i < len(path)-1; i++ {
+		if path[i] == '/' && path[i+1] == '/' {
+			return false
+		}
+	}
+
+	parts := strings.Split(path, "/")
+	for _, part := range parts {
+		if part != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
 // QueryFilterExpr 定义查询表达式接口
 type QueryFilterExpr interface {
 	log.DebugPrintable
 	Eval(doc *loro.LoroDoc) (*ValueExpr, error)
 	MarshalJSON() ([]byte, error)
-	UnmarshalJSON(data []byte) error
 }
 
-// SerializedQueryFilterExpr 表示序列化后的表达式
-type SerializedQueryFilterExpr struct {
-	Type  QueryFilterExprType `json:"type"`            // 表达式类型
-	O1    json.RawMessage     `json:"o1,omitempty"`    // 第一个操作数
-	O2    json.RawMessage     `json:"o2,omitempty"`    // 第二个操作数
-	List  []json.RawMessage   `json:"list,omitempty"`  // 用于 IN/NIN/AND/OR 等需要多个操作数的表达式
-	Value interface{}         `json:"value,omitempty"` // 用于 ValueExpr
-	Path  string              `json:"path,omitempty"`  // 用于 FieldValueExpr
-	Regex string              `json:"regex,omitempty"` // 用于 RegexExpr
-}
-
-// UnmarshalQueryFilterExpr 从 JSON 数据反序列化为 QueryExpr
 func UnmarshalQueryFilterExpr(data []byte) (QueryFilterExpr, error) {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, err
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rawFields); err != nil {
+		return nil, pe.WithStack(errors.Wrapf(err, "error pre-unmarshalling into raw fields"))
 	}
 
-	var expr QueryFilterExpr
-	switch s.Type {
-	case ExprTypeValue:
-		expr = &ValueExpr{}
-	case ExprTypeFieldValue:
-		expr = &FieldValueExpr{}
-	case ExprTypeEq:
-		expr = &EqExpr{}
-	case ExprTypeNe:
-		expr = &NeExpr{}
-	case ExprTypeGt:
-		expr = &GtExpr{}
-	case ExprTypeGte:
-		expr = &GteExpr{}
-	case ExprTypeLt:
-		expr = &LtExpr{}
-	case ExprTypeLte:
-		expr = &LteExpr{}
-	case ExprTypeIn:
-		expr = &InExpr{}
-	case ExprTypeNin:
-		expr = &NinExpr{}
-	case ExprTypeAnd:
-		expr = &AndExpr{}
-	case ExprTypeOr:
-		expr = &OrExpr{}
-	case ExprTypeNot:
-		expr = &NotExpr{}
-	case ExprTypeRegex:
-		expr = &RegexExpr{}
-	case ExprTypeExists:
-		expr = &ExistsExpr{}
+	typeBytes, ok := rawFields["type"]
+	if !ok {
+		return nil, pe.WithStack(fmt.Errorf("missing type field"))
+	}
+
+	var exprType QueryFilterExprType
+	if err := json.Unmarshal(typeBytes, &exprType); err != nil {
+		return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling type field"))
+	}
+
+	switch exprType {
 	case ExprTypeAll:
-		expr = &AllExpr{}
-	case ExprTypeSize:
-		expr = &SizeExpr{}
-	case ExprTypeStartsWith:
-		expr = &StartsWithExpr{}
-	case ExprTypeEndsWith:
-		expr = &EndsWithExpr{}
+		var allExpr AllExpr
+		if err := json.Unmarshal(data, &allExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling all expression"))
+		}
+		return &allExpr, nil
+	case ExprTypeAnd:
+		var andExpr AndExpr
+		if err := json.Unmarshal(data, &andExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling and expression"))
+		}
+		return &andExpr, nil
 	case ExprTypeContains:
-		expr = &ContainsExpr{}
+		var containsExpr ContainsExpr
+		if err := json.Unmarshal(data, &containsExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling contains expression"))
+		}
+		return &containsExpr, nil
+	case ExprTypeEndsWith:
+		var endsWithExpr EndsWithExpr
+		if err := json.Unmarshal(data, &endsWithExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling ends with expression"))
+		}
+		return &endsWithExpr, nil
+	case ExprTypeEq:
+		var eqExpr EqExpr
+		if err := json.Unmarshal(data, &eqExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling eq expression"))
+		}
+		return &eqExpr, nil
+	case ExprTypeExists:
+		var existsExpr ExistsExpr
+		if err := json.Unmarshal(data, &existsExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling exists expression"))
+		}
+		return &existsExpr, nil
+	case ExprTypeFieldValue:
+		var fieldValueExpr FieldValueExpr
+		if err := json.Unmarshal(data, &fieldValueExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling field value expression"))
+		}
+		return &fieldValueExpr, nil
+	case ExprTypeGt:
+		var gtExpr GtExpr
+		if err := json.Unmarshal(data, &gtExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling gt expression"))
+		}
+		return &gtExpr, nil
+	case ExprTypeGte:
+		var gteExpr GteExpr
+		if err := json.Unmarshal(data, &gteExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling gte expression"))
+		}
+		return &gteExpr, nil
+	case ExprTypeIn:
+		var inExpr InExpr
+		if err := json.Unmarshal(data, &inExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling in expression"))
+		}
+		return &inExpr, nil
+	case ExprTypeLt:
+		var ltExpr LtExpr
+		if err := json.Unmarshal(data, &ltExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling lt expression"))
+		}
+		return &ltExpr, nil
+	case ExprTypeLte:
+		var lteExpr LteExpr
+		if err := json.Unmarshal(data, &lteExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling lte expression"))
+		}
+		return &lteExpr, nil
+	case ExprTypeNe:
+		var neExpr NeExpr
+		if err := json.Unmarshal(data, &neExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling ne expression"))
+		}
+		return &neExpr, nil
+	case ExprTypeNin:
+		var ninExpr NinExpr
+		if err := json.Unmarshal(data, &ninExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling nin expression"))
+		}
+		return &ninExpr, nil
+	case ExprTypeNot:
+		var notExpr NotExpr
+		if err := json.Unmarshal(data, &notExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling not expression"))
+		}
+		return &notExpr, nil
+	case ExprTypeOr:
+		var orExpr OrExpr
+		if err := json.Unmarshal(data, &orExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling or expression"))
+		}
+		return &orExpr, nil
+	case ExprTypeRegex:
+		var regexExpr RegexExpr
+		if err := json.Unmarshal(data, &regexExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling regex expression"))
+		}
+		return &regexExpr, nil
+	case ExprTypeSize:
+		var sizeExpr SizeExpr
+		if err := json.Unmarshal(data, &sizeExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling size expression"))
+		}
+		return &sizeExpr, nil
+	case ExprTypeStartsWith:
+		var startsWithExpr StartsWithExpr
+		if err := json.Unmarshal(data, &startsWithExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling starts with expression"))
+		}
+		return &startsWithExpr, nil
+	case ExprTypeValue:
+		var valueExpr ValueExpr
+		if err := json.Unmarshal(data, &valueExpr); err != nil {
+			return nil, pe.WithStack(errors.Wrapf(err, "error unmarshalling value expression"))
+		}
+		return &valueExpr, nil
 	default:
-		return nil, fmt.Errorf("unsupported expression type: %s", s.Type)
+		return nil, pe.WithStack(fmt.Errorf("unknown expression type: %s", exprType))
 	}
-
-	if err := expr.UnmarshalJSON(data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal %s expression: %v", s.Type, err)
-	}
-
-	return expr, nil
 }

@@ -11,8 +11,17 @@ import (
 
 // InExpr 包含比较
 type InExpr struct {
-	O1 QueryFilterExpr
-	O2 []QueryFilterExpr
+	Type QueryFilterExprType `json:"type"`
+	O1   QueryFilterExpr     `json:"o1"`
+	O2   []QueryFilterExpr   `json:"o2"`
+}
+
+func NewInExpr(o1 QueryFilterExpr, o2 []QueryFilterExpr) *InExpr {
+	return &InExpr{
+		Type: ExprTypeIn,
+		O1:   o1,
+		O2:   o2,
+	}
 }
 
 func (e *InExpr) DebugPrint() string {
@@ -46,52 +55,5 @@ func (e *InExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *InExpr) MarshalJSON() ([]byte, error) {
-	o1Data, err := e.O1.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	list := make([]json.RawMessage, len(e.O2))
-	for i, expr := range e.O2 {
-		data, err := expr.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-		list[i] = data
-	}
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeIn,
-		O1:   o1Data,
-		List: list,
-	})
-}
-
-func (e *InExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeIn {
-		return fmt.Errorf("expected IN expression, got %s", s.Type)
-	}
-	if s.O1 == nil || len(s.List) == 0 {
-		return fmt.Errorf("missing operands for IN expression")
-	}
-
-	o1, err := UnmarshalQueryFilterExpr(s.O1)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal target: %v", err)
-	}
-
-	list := make([]QueryFilterExpr, len(s.List))
-	for i, item := range s.List {
-		expr, err := UnmarshalQueryFilterExpr(item)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal list item %d: %v", i, err)
-		}
-		list[i] = expr
-	}
-
-	e.O1 = o1
-	e.O2 = list
-	return nil
+	return json.Marshal(e)
 }

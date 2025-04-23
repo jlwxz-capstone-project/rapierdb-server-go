@@ -59,9 +59,10 @@ func TestEqExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
-			valueExpr := &qfe.ValueExpr{Value: tt.value}
-			eqExpr := &qfe.EqExpr{O1: fieldExpr, O2: valueExpr}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
+			valueExpr := qfe.NewValueExpr(tt.value)
+			eqExpr := qfe.NewEqExpr(fieldExpr, valueExpr)
 
 			result, err := eqExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -90,9 +91,10 @@ func TestNeExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
-			valueExpr := &qfe.ValueExpr{Value: tt.value}
-			neExpr := &qfe.NeExpr{O1: fieldExpr, O2: valueExpr}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
+			valueExpr := qfe.NewValueExpr(tt.value)
+			neExpr := qfe.NewNeExpr(fieldExpr, valueExpr)
 
 			result, err := neExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -121,9 +123,10 @@ func TestGtExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
-			valueExpr := &qfe.ValueExpr{Value: tt.value}
-			gtExpr := &qfe.GtExpr{O1: fieldExpr, O2: valueExpr}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
+			valueExpr := qfe.NewValueExpr(tt.value)
+			gtExpr := qfe.NewGtExpr(fieldExpr, valueExpr)
 
 			result, err := gtExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -152,9 +155,10 @@ func TestGteExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
-			valueExpr := &qfe.ValueExpr{Value: tt.value}
-			gteExpr := &qfe.GteExpr{O1: fieldExpr, O2: valueExpr}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
+			valueExpr := qfe.NewValueExpr(tt.value)
+			gteExpr := qfe.NewGteExpr(fieldExpr, valueExpr)
 
 			result, err := gteExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -183,9 +187,10 @@ func TestLtExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
-			valueExpr := &qfe.ValueExpr{Value: tt.value}
-			ltExpr := &qfe.LtExpr{O1: fieldExpr, O2: valueExpr}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
+			valueExpr := qfe.NewValueExpr(tt.value)
+			ltExpr := qfe.NewLtExpr(fieldExpr, valueExpr)
 
 			result, err := ltExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -214,9 +219,10 @@ func TestLteExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
-			valueExpr := &qfe.ValueExpr{Value: tt.value}
-			lteExpr := &qfe.LteExpr{O1: fieldExpr, O2: valueExpr}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
+			valueExpr := qfe.NewValueExpr(tt.value)
+			lteExpr := qfe.NewLteExpr(fieldExpr, valueExpr)
 
 			result, err := lteExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -263,12 +269,13 @@ func TestInExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
 			valueExprs := make([]qfe.QueryFilterExpr, len(tt.values))
 			for i, v := range tt.values {
-				valueExprs[i] = &qfe.ValueExpr{Value: v}
+				valueExprs[i] = qfe.NewValueExpr(v)
 			}
-			inExpr := &qfe.InExpr{O1: fieldExpr, O2: valueExprs}
+			inExpr := qfe.NewInExpr(fieldExpr, valueExprs)
 
 			result, err := inExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -315,12 +322,13 @@ func TestNinExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fieldExpr := &qfe.FieldValueExpr{Path: tt.path}
+			pathExpr := qfe.NewValueExpr(tt.path)
+			fieldExpr := qfe.NewFieldValueExpr(pathExpr)
 			valueExprs := make([]qfe.QueryFilterExpr, len(tt.values))
 			for i, v := range tt.values {
-				valueExprs[i] = &qfe.ValueExpr{Value: v}
+				valueExprs[i] = qfe.NewValueExpr(v)
 			}
-			ninExpr := &qfe.NinExpr{O1: fieldExpr, O2: valueExprs}
+			ninExpr := qfe.NewNinExpr(fieldExpr, valueExprs)
 
 			result, err := ninExpr.Eval(doc)
 			assert.NoError(t, err)
@@ -340,18 +348,18 @@ func TestErrorCases(t *testing.T) {
 	}{
 		{
 			"字段不存在",
-			&qfe.EqExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/nonexistentField"},
-				O2: &qfe.ValueExpr{Value: 42},
-			},
+			qfe.NewEqExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/nonexistentField")),
+				qfe.NewValueExpr(42),
+			),
 			"field error: path=root/nonexistentField",
 		},
 		{
 			"类型不匹配",
-			&qfe.EqExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: &qfe.ValueExpr{Value: "42"}, // 字符串和整数比较
-			},
+			qfe.NewEqExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				qfe.NewValueExpr("42"), // 字符串和整数比较
+			),
 			"type error: comparing numeric type with string",
 		},
 	}
@@ -371,10 +379,10 @@ func TestComplexComparisons(t *testing.T) {
 
 	// 测试嵌套字段访问
 	t.Run("嵌套字段访问", func(t *testing.T) {
-		expr := &qfe.EqExpr{
-			O1: &qfe.FieldValueExpr{Path: "root/mapField/nestedKey"},
-			O2: &qfe.ValueExpr{Value: "nestedValue"},
-		}
+		expr := qfe.NewEqExpr(
+			qfe.NewFieldValueExpr(qfe.NewValueExpr("root/mapField/nestedKey")),
+			qfe.NewValueExpr("nestedValue"),
+		)
 		result, err := expr.Eval(doc)
 		assert.NoError(t, err)
 		assert.Equal(t, true, result.Value)
@@ -382,10 +390,10 @@ func TestComplexComparisons(t *testing.T) {
 
 	// 测试数组元素访问
 	t.Run("数组元素访问", func(t *testing.T) {
-		expr := &qfe.EqExpr{
-			O1: &qfe.FieldValueExpr{Path: "root/listField/0"},
-			O2: &qfe.ValueExpr{Value: int64(1)},
-		}
+		expr := qfe.NewEqExpr(
+			qfe.NewFieldValueExpr(qfe.NewValueExpr("root/listField/0")),
+			qfe.NewValueExpr(int64(1)),
+		)
 		result, err := expr.Eval(doc)
 		assert.NoError(t, err)
 		assert.Equal(t, true, result.Value)
@@ -642,28 +650,28 @@ func TestAndExpr(t *testing.T) {
 		{
 			"全部为真",
 			[]qfe.QueryFilterExpr{
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/intField"},
-					O2: &qfe.ValueExpr{Value: int64(42)},
-				},
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/stringField"},
-					O2: &qfe.ValueExpr{Value: "hello"},
-				},
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+					qfe.NewValueExpr(int64(42)),
+				),
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+					qfe.NewValueExpr("hello"),
+				),
 			},
 			true,
 		},
 		{
 			"部分为假",
 			[]qfe.QueryFilterExpr{
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/intField"},
-					O2: &qfe.ValueExpr{Value: int64(42)},
-				},
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/stringField"},
-					O2: &qfe.ValueExpr{Value: "world"},
-				},
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+					qfe.NewValueExpr(int64(42)),
+				),
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+					qfe.NewValueExpr("world"),
+				),
 			},
 			false,
 		},
@@ -676,7 +684,7 @@ func TestAndExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			andExpr := &qfe.AndExpr{Exprs: tt.exprs}
+			andExpr := qfe.NewAndExpr(tt.exprs)
 			result, err := andExpr.Eval(doc)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result.Value)
@@ -696,42 +704,42 @@ func TestOrExpr(t *testing.T) {
 		{
 			"全部为真",
 			[]qfe.QueryFilterExpr{
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/intField"},
-					O2: &qfe.ValueExpr{Value: int64(42)},
-				},
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/stringField"},
-					O2: &qfe.ValueExpr{Value: "hello"},
-				},
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+					qfe.NewValueExpr(int64(42)),
+				),
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+					qfe.NewValueExpr("hello"),
+				),
 			},
 			true,
 		},
 		{
 			"部分为真",
 			[]qfe.QueryFilterExpr{
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/intField"},
-					O2: &qfe.ValueExpr{Value: int64(43)},
-				},
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/stringField"},
-					O2: &qfe.ValueExpr{Value: "hello"},
-				},
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+					qfe.NewValueExpr(int64(43)),
+				),
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+					qfe.NewValueExpr("hello"),
+				),
 			},
 			true,
 		},
 		{
 			"全部为假",
 			[]qfe.QueryFilterExpr{
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/intField"},
-					O2: &qfe.ValueExpr{Value: int64(43)},
-				},
-				&qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/stringField"},
-					O2: &qfe.ValueExpr{Value: "world"},
-				},
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+					qfe.NewValueExpr(int64(43)),
+				),
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+					qfe.NewValueExpr("world"),
+				),
 			},
 			false,
 		},
@@ -744,7 +752,7 @@ func TestOrExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			orExpr := &qfe.OrExpr{Exprs: tt.exprs}
+			orExpr := qfe.NewOrExpr(tt.exprs)
 			result, err := orExpr.Eval(doc)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result.Value)
@@ -763,37 +771,37 @@ func TestNotExpr(t *testing.T) {
 	}{
 		{
 			"对真取反",
-			&qfe.EqExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: &qfe.ValueExpr{Value: int64(42)},
-			},
+			qfe.NewEqExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				qfe.NewValueExpr(int64(42)),
+			),
 			false,
 		},
 		{
 			"对假取反",
-			&qfe.EqExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: &qfe.ValueExpr{Value: int64(43)},
-			},
+			qfe.NewEqExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				qfe.NewValueExpr(int64(43)),
+			),
 			true,
 		},
 		{
 			"嵌套取反",
-			&qfe.NotExpr{
-				Expr: &qfe.NotExpr{
-					Expr: &qfe.EqExpr{
-						O1: &qfe.FieldValueExpr{Path: "root/intField"},
-						O2: &qfe.ValueExpr{Value: int64(42)},
-					},
-				},
-			},
+			qfe.NewNotExpr(
+				qfe.NewNotExpr(
+					qfe.NewEqExpr(
+						qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+						qfe.NewValueExpr(int64(42)),
+					),
+				),
+			),
 			false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			notExpr := &qfe.NotExpr{Expr: tt.expr}
+			notExpr := qfe.NewNotExpr(tt.expr)
 			result, err := notExpr.Eval(doc)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result.Value)
@@ -857,10 +865,10 @@ func TestRegexExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			regexExpr := &qfe.RegexExpr{
-				O1:    &qfe.FieldValueExpr{Path: tt.path},
-				Regex: tt.pattern,
-			}
+			regexExpr := qfe.NewRegexExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr(tt.path)),
+				tt.pattern,
+			)
 			result, err := regexExpr.Eval(doc)
 			if tt.expectError {
 				assert.Error(t, err)
@@ -881,74 +889,74 @@ func TestExprSerialization(t *testing.T) {
 	}{
 		{
 			"值表达式",
-			&qfe.ValueExpr{Value: int64(42)},
+			qfe.NewValueExpr(int64(42)),
 		},
 		{
 			"字段值表达式",
-			&qfe.FieldValueExpr{Path: "root/intField"},
+			qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
 		},
 		{
 			"相等比较表达式",
-			&qfe.EqExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: &qfe.ValueExpr{Value: int64(42)},
-			},
+			qfe.NewEqExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				qfe.NewValueExpr(int64(42)),
+			),
 		},
 		{
 			"不等比较表达式",
-			&qfe.NeExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: &qfe.ValueExpr{Value: int64(42)},
-			},
+			qfe.NewNeExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				qfe.NewValueExpr(int64(42)),
+			),
 		},
 		{
 			"大于比较表达式",
-			&qfe.GtExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: &qfe.ValueExpr{Value: int64(42)},
-			},
+			qfe.NewGtExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				qfe.NewValueExpr(int64(42)),
+			),
 		},
 		{
 			"包含比较表达式",
-			&qfe.InExpr{
-				O1: &qfe.FieldValueExpr{Path: "root/intField"},
-				O2: []qfe.QueryFilterExpr{
-					&qfe.ValueExpr{Value: int64(41)},
-					&qfe.ValueExpr{Value: int64(42)},
-					&qfe.ValueExpr{Value: int64(43)},
+			qfe.NewInExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+				[]qfe.QueryFilterExpr{
+					qfe.NewValueExpr(int64(41)),
+					qfe.NewValueExpr(int64(42)),
+					qfe.NewValueExpr(int64(43)),
 				},
-			},
+			),
 		},
 		{
 			"逻辑与表达式",
-			&qfe.AndExpr{
-				Exprs: []qfe.QueryFilterExpr{
-					&qfe.EqExpr{
-						O1: &qfe.FieldValueExpr{Path: "root/intField"},
-						O2: &qfe.ValueExpr{Value: int64(42)},
-					},
-					&qfe.EqExpr{
-						O1: &qfe.FieldValueExpr{Path: "root/stringField"},
-						O2: &qfe.ValueExpr{Value: "hello"},
-					},
+			qfe.NewAndExpr(
+				[]qfe.QueryFilterExpr{
+					qfe.NewEqExpr(
+						qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+						qfe.NewValueExpr(int64(42)),
+					),
+					qfe.NewEqExpr(
+						qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+						qfe.NewValueExpr("hello"),
+					),
 				},
-			},
+			),
 		},
 		{
 			"逻辑非表达式",
-			&qfe.NotExpr{
-				Expr: &qfe.EqExpr{
-					O1: &qfe.FieldValueExpr{Path: "root/intField"},
-					O2: &qfe.ValueExpr{Value: int64(42)},
-				},
-			},
+			qfe.NewNotExpr(
+				qfe.NewEqExpr(
+					qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
+					qfe.NewValueExpr(int64(42)),
+				),
+			),
 		},
 		{
 			"正则表达式",
-			&qfe.RegexExpr{
-				O1:    &qfe.FieldValueExpr{Path: "root/stringField"},
-				Regex: "^hello$",
-			},
+			qfe.NewRegexExpr(
+				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/stringField")),
+				"^hello$",
+			),
 		},
 	}
 
@@ -1073,9 +1081,7 @@ func TestExistsExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			existsExpr := &qfe.ExistsExpr{
-				Field: &qfe.FieldValueExpr{Path: tt.path},
-			}
+			existsExpr := qfe.NewExistsExpr(qfe.NewValueExpr(tt.path))
 			result, err := existsExpr.Eval(doc)
 			if tt.expectError {
 				assert.Error(t, err)

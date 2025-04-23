@@ -10,8 +10,17 @@ import (
 
 // RegexExpr 正则表达式匹配
 type RegexExpr struct {
-	O1    QueryFilterExpr
-	Regex string
+	Type  QueryFilterExprType `json:"type"`
+	O1    QueryFilterExpr     `json:"o1"`
+	Regex string              `json:"regex"`
+}
+
+func NewRegexExpr(o1 QueryFilterExpr, regex string) *RegexExpr {
+	return &RegexExpr{
+		Type:  ExprTypeRegex,
+		O1:    o1,
+		Regex: regex,
+	}
 }
 
 func (e *RegexExpr) DebugPrint() string {
@@ -35,40 +44,5 @@ func (e *RegexExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *RegexExpr) MarshalJSON() ([]byte, error) {
-	o1Data, err := e.O1.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type:  ExprTypeRegex,
-		O1:    o1Data,
-		Regex: e.Regex,
-	})
-}
-
-func (e *RegexExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeRegex {
-		return fmt.Errorf("expected REGEX expression, got %s", s.Type)
-	}
-	if s.O1 == nil || s.Regex == "" {
-		return fmt.Errorf("missing operand or pattern for REGEX expression")
-	}
-
-	o1, err := UnmarshalQueryFilterExpr(s.O1)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal operand: %v", err)
-	}
-
-	// 验证正则表达式的有效性
-	if _, err := regexp.Compile(s.Regex); err != nil {
-		return fmt.Errorf("invalid regex pattern '%s': %v", s.Regex, err)
-	}
-
-	e.O1 = o1
-	e.Regex = s.Regex
-	return nil
+	return json.Marshal(e)
 }

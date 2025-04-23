@@ -9,7 +9,15 @@ import (
 
 // FieldValueExpr 表示文档中指定路径的值
 type FieldValueExpr struct {
-	Path string
+	Type QueryFilterExprType `json:"type"`
+	Path QueryFilterExpr     `json:"path"`
+}
+
+func NewFieldValueExpr(path QueryFilterExpr) *FieldValueExpr {
+	return &FieldValueExpr{
+		Type: ExprTypeFieldValue,
+		Path: path,
+	}
 }
 
 func (e *FieldValueExpr) DebugPrint() string {
@@ -17,12 +25,23 @@ func (e *FieldValueExpr) DebugPrint() string {
 }
 
 func (e *FieldValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
-	if e.Path == "" {
-		return nil, fmt.Errorf("%w: empty path", ErrFieldError)
+	pathExpr, err := e.Path.Eval(doc)
+	if err != nil {
+		return nil, fmt.Errorf("%w: evaluating path in FIELD_VALUE: %v", ErrEvalError, err)
 	}
-	valueOrContainer := doc.GetByPath(e.Path)
+
+	if !pathExpr.IsString() {
+		return nil, fmt.Errorf("%w: expected string path in FIELD_VALUE expression, got %T", ErrTypeError, pathExpr.Value)
+	}
+
+	path := pathExpr.AsString()
+	if !isValidPath(path) {
+		return nil, fmt.Errorf("%w: invalid path in FIELD_VALUE expression", ErrTypeError)
+	}
+
+	valueOrContainer := doc.GetByPath(path)
 	if valueOrContainer == nil {
-		return nil, fmt.Errorf("%w: path=%s", ErrFieldError, e.Path)
+		return nil, fmt.Errorf("%w: path=%s", ErrFieldError, path)
 	}
 	goValue, err := valueOrContainer.ToGoObject()
 	if err != nil {
@@ -32,20 +51,5 @@ func (e *FieldValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 }
 
 func (e *FieldValueExpr) MarshalJSON() ([]byte, error) {
-	return json.Marshal(SerializedQueryFilterExpr{
-		Type: ExprTypeFieldValue,
-		Path: e.Path,
-	})
-}
-
-func (e *FieldValueExpr) UnmarshalJSON(data []byte) error {
-	var s SerializedQueryFilterExpr
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	if s.Type != ExprTypeFieldValue {
-		return fmt.Errorf("expected field value expression, got %s", s.Type)
-	}
-	e.Path = s.Path
-	return nil
+	return json.Marshal(e)
 }
