@@ -55,6 +55,30 @@ func (e *ContainsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: strings.Contains(str, substrStr)}, nil
 }
 
-func (e *ContainsExpr) MarshalJSON() ([]byte, error) {
+func (e *ContainsExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newContainsExprFromJson(msg json.RawMessage) (*ContainsExpr, error) {
+	var temp struct {
+		Type   QueryFilterExprType `json:"type"`
+		Target json.RawMessage     `json:"target"`
+		Substr json.RawMessage     `json:"substr"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	target, err := NewQueryFilterExprFromJson(temp.Target)
+	if err != nil {
+		return nil, err
+	}
+
+	substr, err := NewQueryFilterExprFromJson(temp.Substr)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewContainsExpr(target, substr), nil
 }

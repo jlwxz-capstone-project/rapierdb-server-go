@@ -43,6 +43,30 @@ func (e *NeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: cmp != 0}, nil
 }
 
-func (e *NeExpr) MarshalJSON() ([]byte, error) {
+func (e *NeExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newNeExprFromJson(msg json.RawMessage) (*NeExpr, error) {
+	var temp struct {
+		Type QueryFilterExprType `json:"type"`
+		O1   json.RawMessage     `json:"o1"`
+		O2   json.RawMessage     `json:"o2"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	o1, err := NewQueryFilterExprFromJson(temp.O1)
+	if err != nil {
+		return nil, err
+	}
+
+	o2, err := NewQueryFilterExprFromJson(temp.O2)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNeExpr(o1, o2), nil
 }

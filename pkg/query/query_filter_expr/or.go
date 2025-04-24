@@ -48,6 +48,28 @@ func (e *OrExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: false}, nil
 }
 
-func (e *OrExpr) MarshalJSON() ([]byte, error) {
+func (e *OrExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newOrExprFromJson(msg json.RawMessage) (*OrExpr, error) {
+	var temp struct {
+		Type  QueryFilterExprType `json:"type"`
+		Exprs []json.RawMessage   `json:"exprs"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	exprs := make([]QueryFilterExpr, len(temp.Exprs))
+	for i, expr := range temp.Exprs {
+		expr, err := NewQueryFilterExprFromJson(expr)
+		if err != nil {
+			return nil, err
+		}
+		exprs[i] = expr
+	}
+
+	return NewOrExpr(exprs), nil
 }

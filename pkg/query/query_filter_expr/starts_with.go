@@ -55,6 +55,30 @@ func (e *StartsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: strings.HasPrefix(str, prefixStr)}, nil
 }
 
-func (e *StartsWithExpr) MarshalJSON() ([]byte, error) {
+func (e *StartsWithExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newStartsWithExprFromJson(msg json.RawMessage) (*StartsWithExpr, error) {
+	var temp struct {
+		Type   QueryFilterExprType `json:"type"`
+		Target json.RawMessage     `json:"target"`
+		Prefix json.RawMessage     `json:"prefix"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	target, err := NewQueryFilterExprFromJson(temp.Target)
+	if err != nil {
+		return nil, err
+	}
+
+	prefix, err := NewQueryFilterExprFromJson(temp.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewStartsWithExpr(target, prefix), nil
 }

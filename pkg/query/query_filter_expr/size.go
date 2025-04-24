@@ -54,6 +54,30 @@ func (e *SizeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: int64(len(arr)) == sizeValue}, nil
 }
 
-func (e *SizeExpr) MarshalJSON() ([]byte, error) {
+func (e *SizeExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newSizeExprFromJson(msg json.RawMessage) (*SizeExpr, error) {
+	var temp struct {
+		Type   QueryFilterExprType `json:"type"`
+		Target json.RawMessage     `json:"target"`
+		Size   json.RawMessage     `json:"size"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	target, err := NewQueryFilterExprFromJson(temp.Target)
+	if err != nil {
+		return nil, err
+	}
+
+	size, err := NewQueryFilterExprFromJson(temp.Size)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewSizeExpr(target, size), nil
 }

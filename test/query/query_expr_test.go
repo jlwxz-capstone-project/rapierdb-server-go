@@ -921,9 +921,9 @@ func TestExprSerialization(t *testing.T) {
 			qfe.NewInExpr(
 				qfe.NewFieldValueExpr(qfe.NewValueExpr("root/intField")),
 				[]qfe.QueryFilterExpr{
-					qfe.NewValueExpr(int64(41)),
-					qfe.NewValueExpr(int64(42)),
-					qfe.NewValueExpr(int64(43)),
+					qfe.NewValueExpr(41),
+					qfe.NewValueExpr(42),
+					qfe.NewValueExpr(43),
 				},
 			),
 		},
@@ -963,15 +963,15 @@ func TestExprSerialization(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// 序列化
-			data, err := tt.expr.MarshalJSON()
+			data, err := tt.expr.ToJSON()
 			assert.NoError(t, err)
 
 			// 反序列化
-			expr2, err := qfe.UnmarshalQueryFilterExpr(data)
+			expr2, err := qfe.NewQueryFilterExprFromJson(data)
 			assert.NoError(t, err)
 
 			// 再次序列化，确保结果一致
-			data2, err := expr2.MarshalJSON()
+			data2, err := expr2.ToJSON()
 			assert.NoError(t, err)
 			assert.JSONEq(t, string(data), string(data2))
 
@@ -1024,7 +1024,7 @@ func TestInvalidExprDeserialization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := qfe.UnmarshalQueryFilterExpr([]byte(tt.json))
+			_, err := qfe.NewQueryFilterExprFromJson([]byte(tt.json))
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, tt.expectedErr)
 		})

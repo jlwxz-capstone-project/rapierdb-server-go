@@ -55,6 +55,30 @@ func (e *EndsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: strings.HasSuffix(str, suffixStr)}, nil
 }
 
-func (e *EndsWithExpr) MarshalJSON() ([]byte, error) {
+func (e *EndsWithExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newEndsWithExprFromJson(msg json.RawMessage) (*EndsWithExpr, error) {
+	var temp struct {
+		Type   QueryFilterExprType `json:"type"`
+		Target json.RawMessage     `json:"target"`
+		Suffix json.RawMessage     `json:"suffix"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	target, err := NewQueryFilterExprFromJson(temp.Target)
+	if err != nil {
+		return nil, err
+	}
+
+	suffix, err := NewQueryFilterExprFromJson(temp.Suffix)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewEndsWithExpr(target, suffix), nil
 }

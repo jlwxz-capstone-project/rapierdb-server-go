@@ -43,6 +43,30 @@ func (e *LteExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: cmp <= 0}, nil
 }
 
-func (e *LteExpr) MarshalJSON() ([]byte, error) {
+func (e *LteExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newLteExprFromJson(msg json.RawMessage) (*LteExpr, error) {
+	var temp struct {
+		Type QueryFilterExprType `json:"type"`
+		O1   json.RawMessage     `json:"o1"`
+		O2   json.RawMessage     `json:"o2"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	o1, err := NewQueryFilterExprFromJson(temp.O1)
+	if err != nil {
+		return nil, err
+	}
+
+	o2, err := NewQueryFilterExprFromJson(temp.O2)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewLteExpr(o1, o2), nil
 }

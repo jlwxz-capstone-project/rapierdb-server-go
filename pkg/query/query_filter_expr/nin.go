@@ -54,6 +54,33 @@ func (e *NinExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: true}, nil
 }
 
-func (e *NinExpr) MarshalJSON() ([]byte, error) {
+func (e *NinExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newNinExprFromJson(msg json.RawMessage) (*NinExpr, error) {
+	var temp struct {
+		Type QueryFilterExprType `json:"type"`
+		O1   json.RawMessage     `json:"o1"`
+		O2   []json.RawMessage   `json:"o2"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	o1, err := NewQueryFilterExprFromJson(temp.O1)
+	if err != nil {
+		return nil, err
+	}
+
+	o2 := make([]QueryFilterExpr, len(temp.O2))
+	for i, expr := range temp.O2 {
+		o2[i], err = NewQueryFilterExprFromJson(expr)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return NewNinExpr(o1, o2), nil
 }

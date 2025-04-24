@@ -243,7 +243,7 @@ func (q *FindOneQuery) UnmarshalJSON(data []byte) error {
 
 	// 反序列化 Filter
 	if raw.Filter != nil {
-		filter, err := qfe.UnmarshalQueryFilterExpr(raw.Filter)
+		filter, err := qfe.NewQueryFilterExprFromJson(raw.Filter)
 		if err != nil {
 			return fmt.Errorf("unmarshaling filter: %v", err)
 		}
@@ -279,7 +279,7 @@ func (q *FindManyQuery) UnmarshalJSON(data []byte) error {
 
 	// 反序列化 Filter
 	if raw.Filter != nil {
-		filter, err := qfe.UnmarshalQueryFilterExpr(raw.Filter)
+		filter, err := qfe.NewQueryFilterExprFromJson(raw.Filter)
 		if err != nil {
 			return fmt.Errorf("unmarshaling filter: %v", err)
 		}

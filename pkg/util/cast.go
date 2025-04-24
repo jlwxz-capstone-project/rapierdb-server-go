@@ -2,7 +2,7 @@ package util
 
 import "fmt"
 
-func ToInt(v interface{}) int {
+func ToInt(v any) int {
 	switch v := v.(type) {
 	case int:
 		return v
@@ -30,7 +30,7 @@ func ToInt(v interface{}) int {
 	panic(fmt.Sprintf("unsupported type: %T", v))
 }
 
-func ToInt64(v interface{}) int64 {
+func ToInt64(v any) int64 {
 	switch v := v.(type) {
 	case int:
 		return int64(v)
@@ -58,8 +58,28 @@ func ToInt64(v interface{}) int64 {
 	panic(fmt.Sprintf("unsupported type: %T", v))
 }
 
-func ToFloat64(v interface{}) float64 {
+func ToFloat64(v any) float64 {
 	switch v := v.(type) {
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
 	case float32:
 		return float64(v)
 	case float64:

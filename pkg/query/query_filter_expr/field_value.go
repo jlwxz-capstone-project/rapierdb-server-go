@@ -50,6 +50,24 @@ func (e *FieldValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: goValue}, nil
 }
 
-func (e *FieldValueExpr) MarshalJSON() ([]byte, error) {
+func (e *FieldValueExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newFieldValueExprFromJson(msg json.RawMessage) (*FieldValueExpr, error) {
+	var temp struct {
+		Type QueryFilterExprType `json:"type"`
+		Path json.RawMessage     `json:"path"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	path, err := NewQueryFilterExprFromJson(temp.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewFieldValueExpr(path), nil
 }

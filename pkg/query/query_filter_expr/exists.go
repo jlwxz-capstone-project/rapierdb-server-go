@@ -45,6 +45,24 @@ func (e *ExistsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: valueOrContainer != nil}, nil
 }
 
-func (e *ExistsExpr) MarshalJSON() ([]byte, error) {
+func (e *ExistsExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newExistsExprFromJson(msg json.RawMessage) (*ExistsExpr, error) {
+	var temp struct {
+		Type QueryFilterExprType `json:"type"`
+		Path json.RawMessage     `json:"path"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	path, err := NewQueryFilterExprFromJson(temp.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewExistsExpr(path), nil
 }

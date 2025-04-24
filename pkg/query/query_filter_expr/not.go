@@ -40,6 +40,24 @@ func (e *NotExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	}
 }
 
-func (e *NotExpr) MarshalJSON() ([]byte, error) {
+func (e *NotExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newNotExprFromJson(msg json.RawMessage) (*NotExpr, error) {
+	var temp struct {
+		Type QueryFilterExprType `json:"type"`
+		Expr json.RawMessage     `json:"expr"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	expr, err := NewQueryFilterExprFromJson(temp.Expr)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNotExpr(expr), nil
 }

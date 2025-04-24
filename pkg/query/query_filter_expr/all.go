@@ -74,7 +74,7 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: true}, nil
 }
 
-func (e *AllExpr) MarshalJSON() ([]byte, error) {
+func (e *AllExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
 }
 
@@ -84,4 +84,32 @@ func NewAllExpr(target QueryFilterExpr, items []QueryFilterExpr) *AllExpr {
 		Target: target,
 		Items:  items,
 	}
+}
+
+func newAllExprFromJson(msg json.RawMessage) (*AllExpr, error) {
+	var temp struct {
+		Type   QueryFilterExprType `json:"type"`
+		Target json.RawMessage     `json:"target"`
+		Items  []json.RawMessage   `json:"items"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	target, err := NewQueryFilterExprFromJson(temp.Target)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]QueryFilterExpr, len(temp.Items))
+	for i, item := range temp.Items {
+		item, err := NewQueryFilterExprFromJson(item)
+		if err != nil {
+			return nil, err
+		}
+		items[i] = item
+	}
+
+	return NewAllExpr(target, items), nil
 }

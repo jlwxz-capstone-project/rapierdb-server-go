@@ -43,6 +43,25 @@ func (e *RegexExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	return &ValueExpr{Value: matched}, nil
 }
 
-func (e *RegexExpr) MarshalJSON() ([]byte, error) {
+func (e *RegexExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newRegexExprFromJson(msg json.RawMessage) (*RegexExpr, error) {
+	var temp struct {
+		Type  QueryFilterExprType `json:"type"`
+		O1    json.RawMessage     `json:"o1"`
+		Regex string              `json:"regex"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	o1, err := NewQueryFilterExprFromJson(temp.O1)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewRegexExpr(o1, temp.Regex), nil
 }

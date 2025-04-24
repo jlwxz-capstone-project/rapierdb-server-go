@@ -5,14 +5,14 @@ import (
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // ValueExpr 表示一个值
 //
 //	  type Value =
 //		  | bool
-//		  | int64
-//		  | float64
+//		  | float64 所有数字都是 float64
 //		  | string
 //		  | []Value
 //		  | map[string]Value
@@ -25,7 +25,30 @@ type ValueExpr struct {
 func NewValueExpr(value any) *ValueExpr {
 	return &ValueExpr{
 		Type:  ExprTypeValue,
-		Value: value,
+		Value: normalizeValue(value),
+	}
+}
+
+func normalizeValue(value any) any {
+	switch v := value.(type) {
+	case bool, string, float64, nil:
+		return v
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32:
+		return util.ToFloat64(v)
+	case []any:
+		result := make([]any, len(v))
+		for i, item := range v {
+			result[i] = normalizeValue(item)
+		}
+		return result
+	case map[string]any:
+		result := make(map[string]any, len(v))
+		for key, item := range v {
+			result[key] = normalizeValue(item)
+		}
+		return result
+	default:
+		panic(fmt.Errorf("不支持的值类型: %T", value))
 	}
 }
 
@@ -60,6 +83,19 @@ func (e *ValueExpr) AsBool() bool          { val, ok := e.Value.(bool); return m
 func (e *ValueExpr) AsArray() []any        { val, ok := e.Value.([]any); return must(val, ok) }
 func (e *ValueExpr) AsMap() map[string]any { val, ok := e.Value.(map[string]any); return must(val, ok) }
 
-func (e *ValueExpr) MarshalJSON() ([]byte, error) {
+func (e *ValueExpr) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
+}
+
+func newValueExprFromJson(msg json.RawMessage) (*ValueExpr, error) {
+	var temp struct {
+		Type  QueryFilterExprType `json:"type"`
+		Value any                 `json:"value"`
+	}
+
+	if err := json.Unmarshal(msg, &temp); err != nil {
+		return nil, err
+	}
+
+	return NewValueExpr(temp.Value), nil
 }
