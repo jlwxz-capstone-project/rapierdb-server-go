@@ -14,27 +14,26 @@ import (
 type QueryFilterExprType string
 
 const (
-	ExprTypeValue      QueryFilterExprType = "value"    // 值表达式
-	ExprTypeFieldValue QueryFilterExprType = "field"    // 字段值表达式
-	ExprTypeEq         QueryFilterExprType = "eq"       // 相等比较
-	ExprTypeNe         QueryFilterExprType = "ne"       // 不等比较
-	ExprTypeGt         QueryFilterExprType = "gt"       // 大于比较
-	ExprTypeGte        QueryFilterExprType = "gte"      // 大于等于比较
-	ExprTypeLt         QueryFilterExprType = "lt"       // 小于比较
-	ExprTypeLte        QueryFilterExprType = "lte"      // 小于等于比较
-	ExprTypeIn         QueryFilterExprType = "in"       // 包含比较
-	ExprTypeNin        QueryFilterExprType = "nin"      // 不包含比较
-	ExprTypeAnd        QueryFilterExprType = "and"      // 逻辑与
-	ExprTypeOr         QueryFilterExprType = "or"       // 逻辑或
-	ExprTypeNot        QueryFilterExprType = "not"      // 逻辑非
-	ExprTypeRegex      QueryFilterExprType = "regex"    // 正则表达式匹配
-	ExprTypeExists     QueryFilterExprType = "exists"   // 字段存在检查
-	ExprTypeAll        QueryFilterExprType = "all"      // 数组包含所有元素
-	ExprTypeSize       QueryFilterExprType = "size"     // 数组长度检查
-	ExprTypeStartsWith QueryFilterExprType = "starts"   // 字符串前缀检查
-	ExprTypeEndsWith   QueryFilterExprType = "ends"     // 字符串后缀检查
-	ExprTypeContains   QueryFilterExprType = "contains" // 字符串包含检查
-	// ExprTypeType       ExprType = "type"     // 类型检查
+	ExprTypeAll        QueryFilterExprType = "all"         // 数组包含所有元素
+	ExprTypeAnd        QueryFilterExprType = "and"         // 逻辑与
+	ExprTypeContains   QueryFilterExprType = "contains"    // 字符串包含检查
+	ExprTypeEndsWith   QueryFilterExprType = "ends_with"   // 字符串后缀检查
+	ExprTypeEq         QueryFilterExprType = "eq"          // 相等比较
+	ExprTypeExists     QueryFilterExprType = "exists"      // 字段存在检查
+	ExprTypeFieldValue QueryFilterExprType = "field_value" // 字段值表达式
+	ExprTypeGt         QueryFilterExprType = "gt"          // 大于比较
+	ExprTypeGte        QueryFilterExprType = "gte"         // 大于等于比较
+	ExprTypeIn         QueryFilterExprType = "in"          // 包含比较
+	ExprTypeLt         QueryFilterExprType = "lt"          // 小于比较
+	ExprTypeLte        QueryFilterExprType = "lte"         // 小于等于比较
+	ExprTypeNe         QueryFilterExprType = "ne"          // 不等比较
+	ExprTypeNin        QueryFilterExprType = "nin"         // 不包含比较
+	ExprTypeNot        QueryFilterExprType = "not"         // 逻辑非
+	ExprTypeOr         QueryFilterExprType = "or"          // 逻辑或
+	ExprTypeRegex      QueryFilterExprType = "regex"       // 正则表达式匹配
+	ExprTypeSize       QueryFilterExprType = "size"        // 数组长度检查
+	ExprTypeStartsWith QueryFilterExprType = "starts_with" // 字符串前缀检查
+	ExprTypeValue      QueryFilterExprType = "value"       // 值表达式
 )
 
 func isValidPath(path string) bool {
