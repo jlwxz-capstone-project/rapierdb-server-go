@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // LteExpr 小于等于比较
@@ -36,7 +36,7 @@ func (e *LteExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: evaluating right operand of LTE: %v", ErrEvalError, err)
 	}
-	cmp, err := util.CompareValues(o1.Value, o2.Value)
+	cmp, err := js_value.DeepComapreJsValue(o1.Value, o2.Value)
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	pe "github.com/pkg/errors"
 )
 
 // ContainsExpr 检查字符串是否包含指定子串
@@ -31,25 +32,25 @@ func (e *ContainsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
 	target, err := e.Target.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating target in CONTAINS: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating target in CONTAINS: %v", err)
 	}
 
 	// 检查字段是否为字符串
 	str, ok := target.Value.(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected string in CONTAINS expression, got %T", ErrTypeError, target.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected string in CONTAINS expression, got %T", target.Value)
 	}
 
 	// 评估子串表达式
 	substr, err := e.Substr.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating substring in CONTAINS: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating substring in CONTAINS: %v", err)
 	}
 
 	// 检查子串是否为字符串
 	substrStr, ok := substr.Value.(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected string for substring in CONTAINS expression, got %T", ErrTypeError, substr.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected string for substring in CONTAINS expression, got %T", substr.Value)
 	}
 
 	return &ValueExpr{Value: strings.Contains(str, substrStr)}, nil

@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
+	pe "github.com/pkg/errors"
 )
 
 // FieldValueExpr 表示文档中指定路径的值
@@ -27,25 +30,26 @@ func (e *FieldValueExpr) DebugPrint() string {
 func (e *FieldValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	pathExpr, err := e.Path.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating path in FIELD_VALUE: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating path in FIELD_VALUE: %v", err)
 	}
 
 	if !pathExpr.IsString() {
-		return nil, fmt.Errorf("%w: expected string path in FIELD_VALUE expression, got %T", ErrTypeError, pathExpr.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected string path in FIELD_VALUE expression, got %T", pathExpr.Value)
 	}
 
 	path := pathExpr.AsString()
 	if !isValidPath(path) {
-		return nil, fmt.Errorf("%w: invalid path in FIELD_VALUE expression", ErrTypeError)
+		return nil, pe.Wrapf(ErrTypeError, "invalid path in FIELD_VALUE expression")
 	}
 
-	valueOrContainer := doc.GetByPath(path)
-	if valueOrContainer == nil {
-		return nil, fmt.Errorf("%w: path=%s", ErrFieldError, path)
-	}
-	goValue, err := valueOrContainer.ToGoObject()
+	val, err := doc_visitor.VisitDocByPath(doc, path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to convert value: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrFieldError, "path=%s", path)
+	}
+
+	goValue, err := js_value.ToJsValue(val)
+	if err != nil {
+		return nil, pe.Wrapf(ErrEvalError, "failed to convert value: %v", err)
 	}
 	return &ValueExpr{Value: goValue}, nil
 }

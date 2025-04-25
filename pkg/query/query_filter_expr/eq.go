@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	pe "github.com/pkg/errors"
 )
 
 // EqExpr 相等比较
@@ -30,13 +31,13 @@ func (e *EqExpr) DebugPrint() string {
 func (e *EqExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	o1, err := e.O1.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating left operand of EQ: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating left operand of EQ: %v", err)
 	}
 	o2, err := e.O2.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating right operand of EQ: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating right operand of EQ: %v", err)
 	}
-	cmp, err := util.CompareValues(o1.Value, o2.Value)
+	cmp, err := js_value.DeepComapreJsValue(o1.Value, o2.Value)
 	if err != nil {
 		return nil, err
 	}

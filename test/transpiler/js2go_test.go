@@ -9,9 +9,9 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -954,7 +954,7 @@ func TestArrayMethods(t *testing.T) {
 							return
 						}
 						for i := range gotSlice {
-							cmp, err := util.CompareValues(gotSlice[i], wantSlice[i])
+							cmp, err := js_value.DeepComapreJsValue(gotSlice[i], wantSlice[i])
 							if err != nil {
 								t.Errorf("Compare error at index %d: %v", i, err)
 								return
@@ -1360,7 +1360,7 @@ func TestTranspileToGoFunc(t *testing.T) {
 				t.Errorf("TranspileToGoFunc() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			cmp, err := util.CompareValues(result, tt.want)
+			cmp, err := js_value.DeepComapreJsValue(result, tt.want)
 			if err != nil || cmp != 0 {
 				t.Errorf("TranspileToGoFunc() result = %v, want %v", result, tt.want)
 			}
@@ -1754,7 +1754,7 @@ func TestDestructuringAssignment2(t *testing.T) {
 					}
 
 					// 解决字符串和其他值类型的比较问题
-					cmp, err := util.CompareValues(result, tt.want)
+					cmp, err := js_value.DeepComapreJsValue(result, tt.want)
 					if err != nil {
 						t.Errorf("比较值时出错: %v", err)
 						return

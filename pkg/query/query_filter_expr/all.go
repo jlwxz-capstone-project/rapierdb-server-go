@@ -2,12 +2,12 @@ package query_filter_expr
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	pe "github.com/pkg/errors"
 )
 
 // AllExpr 检查数组是否包含所有指定元素
@@ -30,13 +30,13 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估目标表达式
 	target, err := e.Target.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating target in ALL: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating target in ALL: %v", err)
 	}
 
 	// 检查目标是否为数组
 	arr, ok := target.Value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected array in ALL expression, got %T", ErrTypeError, target.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected array in ALL expression, got %T", target.Value)
 	}
 
 	// 检查数组是否为空
@@ -48,14 +48,14 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	for _, item := range e.Items {
 		itemValue, err := item.Eval(doc)
 		if err != nil {
-			return nil, fmt.Errorf("%w: evaluating item in ALL: %v", ErrEvalError, err)
+			return nil, pe.Wrapf(ErrEvalError, "evaluating item in ALL: %v", err)
 		}
 
 		found := false
 		for _, arrItem := range arr {
-			cmp, err := util.CompareValues(arrItem, itemValue.Value)
+			cmp, err := js_value.DeepComapreJsValue(arrItem, itemValue.Value)
 			if err != nil {
-				if errors.Is(err, ErrTypeError) {
+				if pe.Is(err, js_value.ErrCompareTypeMismatch) {
 					continue // 类型不匹配，继续检查下一个元素
 				}
 				return nil, err

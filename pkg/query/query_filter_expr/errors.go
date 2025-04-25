@@ -1,10 +1,10 @@
 package query_filter_expr
 
-import "fmt"
+import "errors"
 
 var (
-	ErrTypeError   = fmt.Errorf("type error")
-	ErrFieldError  = fmt.Errorf("field error")
-	ErrEvalError   = fmt.Errorf("eval error")
-	ErrSyntaxError = fmt.Errorf("syntax error")
+	ErrTypeError   = errors.New("type error")
+	ErrFieldError  = errors.New("field error")
+	ErrEvalError   = errors.New("eval error")
+	ErrSyntaxError = errors.New("syntax error")
 )

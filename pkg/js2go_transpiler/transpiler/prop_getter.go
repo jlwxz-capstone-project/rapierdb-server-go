@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/pkg/errors"
 )
 
@@ -254,8 +254,7 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 			searchVal := access.Args[0]
 			for i := 0; i < val.Len(); i++ {
 				current := val.Index(i).Interface()
-				// 使用 CompareValues 进行比较
-				cmp, err := util.CompareValues(current, searchVal)
+				cmp, err := js_value.DeepComapreJsValue(current, searchVal)
 				if err == nil && cmp == 0 {
 					return i, nil
 				}

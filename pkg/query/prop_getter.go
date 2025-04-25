@@ -5,6 +5,7 @@ import (
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
 	"github.com/pkg/errors"
 )
 
@@ -12,15 +13,14 @@ func LoroDocAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 	if doc, ok := obj.(*loro.LoroDoc); ok && doc != nil {
 		if !access.IsCall {
 			if prop, ok := access.Prop.(string); ok {
-				a := doc.GetByPath(prop)
-				if a == nil {
-					return nil, nil
-				}
-				b, err := a.Unwrap()
+				a, err := doc_visitor.VisitDocByPath(doc, prop)
 				if err != nil {
 					return nil, err
 				}
-				return b, nil
+				if a == nil {
+					return nil, nil
+				}
+				return a, nil
 			}
 			return nil, transpiler.ErrPropNotSupport
 		}

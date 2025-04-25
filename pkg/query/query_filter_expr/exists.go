@@ -2,9 +2,12 @@ package query_filter_expr
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
+	pe "github.com/pkg/errors"
 )
 
 // ExistsExpr 检查字段是否存在
@@ -28,21 +31,21 @@ func (e *ExistsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 获取字段路径
 	pathExpr, err := e.Path.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating path in EXISTS: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating path in EXISTS: %v", err)
 	}
 
 	if !pathExpr.IsString() {
-		return nil, fmt.Errorf("%w: expected string path in EXISTS expression, got %T", ErrTypeError, pathExpr.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected string path in EXISTS expression, got %T", pathExpr.Value)
 	}
 
 	path := pathExpr.AsString()
 	if !isValidPath(path) {
-		return nil, fmt.Errorf("%w: invalid path in EXISTS expression", ErrTypeError)
+		return nil, pe.Wrapf(ErrTypeError, "invalid path in EXISTS expression: %s", path)
 	}
 
-	// 直接检查字段是否存在
-	valueOrContainer := doc.GetByPath(path)
-	return &ValueExpr{Value: valueOrContainer != nil}, nil
+	_, err = doc_visitor.VisitDocByPath(doc, path)
+	notFound := err != nil && errors.Is(err, doc_visitor.PathNotFoundError)
+	return &ValueExpr{Value: !notFound}, nil
 }
 
 func (e *ExistsExpr) ToJSON() ([]byte, error) {

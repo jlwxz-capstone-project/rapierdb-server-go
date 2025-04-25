@@ -2,11 +2,11 @@ package query_filter_expr
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	pe "github.com/pkg/errors"
 )
 
 // AndExpr 逻辑与
@@ -34,13 +34,13 @@ func (e *AndExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	for _, expr := range e.Exprs {
 		result, err := expr.Eval(doc)
 		if err != nil {
-			if errors.Is(err, ErrTypeError) {
-				return nil, fmt.Errorf("%w: expected boolean in AND expression", err)
+			if pe.Is(err, ErrTypeError) {
+				return nil, pe.Wrapf(ErrTypeError, "expected boolean in AND expression: %v", err)
 			}
-			return nil, fmt.Errorf("%w: evaluating AND expression: %v", ErrEvalError, err)
+			return nil, pe.Wrapf(ErrEvalError, "evaluating AND expression: %v", err)
 		}
 		if v, ok := result.Value.(bool); !ok {
-			return nil, fmt.Errorf("%w: expected boolean in AND expression, got %T", ErrTypeError, result.Value)
+			return nil, pe.Wrapf(ErrTypeError, "expected boolean in AND expression, got %T", result.Value)
 		} else if !v {
 			return &ValueExpr{Value: false}, nil
 		}

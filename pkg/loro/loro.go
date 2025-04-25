@@ -370,21 +370,22 @@ func (doc *LoroDoc) Diff(v1, v2 *Frontiers) *DiffBatch {
 	return diffBatch
 }
 
-func (doc *LoroDoc) GetByPath(path string) *LoroContainerOrValue {
-	pathPtr := C.CString(path)
-	defer C.free(unsafe.Pointer(pathPtr))
-	ptr := C.loro_doc_get_by_path(doc.Ptr, pathPtr)
-	if ptr == nil {
-		return nil
-	}
-	containerOrValue := &LoroContainerOrValue{
-		ptr: unsafe.Pointer(ptr),
-	}
-	runtime.SetFinalizer(containerOrValue, func(c *LoroContainerOrValue) {
-		c.Destroy()
-	})
-	return containerOrValue
-}
+// deprecated
+// func (doc *LoroDoc) GetByPath(path string) *LoroContainerOrValue {
+// 	pathPtr := C.CString(path)
+// 	defer C.free(unsafe.Pointer(pathPtr))
+// 	ptr := C.loro_doc_get_by_path(doc.Ptr, pathPtr)
+// 	if ptr == nil {
+// 		return nil
+// 	}
+// 	containerOrValue := &LoroContainerOrValue{
+// 		ptr: unsafe.Pointer(ptr),
+// 	}
+// 	runtime.SetFinalizer(containerOrValue, func(c *LoroContainerOrValue) {
+// 		c.Destroy()
+// 	})
+// 	return containerOrValue
+// }
 
 // ----------- Version Vector -----------
 

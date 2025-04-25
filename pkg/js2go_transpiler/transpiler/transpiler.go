@@ -10,6 +10,7 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/ast"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/parser"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/token"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -668,37 +669,37 @@ func executeExpression(expr ast.Expr, ctx *Scope) (any, error) {
 			return float64(int64(lv) % int64(rv)), nil
 
 		case token.Equal, token.StrictEqual:
-			cmp, err := util.CompareValues(left, right)
+			cmp, err := js_value.DeepComapreJsValue(left, right)
 			if err != nil {
 				return nil, err
 			}
 			return cmp == 0, nil
 		case token.NotEqual, token.StrictNotEqual:
-			cmp, err := util.CompareValues(left, right)
+			cmp, err := js_value.DeepComapreJsValue(left, right)
 			if err != nil {
 				return nil, err
 			}
 			return cmp != 0, nil
 		case token.Greater:
-			cmp, err := util.CompareValues(left, right)
+			cmp, err := js_value.DeepComapreJsValue(left, right)
 			if err != nil {
 				return nil, err
 			}
 			return cmp > 0, nil
 		case token.Less:
-			cmp, err := util.CompareValues(left, right)
+			cmp, err := js_value.DeepComapreJsValue(left, right)
 			if err != nil {
 				return nil, err
 			}
 			return cmp < 0, nil
 		case token.GreaterOrEqual:
-			cmp, err := util.CompareValues(left, right)
+			cmp, err := js_value.DeepComapreJsValue(left, right)
 			if err != nil {
 				return nil, err
 			}
 			return cmp >= 0, nil
 		case token.LessOrEqual:
-			cmp, err := util.CompareValues(left, right)
+			cmp, err := js_value.DeepComapreJsValue(left, right)
 			if err != nil {
 				return nil, err
 			}
