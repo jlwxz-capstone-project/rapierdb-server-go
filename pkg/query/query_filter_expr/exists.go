@@ -45,7 +45,7 @@ func (e *ExistsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 
 	_, err = doc_visitor.VisitDocByPath(doc, path)
 	notFound := err != nil && errors.Is(err, doc_visitor.PathNotFoundError)
-	return &ValueExpr{Value: !notFound}, nil
+	return NewValueExpr(!notFound), nil
 }
 
 func (e *ExistsExpr) ToJSON() ([]byte, error) {

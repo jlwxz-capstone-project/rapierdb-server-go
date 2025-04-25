@@ -40,7 +40,7 @@ func (e *RegexExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid regex pattern '%s': %v", ErrSyntaxError, e.Regex, err)
 	}
-	return &ValueExpr{Value: matched}, nil
+	return NewValueExpr(matched), nil
 }
 
 func (e *RegexExpr) ToJSON() ([]byte, error) {

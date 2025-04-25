@@ -36,7 +36,7 @@ func (e *NotExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	if v, ok := result.Value.(bool); !ok {
 		return nil, fmt.Errorf("%w: expected boolean in NOT expression, got %T", ErrTypeError, result.Value)
 	} else {
-		return &ValueExpr{Value: !v}, nil
+		return NewValueExpr(!v), nil
 	}
 }
 

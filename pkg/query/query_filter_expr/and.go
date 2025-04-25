@@ -42,10 +42,10 @@ func (e *AndExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 		if v, ok := result.Value.(bool); !ok {
 			return nil, pe.Wrapf(ErrTypeError, "expected boolean in AND expression, got %T", result.Value)
 		} else if !v {
-			return &ValueExpr{Value: false}, nil
+			return NewValueExpr(false), nil
 		}
 	}
-	return &ValueExpr{Value: true}, nil
+	return NewValueExpr(true), nil
 }
 
 func (e *AndExpr) ToJSON() ([]byte, error) {

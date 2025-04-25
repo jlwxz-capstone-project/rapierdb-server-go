@@ -53,7 +53,7 @@ func (e *ContainsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 		return nil, pe.Wrapf(ErrTypeError, "expected string for substring in CONTAINS expression, got %T", substr.Value)
 	}
 
-	return &ValueExpr{Value: strings.Contains(str, substrStr)}, nil
+	return NewValueExpr(strings.Contains(str, substrStr)), nil
 }
 
 func (e *ContainsExpr) ToJSON() ([]byte, error) {

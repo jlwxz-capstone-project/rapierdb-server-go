@@ -52,7 +52,7 @@ func (e *EndsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 		return nil, fmt.Errorf("%w: expected string for suffix in ENDS_WITH expression, got %T", ErrTypeError, suffix.Value)
 	}
 
-	return &ValueExpr{Value: strings.HasSuffix(str, suffixStr)}, nil
+	return NewValueExpr(strings.HasSuffix(str, suffixStr)), nil
 }
 
 func (e *EndsWithExpr) ToJSON() ([]byte, error) {

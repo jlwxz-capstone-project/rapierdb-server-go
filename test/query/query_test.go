@@ -4,13 +4,13 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	"github.com/stretchr/testify/assert"
 )
 
 //go:embed qfe_tests.jsonl
@@ -81,12 +81,10 @@ func TestQfe(t *testing.T) {
 	testCases := prepareTestCases()
 
 	for _, testCase := range testCases {
-		fmt.Println("--------------" + testCase.Name + "-----------------")
-		fmt.Println(testCase.Expr.DebugPrint())
-		res, err := testCase.Expr.Eval(testCase.Doc)
-		if err != nil {
-			log.Errorf("failed to eval expr: %s", err)
-		}
-		fmt.Printf("expected: %v, actual: %v\n", testCase.Expected, res)
+		t.Run(testCase.Name, func(t *testing.T) {
+			res, err := testCase.Expr.Eval(testCase.Doc)
+			assert.NoError(t, err)
+			assert.Equal(t, res, testCase.Expected)
+		})
 	}
 }

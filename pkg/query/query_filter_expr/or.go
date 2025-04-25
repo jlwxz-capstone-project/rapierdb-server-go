@@ -42,10 +42,10 @@ func (e *OrExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 		if v, ok := result.Value.(bool); !ok {
 			return nil, fmt.Errorf("%w: expected boolean in OR expression, got %T", ErrTypeError, result.Value)
 		} else if v {
-			return &ValueExpr{Value: true}, nil
+			return NewValueExpr(true), nil
 		}
 	}
-	return &ValueExpr{Value: false}, nil
+	return NewValueExpr(false), nil
 }
 
 func (e *OrExpr) ToJSON() ([]byte, error) {

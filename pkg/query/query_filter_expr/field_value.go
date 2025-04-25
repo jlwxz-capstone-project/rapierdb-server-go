@@ -51,7 +51,7 @@ func (e *FieldValueExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	if err != nil {
 		return nil, pe.Wrapf(ErrEvalError, "failed to convert value: %v", err)
 	}
-	return &ValueExpr{Value: goValue}, nil
+	return NewValueExpr(goValue), nil
 }
 
 func (e *FieldValueExpr) ToJSON() ([]byte, error) {

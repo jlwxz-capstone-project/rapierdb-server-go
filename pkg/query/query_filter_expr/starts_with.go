@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	pe "github.com/pkg/errors"
 )
 
 // StartsWithExpr 检查字符串是否以指定前缀开始
@@ -31,28 +32,28 @@ func (e *StartsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	// 评估字段表达式
 	target, err := e.Target.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating target in STARTS_WITH: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating target in STARTS_WITH: %v", err)
 	}
 
 	// 检查字段是否为字符串
 	str, ok := target.Value.(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected string in STARTS_WITH expression, got %T", ErrTypeError, target.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected string in STARTS_WITH expression, got %T", target.Value)
 	}
 
 	// 评估前缀表达式
 	prefix, err := e.Prefix.Eval(doc)
 	if err != nil {
-		return nil, fmt.Errorf("%w: evaluating prefix in STARTS_WITH: %v", ErrEvalError, err)
+		return nil, pe.Wrapf(ErrEvalError, "evaluating prefix in STARTS_WITH: %v", err)
 	}
 
 	// 检查前缀是否为字符串
 	prefixStr, ok := prefix.Value.(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: expected string for prefix in STARTS_WITH expression, got %T", ErrTypeError, prefix.Value)
+		return nil, pe.Wrapf(ErrTypeError, "expected string for prefix in STARTS_WITH expression, got %T", prefix.Value)
 	}
 
-	return &ValueExpr{Value: strings.HasPrefix(str, prefixStr)}, nil
+	return NewValueExpr(strings.HasPrefix(str, prefixStr)), nil
 }
 
 func (e *StartsWithExpr) ToJSON() ([]byte, error) {

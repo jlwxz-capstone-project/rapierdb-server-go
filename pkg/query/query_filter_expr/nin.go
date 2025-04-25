@@ -48,10 +48,10 @@ func (e *NinExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 			return nil, err
 		}
 		if cmp == 0 {
-			return &ValueExpr{Value: false}, nil
+			return NewValueExpr(false), nil
 		}
 	}
-	return &ValueExpr{Value: true}, nil
+	return NewValueExpr(true), nil
 }
 
 func (e *NinExpr) ToJSON() ([]byte, error) {

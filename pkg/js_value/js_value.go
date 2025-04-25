@@ -2,6 +2,7 @@ package js_value
 
 import (
 	"errors"
+	"reflect"
 	"unsafe"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
@@ -35,6 +36,8 @@ func ToJsValue(value any) (JsValue, error) {
 	}
 
 	switch v := value.(type) {
+	case *loro.LoroValue:
+		return v.Get()
 	case *loro.LoroMap:
 		return v.ToGoObject()
 	case *loro.LoroList:
@@ -43,31 +46,33 @@ func ToJsValue(value any) (JsValue, error) {
 		return v.ToGoObject()
 	case *loro.LoroText:
 		return v.ToString()
-	case map[string]any:
-		result := make(map[string]any, len(v))
-		for key, item := range v {
-			tmp, err := ToJsValue(item)
-			if err != nil {
-				return nil, err
-			}
-			result[key] = tmp
-		}
-		return result, nil
-	case []any:
-		result := make([]any, len(v))
-		for i, item := range v {
-			tmp, err := ToJsValue(item)
-			if err != nil {
-				return nil, err
-			}
-			result[i] = tmp
-		}
-		return result, nil
 	case bool, string, float64:
 		return v, nil
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32:
 		return util.ToFloat64(v), nil
 	default:
+		rv := reflect.ValueOf(v) // XXX 使用反射性能可能不好
+		if rv.Kind() == reflect.Slice {
+			result := make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				tmp, err := ToJsValue(rv.Index(i).Interface())
+				if err != nil {
+					return nil, err
+				}
+				result[i] = tmp
+			}
+			return result, nil
+		} else if rv.Kind() == reflect.Map {
+			result := make(map[string]any, rv.Len())
+			for _, key := range rv.MapKeys() {
+				tmp, err := ToJsValue(rv.MapIndex(key).Interface())
+				if err != nil {
+					return nil, err
+				}
+				result[key.String()] = tmp
+			}
+			return result, nil
+		}
 		return nil, pe.Wrapf(ErrImpossibleType, "type=%T", v)
 	}
 }

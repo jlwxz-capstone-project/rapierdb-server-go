@@ -41,7 +41,7 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 
 	// 检查数组是否为空
 	if len(arr) == 0 {
-		return &ValueExpr{Value: false}, nil
+		return NewValueExpr(false), nil
 	}
 
 	// 检查每个要求的元素是否都在数组中
@@ -67,11 +67,11 @@ func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 		}
 
 		if !found {
-			return &ValueExpr{Value: false}, nil
+			return NewValueExpr(false), nil
 		}
 	}
 
-	return &ValueExpr{Value: true}, nil
+	return NewValueExpr(true), nil
 }
 
 func (e *AllExpr) ToJSON() ([]byte, error) {

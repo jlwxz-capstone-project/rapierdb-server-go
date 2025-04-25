@@ -40,7 +40,7 @@ func (e *GteExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ValueExpr{Value: cmp >= 0}, nil
+	return NewValueExpr(cmp >= 0), nil
 }
 
 func (e *GteExpr) ToJSON() ([]byte, error) {
