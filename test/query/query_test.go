@@ -84,7 +84,7 @@ func TestQfe(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			res, err := testCase.Expr.Eval(testCase.Doc)
 			assert.NoError(t, err)
-			assert.Equal(t, res, testCase.Expected)
+			assert.Equal(t, testCase.Expected.Value, res.Value)
 		})
 	}
 }

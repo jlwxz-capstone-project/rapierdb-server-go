@@ -57,6 +57,10 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 			}
 		case *loro.LoroList:
 			if isIndex {
+				vlen := int(v.GetLen())
+				if index < 0 || index >= vlen {
+					return nil, PathNotFoundError
+				}
 				val, err := v.Get(uint32(index))
 				if err != nil {
 					return nil, err
@@ -67,6 +71,10 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 			}
 		case *loro.LoroMovableList:
 			if isIndex {
+				vlen := int(v.GetLen())
+				if index < 0 || index >= vlen {
+					return nil, PathNotFoundError
+				}
 				val, err := v.Get(uint32(index))
 				if err != nil {
 					return nil, err
@@ -75,14 +83,17 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 			} else {
 				return nil, pe.Wrapf(InvalidPathError, path)
 			}
-		case map[string]any:
+		case map[string]loro.LoroValue:
 			if isIndex {
 				return nil, pe.Wrapf(InvalidPathError, path)
 			} else {
 				curr = v[key]
 			}
-		case []any:
+		case []loro.LoroValue:
 			if isIndex {
+				if index < 0 || index >= len(v) {
+					return nil, PathNotFoundError
+				}
 				curr = v[index]
 			} else {
 				return nil, pe.Wrapf(InvalidPathError, path)
