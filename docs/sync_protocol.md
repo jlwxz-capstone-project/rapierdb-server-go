@@ -21,6 +21,20 @@
   - 假设 `VersionQueryMessage` 只请求了 d1, d2 两个文档的版本，但客户端返回的 `VersionQueryRespMessage` 给出了 d1, d2, d3 三个文档的版本，则根据上面的逻辑这会造成越权（拿到 d3）。
   - 或者在生成 `SyncMessage` 时再次使用 `canView` 检验？
 
+```go
+//问题：client收到伪造的VersionQueryMessage后，可能会多请求一些版本，此时Server不会再校验，从而导致越权
+1.VersionQueryRespMessage和VersionQueryMessage携带一一对应的标识： uuid String
+	--Server:
+		-发送VQM时记录： id和请求的文档集合：d1,d2..
+		-收到VQPM时：1.查id对应的文档集合是否和VQPM中请求的一致 2.处理完后删除map中的该VQPM数据
+	--Client:
+		-收到VQM时，获取id并写入VQPM
+	--Synchronizer:
+		-全局map存储 请求id和docs的映射关系
+```
+
+
+
 ---
 
 场景 2：客户端提交一个事务

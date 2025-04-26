@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
@@ -48,6 +49,9 @@ type Synchronizer struct {
 	status     SynchronizerStatus
 	statusLock sync.RWMutex
 	eventBus   *util.EventBus[SynchronizerStatus]
+
+	// 维护VQM和请求文档集合的映射关系:clientId : (vqmId : docIds)
+	vqmToDocIDsMap map[string]map[string][]string
 }
 
 type StorageEngineEvents struct {
@@ -204,8 +208,9 @@ func (s *Synchronizer) Start() error {
 				}
 			}
 
-			// 处理添加的订阅
-			vqm := message.NewVersionQueryMessageV1()
+			// 处理添加的订阅,生成并发送vqm给client
+			vqmID := uuid.New().String()
+			vqm := message.NewVersionQueryMessageV1(vqmID)
 			for _, q := range msg.Added {
 				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q.DebugPrint())
 				err := s.queryManager.SubscribeNewQuery(clientId, q)
@@ -232,6 +237,7 @@ func (s *Synchronizer) Start() error {
 					}
 					for docId := range docs {
 						vqm.AddDoc(queryCollection, docId)
+						s.vqmToDocIDsMap[clientId][vqmID] = append(s.vqmToDocIDsMap[clientId][vqmID], queryCollection+":"+docId)
 					}
 				}
 			}
@@ -253,7 +259,15 @@ func (s *Synchronizer) Start() error {
 				docKeyBytes := util.String2Bytes(docKey)
 				collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
 				docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+				//判断是否越权
+				docIdsQueryKey := collection + ":" + docId
+				validDocIds := s.vqmToDocIDsMap[clientId][msg.ID]
+				if !slices.Contains(validDocIds, docIdsQueryKey) {
+					log.Debugf("msgHandler: 客户端 %s 请求的文档 %s/%s 越权", clientId, collection, docId)
+					continue
+				}
 				if vvBytes == nil || len(vvBytes) == 0 {
+					//客户端没有该文档：全量更新
 					doc, err := s.storageEngine.LoadDoc(collection, docId)
 					if err != nil {
 						log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
@@ -262,6 +276,7 @@ func (s *Synchronizer) Start() error {
 					docBytes := doc.ExportSnapshot().Bytes()
 					toUpsert[docKey] = docBytes
 				} else {
+					//客户端存在该文档：增量更新
 					doc, err := s.storageEngine.LoadDoc(collection, docId)
 					if err != nil {
 						log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
@@ -273,6 +288,9 @@ func (s *Synchronizer) Start() error {
 					toUpsert[docKey] = updateBytes
 				}
 			}
+			// 处理完毕，删除vqmToDocIDsMap中该vqm对应的所有文档,避免map中数据堆积
+			delete(s.vqmToDocIDsMap[clientId], msg.ID)
+			//发送同步消息
 			if len(toUpsert) > 0 {
 				syncMsg := message.PostDocMessageV1{
 					Upsert: toUpsert,
