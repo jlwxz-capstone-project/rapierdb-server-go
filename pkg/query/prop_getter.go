@@ -75,15 +75,11 @@ func LoroMapAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 	if lm, ok := obj.(*loro.LoroMap); ok && lm != nil {
 		if !access.IsCall {
 			if prop, ok := access.Prop.(string); ok {
-				a := lm.Get(prop)
-				if a == nil {
-					return nil, nil
-				}
-				b, err := a.Unwrap()
+				val, err := lm.Get(prop)
 				if err != nil {
 					return nil, err
 				}
-				return b, nil
+				return val, nil
 			}
 		}
 	}
@@ -103,11 +99,11 @@ func LoroListAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 				if prop < 0 || prop >= int(len) {
 					return nil, errors.WithStack(fmt.Errorf("index out of range: %d", prop))
 				}
-				a, err := ll.Get(uint32(prop)).Unwrap()
+				val, err := ll.Get(uint32(prop))
 				if err != nil {
 					return nil, err
 				}
-				return a, nil
+				return val, nil
 			}
 		} else {
 			// if prop, ok := access.Prop.(string); ok {
@@ -137,11 +133,11 @@ func LoroMovableListAccessHandler(access transpiler.PropAccess, obj any) (any, e
 				if prop < 0 || prop >= int(len) {
 					return nil, errors.WithStack(fmt.Errorf("index out of range: %d", prop))
 				}
-				a, err := lm.Get(len).Unwrap()
+				val, err := lm.Get(len)
 				if err != nil {
 					return nil, err
 				}
-				return a, nil
+				return val, nil
 			}
 		}
 	}

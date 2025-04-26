@@ -30,27 +30,27 @@ func TestClientCodeStart(t *testing.T) {
 	dbSetup := func(t *testing.T, engine *storage_engine.StorageEngine) error {
 		user1 := loro.NewLoroDoc()
 		user1Map := user1.GetMap("data")
-		user1Map.InsertString("id", "user1")
-		user1Map.InsertString("username", "Alice")
-		user1Map.InsertString("role", "normal")
+		user1Map.InsertValueCoerce("id", "user1")
+		user1Map.InsertValueCoerce("username", "Alice")
+		user1Map.InsertValueCoerce("role", "normal")
 
 		user2 := loro.NewLoroDoc()
 		user2Map := user2.GetMap("data")
-		user2Map.InsertString("id", "user2")
-		user2Map.InsertString("username", "Bob")
-		user2Map.InsertString("role", "admin")
+		user2Map.InsertValueCoerce("id", "user2")
+		user2Map.InsertValueCoerce("username", "Bob")
+		user2Map.InsertValueCoerce("role", "admin")
 
 		user3 := loro.NewLoroDoc()
 		user3Map := user3.GetMap("data")
-		user3Map.InsertString("id", "user3")
-		user3Map.InsertString("username", "Charlie")
-		user3Map.InsertString("role", "normal")
+		user3Map.InsertValueCoerce("id", "user3")
+		user3Map.InsertValueCoerce("username", "Charlie")
+		user3Map.InsertValueCoerce("role", "normal")
 
 		postMeta1 := loro.NewLoroDoc()
 		postMeta1Map := postMeta1.GetMap("data")
-		postMeta1Map.InsertString("id", "post1")
-		postMeta1Map.InsertString("owner", "user1")
-		postMeta1Map.InsertString("title", "Learn Go In 5 Minutes")
+		postMeta1Map.InsertValueCoerce("id", "post1")
+		postMeta1Map.InsertValueCoerce("owner", "user1")
+		postMeta1Map.InsertValueCoerce("title", "Learn Go In 5 Minutes")
 
 		tr := &storage_engine.Transaction{
 			TxID:           "123e4567-e89b-12d3-a456-426614174000",
@@ -120,9 +120,9 @@ func TestClientCodeStart(t *testing.T) {
 
 		user4 := loro.NewLoroDoc()
 		user4Map := user4.GetMap("data")
-		user4Map.InsertString("id", "user4")
-		user4Map.InsertString("username", "David")
-		user4Map.InsertString("role", "normal")
+		user4Map.InsertValueCoerce("id", "user4")
+		user4Map.InsertValueCoerce("username", "David")
+		user4Map.InsertValueCoerce("role", "normal")
 
 		c.SubmitTransaction(&storage_engine.Transaction{
 			TxID:           "123e4567-e89b-12d3-a456-426614174001",

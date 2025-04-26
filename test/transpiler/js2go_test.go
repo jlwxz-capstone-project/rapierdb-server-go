@@ -1490,7 +1490,7 @@ func TestLoroValueAccess(t *testing.T) {
 			args: []any{func() *loro.LoroDoc {
 				doc := loro.NewLoroDoc()
 				testMap := doc.GetMap("test")
-				testMap.InsertString("name", "Alice")
+				testMap.InsertValue("name", "Alice")
 				return doc
 			}()},
 			want:    "Alice",
@@ -1505,9 +1505,10 @@ func TestLoroValueAccess(t *testing.T) {
 				doc := loro.NewLoroDoc()
 				userMap := doc.GetMap("user")
 				profileMap := doc.GetMap("profile")
-				profileMap, err := userMap.InsertMap("profile", profileMap)
+				m2, err := userMap.InsertContainer("profile", profileMap)
+				profileMap = m2.(*loro.LoroMap)
 				assert.NoError(t, err)
-				profileMap.InsertI64("age", 30)
+				profileMap.InsertValueCoerce("age", 30)
 				return doc
 			}()},
 			want:    int64(30),
@@ -1521,8 +1522,8 @@ func TestLoroValueAccess(t *testing.T) {
 			args: []any{func() *loro.LoroDoc {
 				doc := loro.NewLoroDoc()
 				arr := doc.GetList("arr")
-				arr.PushString("Hello")
-				arr.PushString("World")
+				arr.PushValue("Hello")
+				arr.PushValue("World")
 				return doc
 			}()},
 			want:    "World",

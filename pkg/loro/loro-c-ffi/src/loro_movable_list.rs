@@ -52,6 +52,44 @@ pub extern "C" fn loro_movable_list_len(ptr: *const LoroMovableList) -> usize {
 
 // Loro Movable List Push
 #[no_mangle]
+pub extern "C" fn loro_movable_list_push_value(
+    ptr: *mut LoroMovableList,
+    value_ptr: *mut LoroValue,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let value = &mut *value_ptr;
+        if list.push(value.clone()).is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_movable_list_push_container(
+    ptr: *mut LoroMovableList,
+    container_ptr: *mut Container,
+    err: *mut u8,
+) -> *mut Container {
+    unsafe {
+        let list = &mut *ptr;
+        let container = &mut *container_ptr;
+        if let Ok(new_container) = list.push_container(container.clone()) {
+            *err = 0;
+            let boxed = Box::new(new_container);
+            let ptr = Box::into_raw(boxed);
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn loro_movable_list_push_null(ptr: *mut LoroMovableList, err: *mut u8) {
     unsafe {
         let list = &mut *ptr;
@@ -431,3 +469,139 @@ pub extern "C" fn loro_movable_list_get_items(
         ptr
     }
 }
+
+// Loro Movable List Insert
+#[no_mangle]
+pub extern "C" fn loro_movable_list_insert_value(
+    ptr: *mut LoroMovableList,
+    index: usize,
+    value_ptr: *mut LoroValue,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let value = &mut *value_ptr;
+        if list.insert(index, value.clone()).is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_movable_list_insert_container(
+    ptr: *mut LoroMovableList,
+    index: usize,
+    container_ptr: *mut Container,
+    err: *mut u8,
+) -> *mut Container {
+    unsafe {
+        let list = &mut *ptr;
+        let container = &mut *container_ptr;
+        if let Ok(new_container) = list.insert_container(index, container.clone()) {
+            *err = 0;
+            let boxed = Box::new(new_container);
+            let ptr = Box::into_raw(boxed);
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}
+
+// Loro Movable List Delete
+#[no_mangle]
+pub extern "C" fn loro_movable_list_delete(
+    ptr: *mut LoroMovableList,
+    pos: usize,
+    len: usize,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.delete(pos, len);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+// Loro Movable List Move
+#[no_mangle]
+pub extern "C" fn loro_movable_list_move(
+    ptr: *mut LoroMovableList,
+    from: usize,
+    to: usize,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.mov(from, to);
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+// Loro Movable List Clear
+#[no_mangle]
+pub extern "C" fn loro_movable_list_clear(ptr: *mut LoroMovableList, err: *mut u8) {
+    unsafe {
+        let list = &mut *ptr;
+        let res = list.clear();
+        if res.is_err() {
+            *err = 1;
+        } else {
+            *err = 0;
+        }
+    }
+}
+
+// Loro Movable List Set
+#[no_mangle]
+pub extern "C" fn loro_movable_list_set_value(
+    ptr: *mut LoroMovableList,
+    index: usize,
+    value_ptr: *mut LoroValue,
+    err: *mut u8,
+) {
+    unsafe {
+        let list = &mut *ptr;
+        let value = &mut *value_ptr;
+        if let Ok(_) = list.set(index, value.clone()) {
+            *err = 0;
+        } else {
+            *err = 1;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn loro_movable_list_set_container(
+    ptr: *mut LoroMovableList,
+    index: usize,
+    container_ptr: *mut Container,
+    err: *mut u8,
+) -> *mut Container {
+    unsafe {
+        let list = &mut *ptr;
+        let container = &mut *container_ptr;
+        if let Ok(new_container) = list.set_container(index, container.clone()) {
+            *err = 0;
+            let boxed = Box::new(new_container);
+            let ptr = Box::into_raw(boxed);
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}
+
+// Loro Movable List Get Type

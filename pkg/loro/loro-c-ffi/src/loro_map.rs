@@ -463,3 +463,26 @@ pub extern "C" fn loro_map_get_items(ptr: *mut LoroMap) -> *mut Vec<*mut u8> {
         ptr
     }
 }
+
+#[no_mangle]
+pub extern "C" fn loro_map_insert_container(
+    map_ptr: *mut LoroMap,
+    key_ptr: *const c_char,
+    value_ptr: *mut Container,
+    err: *mut u8,
+) -> *mut Container {
+    unsafe {
+        let map = &mut *map_ptr;
+        let key = CStr::from_ptr(key_ptr).to_string_lossy().into_owned();
+        let value = &mut *value_ptr;
+        if let Ok(new_container) = map.insert_container(&key, value.clone()) {
+            let boxed = Box::new(new_container);
+            let ptr = Box::into_raw(boxed);
+            *err = 0;
+            ptr
+        } else {
+            *err = 1;
+            std::ptr::null_mut()
+        }
+    }
+}

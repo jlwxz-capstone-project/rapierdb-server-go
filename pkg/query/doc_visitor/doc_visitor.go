@@ -46,41 +46,32 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 			if isIndex {
 				return nil, pe.Wrapf(InvalidPathError, path)
 			} else {
-				valueOrContainer := v.Get(key)
-				if valueOrContainer == nil {
-					return nil, PathNotFoundError
-				}
-				unwraped, err := valueOrContainer.Unwrap()
+				val, err := v.Get(key)
 				if err != nil {
+					if pe.Is(err, loro.ErrLoroGetNull) {
+						return nil, PathNotFoundError
+					}
 					return nil, err
 				}
-				curr = unwraped
+				curr = val
 			}
 		case *loro.LoroList:
 			if isIndex {
-				valueOrContainer := v.Get(uint32(index))
-				if valueOrContainer == nil {
-					return nil, PathNotFoundError
-				}
-				unwraped, err := valueOrContainer.Unwrap()
+				val, err := v.Get(uint32(index))
 				if err != nil {
 					return nil, err
 				}
-				curr = unwraped
+				curr = val
 			} else {
 				return nil, pe.Wrapf(InvalidPathError, path)
 			}
 		case *loro.LoroMovableList:
 			if isIndex {
-				valueOrContainer := v.Get(uint32(index))
-				if valueOrContainer == nil {
-					return nil, PathNotFoundError
-				}
-				unwraped, err := valueOrContainer.Unwrap()
+				val, err := v.Get(uint32(index))
 				if err != nil {
 					return nil, err
 				}
-				curr = unwraped
+				curr = val
 			} else {
 				return nil, pe.Wrapf(InvalidPathError, path)
 			}

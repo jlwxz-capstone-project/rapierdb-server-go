@@ -75,12 +75,12 @@ func TestPermission(t *testing.T) {
 	post1new := loro.NewLoroDoc()
 	post1new.Import(post1.ExportSnapshot().Bytes())
 	datamap := post1new.GetMap("data")
-	datamap.InsertString("owner", "user2")
+	datamap.InsertValueCoerce("owner", "user2")
 
 	post1new2 := loro.NewLoroDoc()
 	post1new2.Import(post1.ExportSnapshot().Bytes())
 	datamap2 := post1new2.GetMap("data")
-	datamap2.InsertString("title", "Another Post")
+	datamap2.InsertValueCoerce("title", "Another Post")
 
 	canUpdateTests := []struct {
 		name     string
@@ -176,27 +176,27 @@ func setupEngine(t *testing.T) *storage_engine.StorageEngine {
 
 	user1 := loro.NewLoroDoc()
 	user1Map := user1.GetMap("data")
-	user1Map.InsertString("id", "user1")
-	user1Map.InsertString("username", "Alice")
-	user1Map.InsertString("role", "normal")
+	user1Map.InsertValueCoerce("id", "user1")
+	user1Map.InsertValueCoerce("username", "Alice")
+	user1Map.InsertValueCoerce("role", "normal")
 
 	user2 := loro.NewLoroDoc()
 	user2Map := user2.GetMap("data")
-	user2Map.InsertString("id", "user2")
-	user2Map.InsertString("username", "Bob")
-	user2Map.InsertString("role", "admin")
+	user2Map.InsertValueCoerce("id", "user2")
+	user2Map.InsertValueCoerce("username", "Bob")
+	user2Map.InsertValueCoerce("role", "admin")
 
 	user3 := loro.NewLoroDoc()
 	user3Map := user3.GetMap("data")
-	user3Map.InsertString("id", "user3")
-	user3Map.InsertString("username", "Charlie")
-	user3Map.InsertString("role", "normal")
+	user3Map.InsertValueCoerce("id", "user3")
+	user3Map.InsertValueCoerce("username", "Charlie")
+	user3Map.InsertValueCoerce("role", "normal")
 
 	postMeta1 := loro.NewLoroDoc()
 	postMeta1Map := postMeta1.GetMap("data")
-	postMeta1Map.InsertString("id", "post1")
-	postMeta1Map.InsertString("owner", "user1")
-	postMeta1Map.InsertString("title", "Learn Go In 5 Minutes")
+	postMeta1Map.InsertValueCoerce("id", "post1")
+	postMeta1Map.InsertValueCoerce("owner", "user1")
+	postMeta1Map.InsertValueCoerce("title", "Learn Go In 5 Minutes")
 
 	tr := &storage_engine.Transaction{
 		TxID:           "123e4567-e89b-12d3-a456-426614174000",

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	pe "github.com/pkg/errors"
@@ -171,44 +173,22 @@ func (q *FindManyQuery) Match(doc *loro.LoroDoc) (bool, error) {
 //   - 如果 doc1 < doc2，返回 -1
 //   - 如果 doc1 = doc2，返回 0
 //   - 如果 doc1 > doc2，返回 1
-//
-// TODO 不支持深度排序，比如按 `a.b.c` 排序
 func (q *FindManyQuery) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 	for _, sort := range q.Sort {
 		// 获取字段值
-		field1 := doc1.GetDataMap().Get(sort.Field)
-		field2 := doc2.GetDataMap().Get(sort.Field)
-
-		if field1 == nil {
-			return 0, pe.WithStack(fmt.Errorf("field1 %s not found", sort.Field))
-		}
-		if field2 == nil {
-			return 0, pe.WithStack(fmt.Errorf("field2 %s not found", sort.Field))
-		}
-
-		if field1.IsContainer() || field2.IsContainer() {
-			return 0, pe.WithStack(fmt.Errorf("container type not supported for sorting"))
-		}
-
-		field1Value, err := field1.GetValue()
+		v1, err := doc_visitor.VisitDocByPath(doc1, sort.Field)
 		if err != nil {
-			return 0, pe.WithStack(fmt.Errorf("getting value from first document: %v", err))
-		}
-		if !field1Value.IsComparable() {
-			return 0, pe.WithStack(fmt.Errorf("comparable type required for sorting"))
+			return 0, err
 		}
 
-		field2Value, err := field2.GetValue()
+		v2, err := doc_visitor.VisitDocByPath(doc2, sort.Field)
 		if err != nil {
-			return 0, pe.WithStack(fmt.Errorf("getting value from second document: %v", err))
-		}
-		if !field2Value.IsComparable() {
-			return 0, pe.WithStack(fmt.Errorf("comparable type required for sorting"))
+			return 0, err
 		}
 
-		cmp, err := field1Value.Compare(field2Value)
+		cmp, err := js_value.DeepComapreJsValue(v1, v2)
 		if err != nil {
-			return 0, pe.WithStack(fmt.Errorf("comparing values: %v", err))
+			return 0, err
 		}
 
 		if cmp != 0 {

@@ -36,8 +36,6 @@ func ToJsValue(value any) (JsValue, error) {
 	}
 
 	switch v := value.(type) {
-	case *loro.LoroValue:
-		return v.Get()
 	case *loro.LoroMap:
 		return v.ToGoObject()
 	case *loro.LoroList:
