@@ -36,7 +36,7 @@ func (m *SubscriptionResetMessageV1) Encode() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		util.WriteBytes(buf, encoded)
+		util.WriteVarByteArray(buf, encoded)
 	}
 	return buf.Bytes(), nil
 }
@@ -49,7 +49,7 @@ func decodeSubscriptionResetMessageV1Body(b *bytes.Buffer) (*SubscriptionResetMe
 
 	queries := make([]query.Query, 0, queriesLen)
 	for i := uint64(0); i < queriesLen; i++ {
-		queryBytes, err := util.ReadBytes(b)
+		queryBytes, err := util.ReadVarByteArray(b)
 		if err != nil {
 			return nil, err
 		}

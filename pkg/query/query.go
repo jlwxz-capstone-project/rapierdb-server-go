@@ -282,7 +282,7 @@ func (q *FindOneQuery) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	util.WriteBytes(buf, json)
+	util.WriteVarByteArray(buf, json)
 	return buf.Bytes(), nil
 }
 
@@ -293,7 +293,7 @@ func (q *FindManyQuery) Encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	util.WriteBytes(buf, json)
+	util.WriteVarByteArray(buf, json)
 	return buf.Bytes(), nil
 }
 
@@ -322,7 +322,7 @@ func DecodeQuery(data []byte) (Query, error) {
 		return nil, err
 	}
 
-	bodyBytes, err := util.ReadBytes(buf)
+	bodyBytes, err := util.ReadVarByteArray(buf)
 	if err != nil {
 		return nil, err
 	}

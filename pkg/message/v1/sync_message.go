@@ -46,7 +46,7 @@ func (m *PostDocMessageV1) Encode() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = util.WriteBytes(buf, value)
+		err = util.WriteVarByteArray(buf, value)
 		if err != nil {
 			return nil, err
 		}
@@ -76,7 +76,7 @@ func decodeSyncMessageV1Body(b *bytes.Buffer) (*PostDocMessageV1, error) {
 		if err != nil {
 			return nil, err
 		}
-		value, err := util.ReadBytes(b)
+		value, err := util.ReadVarByteArray(b)
 		if err != nil {
 			return nil, err
 		}

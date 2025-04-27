@@ -43,7 +43,7 @@ func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		util.WriteBytes(buf, encoded)
+		util.WriteVarByteArray(buf, encoded)
 	}
 	util.WriteVarUint(buf, uint64(len(m.Removed)))
 	for _, sub := range m.Removed {
@@ -51,7 +51,7 @@ func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		util.WriteBytes(buf, encoded)
+		util.WriteVarByteArray(buf, encoded)
 	}
 	return buf.Bytes(), nil
 }
@@ -64,7 +64,7 @@ func decodeSubscriptionUpdateMessageV1Body(b *bytes.Buffer) (*SubscriptionUpdate
 
 	added := make([]query.Query, 0, addedLen)
 	for i := uint64(0); i < addedLen; i++ {
-		queryBytes, err := util.ReadBytes(b)
+		queryBytes, err := util.ReadVarByteArray(b)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +82,7 @@ func decodeSubscriptionUpdateMessageV1Body(b *bytes.Buffer) (*SubscriptionUpdate
 
 	removed := make([]query.Query, 0, removedLen)
 	for i := uint64(0); i < removedLen; i++ {
-		queryBytes, err := util.ReadBytes(b)
+		queryBytes, err := util.ReadVarByteArray(b)
 		if err != nil {
 			return nil, err
 		}

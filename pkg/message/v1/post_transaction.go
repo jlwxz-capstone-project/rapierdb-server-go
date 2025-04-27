@@ -25,7 +25,7 @@ func (m *PostTransactionMessageV1) DebugPrint() string {
 func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteVarUint(buf, m.Type())
-	msgBytes, err := m.Transaction.Encode()
+	msgBytes, err := storage_engine.EncodeTransaction(m.Transaction)
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +33,8 @@ func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodePostTransactionMessageV1Body(b *bytes.Buffer) (*PostTransactionMessageV1, error) {
-	tr, err := storage_engine.DecodeTransaction(b)
+func decodePostTransactionMessageV1(b *bytes.Buffer) (*PostTransactionMessageV1, error) {
+	tr, err := storage_engine.ReadTransaction(b)
 	if err != nil {
 		return nil, err
 	}

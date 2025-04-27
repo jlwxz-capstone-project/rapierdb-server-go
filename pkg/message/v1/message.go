@@ -41,7 +41,7 @@ func DecodeMessage(b *bytes.Buffer) (Message, error) {
 	case MSG_TYPE_TRANSACTION_FAILED_V1:
 		return decodeTransactionFailedMessageV1Body(b)
 	case MSG_TYPE_POST_TRANSACTION_V1:
-		return decodePostTransactionMessageV1Body(b)
+		return decodePostTransactionMessageV1(b)
 	case MSG_TYPE_POST_DOC_V1:
 		return decodeSyncMessageV1Body(b)
 	case MSG_TYPE_VERSION_QUERY_V1:

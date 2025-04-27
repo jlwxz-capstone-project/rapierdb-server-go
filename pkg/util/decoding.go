@@ -8,6 +8,11 @@ import (
 
 var ErrVarintOverflow = errors.New("varint overflow")
 
+// ReadUint8 从 buf 中解码一个无符号 8 位整数
+func ReadUint8(buf *bytes.Buffer) (uint8, error) {
+	return buf.ReadByte()
+}
+
 // ReadVarUint 从 buf 中解码一个无符号整数，
 // 使用变长编码，每个字节的高位表示是否继续，低位表示数值
 func ReadVarUint(buf *bytes.Buffer) (uint64, error) {
@@ -111,9 +116,9 @@ func ReadBool(buf *bytes.Buffer) (bool, error) {
 	return b != 0, nil
 }
 
-// ReadBytes 从 buf 中解码一个字节数组
+// ReadVarByteArray 从 buf 中解码一个字节数组
 // 先读取数组的长度，然后读取数组内容
-func ReadBytes(buf *bytes.Buffer) ([]byte, error) {
+func ReadVarByteArray(buf *bytes.Buffer) ([]byte, error) {
 	length, err := ReadVarUint(buf)
 	if err != nil {
 		return nil, err

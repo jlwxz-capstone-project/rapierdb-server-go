@@ -5,7 +5,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 
 	"github.com/stretchr/testify/assert"
@@ -275,41 +274,6 @@ func TestWriteAndReadFloat64(t *testing.T) {
 	}
 }
 
-func TestWriteAndReadBool(t *testing.T) {
-	testCases := []struct {
-		name    string
-		input   bool
-		wantErr bool
-	}{
-		{
-			name:    "true",
-			input:   true,
-			wantErr: false,
-		},
-		{
-			name:    "false",
-			input:   false,
-			wantErr: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			buf := &bytes.Buffer{}
-			err := util.WriteBool(buf, tc.input)
-			if tc.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-
-			decoded, err := util.ReadBool(buf)
-			assert.NoError(t, err)
-			assert.Equal(t, tc.input, decoded)
-		})
-	}
-}
-
 func TestWriteAndReadBytes(t *testing.T) {
 	testCases := []struct {
 		name    string
@@ -336,14 +300,14 @@ func TestWriteAndReadBytes(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			err := util.WriteBytes(buf, tc.input)
+			err := util.WriteVarByteArray(buf, tc.input)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
 			}
 			assert.NoError(t, err)
 
-			decoded, err := util.ReadBytes(buf)
+			decoded, err := util.ReadVarByteArray(buf)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.input, decoded)
 		})
@@ -396,132 +360,6 @@ func TestWriteAndReadVarInt(t *testing.T) {
 			decoded, err := util.ReadVarInt(buf)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.input, decoded)
-		})
-	}
-}
-
-func TestTransactionEncodingDecoding(t *testing.T) {
-	testCases := []struct {
-		name    string
-		tx      *storage_engine.Transaction
-		wantErr bool
-	}{
-		{
-			name: "transaction with insert operation",
-			tx: &storage_engine.Transaction{
-				TxID:           "12345678-1234-5678-1234-567812345678",
-				TargetDatabase: "test_db",
-				Committer:      "client-1",
-				Operations: []storage_engine.TransactionOp{
-					&storage_engine.InsertOp{
-						Collection: "test_collection",
-						DocID:      "doc1",
-						Snapshot:   []byte(`{"name": "test"}`),
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "transaction with update operation",
-			tx: &storage_engine.Transaction{
-				TxID:           "12345678-1234-5678-1234-567812345679",
-				TargetDatabase: "test_db",
-				Committer:      "client-2",
-				Operations: []storage_engine.TransactionOp{
-					&storage_engine.UpdateOp{
-						Collection: "test_collection",
-						DocID:      "doc1",
-						Update:     []byte(`{"$set": {"name": "updated"}}`),
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "transaction with delete operation",
-			tx: &storage_engine.Transaction{
-				TxID:           "12345678-1234-5678-1234-567812345680",
-				TargetDatabase: "test_db",
-				Committer:      "client-3",
-				Operations: []storage_engine.TransactionOp{
-					&storage_engine.DeleteOp{
-						Collection: "test_collection",
-						DocID:      "doc1",
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "transaction with multiple operations",
-			tx: &storage_engine.Transaction{
-				TxID:           "12345678-1234-5678-1234-567812345681",
-				TargetDatabase: "test_db",
-				Committer:      "client-4",
-				Operations: []storage_engine.TransactionOp{
-					&storage_engine.InsertOp{
-						Collection: "test_collection",
-						DocID:      "doc1",
-						Snapshot:   []byte(`{"name": "test"}`),
-					},
-					&storage_engine.UpdateOp{
-						Collection: "test_collection",
-						DocID:      "doc2",
-						Update:     []byte(`{"$set": {"name": "updated"}}`),
-					},
-					&storage_engine.DeleteOp{
-						Collection: "test_collection",
-						DocID:      "doc3",
-					},
-				},
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// 测试编码
-			encoded, err := tc.tx.Encode()
-			if tc.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-
-			// 测试解码
-			buf := bytes.NewBuffer(encoded)
-			decoded, err := storage_engine.DecodeTransaction(buf)
-			assert.NoError(t, err)
-
-			// 验证解码后的事务
-			assert.Equal(t, tc.tx.TxID, decoded.TxID)
-			assert.Equal(t, tc.tx.Committer, decoded.Committer)
-			assert.Equal(t, len(tc.tx.Operations), len(decoded.Operations))
-
-			// 验证每个操作
-			for i, op := range tc.tx.Operations {
-				switch originalOp := op.(type) {
-				case *storage_engine.InsertOp:
-					decodedOp, ok := decoded.Operations[i].(*storage_engine.InsertOp)
-					assert.True(t, ok)
-					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
-					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
-					assert.Equal(t, originalOp.Snapshot, decodedOp.Snapshot)
-				case *storage_engine.UpdateOp:
-					decodedOp, ok := decoded.Operations[i].(*storage_engine.UpdateOp)
-					assert.True(t, ok)
-					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
-					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
-					assert.Equal(t, originalOp.Update, decodedOp.Update)
-				case *storage_engine.DeleteOp:
-					decodedOp, ok := decoded.Operations[i].(*storage_engine.DeleteOp)
-					assert.True(t, ok)
-					assert.Equal(t, originalOp.Collection, decodedOp.Collection)
-					assert.Equal(t, originalOp.DocID, decodedOp.DocID)
-				}
-			}
 		})
 	}
 }

@@ -46,7 +46,7 @@ func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMess
 		if err != nil {
 			return nil, err
 		}
-		version, err := util.ReadBytes(b)
+		version, err := util.ReadVarByteArray(b)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +64,7 @@ func (m *VersionQueryRespMessageV1) Encode() ([]byte, error) {
 	util.WriteVarUint(buf, uint64(len(m.Responses)))
 	for docKey, version := range m.Responses {
 		util.WriteVarString(buf, docKey)
-		util.WriteBytes(buf, version)
+		util.WriteVarByteArray(buf, version)
 	}
 	return buf.Bytes(), nil
 }
