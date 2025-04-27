@@ -50,7 +50,7 @@ type Synchronizer struct {
 	statusLock sync.RWMutex
 	eventBus   *util.EventBus[SynchronizerStatus]
 
-	// 维护VQM和请求文档集合的映射关系:clientId : (vqmId : docIds)
+	//维护VQM和请求文档集合的映射关系：clientId -> vqmId -> docIds
 	vqmToDocIDsMap map[string]map[string][]string
 }
 
@@ -259,11 +259,11 @@ func (s *Synchronizer) Start() error {
 				docKeyBytes := util.String2Bytes(docKey)
 				collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
 				docId := storage_engine.GetDocIdFromKey(docKeyBytes)
-				//判断是否越权
+				//判断是否越权请求文档
 				docIdsQueryKey := collection + ":" + docId
 				validDocIds := s.vqmToDocIDsMap[clientId][msg.ID]
 				if !slices.Contains(validDocIds, docIdsQueryKey) {
-					log.Debugf("msgHandler: 客户端 %s 请求的文档 %s/%s 越权", clientId, collection, docId)
+					log.Errorf("msgHandler: 客户端 %s 越权请求文档 %s/%s", clientId, collection, docId)
 					continue
 				}
 				if vvBytes == nil || len(vvBytes) == 0 {
@@ -288,9 +288,9 @@ func (s *Synchronizer) Start() error {
 					toUpsert[docKey] = updateBytes
 				}
 			}
-			// 处理完毕，删除vqmToDocIDsMap中该vqm对应的所有文档,避免map中数据堆积
+			//处理完毕，删除vqmToDocIDsMap中该vqm对应的所有文档，避免map中数据堆积
 			delete(s.vqmToDocIDsMap[clientId], msg.ID)
-			//发送同步消息
+			//发送同步消息SyncMsg
 			if len(toUpsert) > 0 {
 				syncMsg := message.PostDocMessageV1{
 					Upsert: toUpsert,
