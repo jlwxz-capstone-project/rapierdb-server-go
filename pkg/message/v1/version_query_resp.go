@@ -13,6 +13,7 @@ import (
 // 用于响应服务端的 VersionQueryMessage，携带有服务端要求的
 // 指定文档的版本
 type VersionQueryRespMessageV1 struct {
+	ID        string
 	Responses map[string][]byte // docKey -> version (bytes)，空数组表示文档不存在
 }
 
@@ -36,6 +37,10 @@ func (m *VersionQueryRespMessageV1) DebugPrint() string {
 // decodeVersionQueryRespMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryRespMessageV1
 // 如果解码失败，返回 nil
 func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMessageV1, error) {
+	id, err := util.ReadVarString(b)
+	if err != nil {
+		return nil, err
+	}
 	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -53,6 +58,7 @@ func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMess
 		responses[docKey] = version
 	}
 	return &VersionQueryRespMessageV1{
+		ID:        id,
 		Responses: responses,
 	}, nil
 }
@@ -61,6 +67,7 @@ func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMess
 func (m *VersionQueryRespMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteVarUint(buf, m.Type())
+	util.WriteVarString(buf, m.ID)
 	util.WriteVarUint(buf, uint64(len(m.Responses)))
 	for docKey, version := range m.Responses {
 		util.WriteVarString(buf, docKey)

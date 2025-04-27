@@ -135,6 +135,7 @@ func (c *TestClient) handleServerMessage(data []byte) {
 		}
 	case *message.VersionQueryMessageV1:
 		resp := &message.VersionQueryRespMessageV1{
+			ID:        msg.ID,
 			Responses: make(map[string][]byte),
 		}
 
