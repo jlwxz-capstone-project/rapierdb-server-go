@@ -18,13 +18,13 @@ var _ Message = &PostTransactionMessageV1{}
 
 func (m *PostTransactionMessageV1) isMessage() {}
 
-func (m *PostTransactionMessageV1) DebugPrint() string {
+func (m *PostTransactionMessageV1) DebugSprint() string {
 	return fmt.Sprintf("PostTransactionMessageV1{Transaction: %v}", m.Transaction)
 }
 
 func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
+	util.WriteUint8(buf, uint8(m.Type()))
 	msgBytes, err := storage_engine.EncodeTransaction(m.Transaction)
 	if err != nil {
 		return nil, err
@@ -43,6 +43,6 @@ func decodePostTransactionMessageV1(b *bytes.Buffer) (*PostTransactionMessageV1,
 	}, nil
 }
 
-func (m *PostTransactionMessageV1) Type() uint64 {
+func (m *PostTransactionMessageV1) Type() uint8 {
 	return MSG_TYPE_POST_TRANSACTION_V1
 }

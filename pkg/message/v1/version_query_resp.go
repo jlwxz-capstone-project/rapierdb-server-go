@@ -20,7 +20,7 @@ var _ Message = &VersionQueryRespMessageV1{}
 
 func (m *VersionQueryRespMessageV1) isMessage() {}
 
-func (m *VersionQueryRespMessageV1) DebugPrint() string {
+func (m *VersionQueryRespMessageV1) DebugSprint() string {
 	respStrs := make([]string, len(m.Responses))
 	i := 0
 	for docKey, version := range m.Responses {
@@ -33,9 +33,37 @@ func (m *VersionQueryRespMessageV1) DebugPrint() string {
 	return fmt.Sprintf("VersionQueryRespMessageV1{Responses: {%s}}", strings.Join(respStrs, ", "))
 }
 
+// Encode 将 VersionQueryRespMessageV1 编码为 []byte
+func (m *VersionQueryRespMessageV1) Encode() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	err := util.WriteUint8(buf, uint8(m.Type()))
+	if err != nil {
+		return nil, err
+	}
+	err = util.WriteVarUint(buf, uint64(len(m.Responses)))
+	if err != nil {
+		return nil, err
+	}
+	for docKey, version := range m.Responses {
+		err := util.WriteVarString(buf, docKey)
+		if err != nil {
+			return nil, err
+		}
+		err = util.WriteVarByteArray(buf, version)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+func (m *VersionQueryRespMessageV1) Type() uint8 {
+	return MSG_TYPE_VERSION_QUERY_RESP_V1
+}
+
 // decodeVersionQueryRespMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryRespMessageV1
 // 如果解码失败，返回 nil
-func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMessageV1, error) {
+func decodeVersionQueryRespMessageV1(b *bytes.Buffer) (*VersionQueryRespMessageV1, error) {
 	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -55,20 +83,4 @@ func decodeVersionQueryRespMessageV1Body(b *bytes.Buffer) (*VersionQueryRespMess
 	return &VersionQueryRespMessageV1{
 		Responses: responses,
 	}, nil
-}
-
-// Encode 将 VersionQueryRespMessageV1 编码为 []byte
-func (m *VersionQueryRespMessageV1) Encode() ([]byte, error) {
-	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
-	util.WriteVarUint(buf, uint64(len(m.Responses)))
-	for docKey, version := range m.Responses {
-		util.WriteVarString(buf, docKey)
-		util.WriteVarByteArray(buf, version)
-	}
-	return buf.Bytes(), nil
-}
-
-func (m *VersionQueryRespMessageV1) Type() uint64 {
-	return MSG_TYPE_VERSION_QUERY_RESP_V1
 }

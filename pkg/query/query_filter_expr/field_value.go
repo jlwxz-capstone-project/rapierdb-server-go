@@ -23,7 +23,7 @@ func NewFieldValueExpr(path QueryFilterExpr) *FieldValueExpr {
 	}
 }
 
-func (e *FieldValueExpr) DebugPrint() string {
+func (e *FieldValueExpr) DebugSprint() string {
 	return fmt.Sprintf("FieldValueExpr{Path: %s}", e.Path)
 }
 

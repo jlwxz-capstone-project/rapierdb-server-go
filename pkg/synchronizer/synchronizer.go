@@ -183,7 +183,7 @@ func (s *Synchronizer) Start() error {
 		case *message.PostTransactionMessageV1:
 			// 提交事务到存储引擎
 			// 为事务设置提交者ID
-			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
 			msg.Transaction.Committer = clientId
 			log.Debugf("msgHandler: 正在提交事务 %s 到存储引擎", msg.Transaction.TxID)
 			err = s.storageEngine.Commit(msg.Transaction)
@@ -194,10 +194,10 @@ func (s *Synchronizer) Start() error {
 			log.Debugf("msgHandler: 事务 %s 提交成功", msg.Transaction.TxID)
 
 		case *message.SubscriptionUpdateMessageV1:
-			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
 			// 处理移除的订阅
 			for _, q := range msg.Removed {
-				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q.DebugPrint())
+				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q.DebugSprint())
 				err := s.queryManager.RemoveSubscriptedQuery(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 移除订阅失败: %v", err)
@@ -207,7 +207,7 @@ func (s *Synchronizer) Start() error {
 			// 处理添加的订阅
 			vqm := message.NewVersionQueryMessageV1()
 			for _, q := range msg.Added {
-				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q.DebugPrint())
+				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q.DebugSprint())
 				err := s.queryManager.SubscribeNewQuery(clientId, q)
 				if err != nil {
 					log.Errorf("msgHandler: 添加订阅失败: %v", err)
@@ -242,11 +242,11 @@ func (s *Synchronizer) Start() error {
 				return
 			}
 
-			log.Debugf("msgHandler: 向客户端 %s 发送版本查询消息 %s", clientId, vqm.DebugPrint())
+			log.Debugf("msgHandler: 向客户端 %s 发送版本查询消息 %s", clientId, vqm.DebugSprint())
 			s.channel.Send(clientId, vqmBytes)
 
 		case *message.VersionQueryRespMessageV1:
-			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugPrint(), clientId)
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
 			toUpsert := make(map[string][]byte)
 			toDelete := make([]string, 0)
 			for docKey, vvBytes := range msg.Responses {
@@ -278,7 +278,7 @@ func (s *Synchronizer) Start() error {
 					Upsert: toUpsert,
 					Delete: toDelete,
 				}
-				log.Debugf("msgHandler: 向客户端 %s 发送同步消息 %s", clientId, syncMsg.DebugPrint())
+				log.Debugf("msgHandler: 向客户端 %s 发送同步消息 %s", clientId, syncMsg.DebugSprint())
 				syncMsgBytes, err := syncMsg.Encode()
 				if err != nil {
 					log.Errorf("msgHandler: 编码同步消息失败: %v", err)

@@ -24,8 +24,8 @@ func NewEqExpr(o1 QueryFilterExpr, o2 QueryFilterExpr) *EqExpr {
 	}
 }
 
-func (e *EqExpr) DebugPrint() string {
-	return fmt.Sprintf("EqExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+func (e *EqExpr) DebugSprint() string {
+	return fmt.Sprintf("EqExpr{O1: %s, O2: %s}", e.O1.DebugSprint(), e.O2.DebugSprint())
 }
 
 func (e *EqExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

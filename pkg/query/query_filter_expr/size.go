@@ -24,8 +24,8 @@ func NewSizeExpr(target QueryFilterExpr, size QueryFilterExpr) *SizeExpr {
 	}
 }
 
-func (e *SizeExpr) DebugPrint() string {
-	return fmt.Sprintf("SizeExpr{Target: %s, Size: %s}", e.Target.DebugPrint(), e.Size.DebugPrint())
+func (e *SizeExpr) DebugSprint() string {
+	return fmt.Sprintf("SizeExpr{Target: %s, Size: %s}", e.Target.DebugSprint(), e.Size.DebugSprint())
 }
 
 func (e *SizeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

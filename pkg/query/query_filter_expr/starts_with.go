@@ -24,8 +24,8 @@ func NewStartsWithExpr(target QueryFilterExpr, prefix QueryFilterExpr) *StartsWi
 	}
 }
 
-func (e *StartsWithExpr) DebugPrint() string {
-	return fmt.Sprintf("StartsWithExpr{Target: %s, Prefix: %s}", e.Target.DebugPrint(), e.Prefix.DebugPrint())
+func (e *StartsWithExpr) DebugSprint() string {
+	return fmt.Sprintf("StartsWithExpr{Target: %s, Prefix: %s}", e.Target.DebugSprint(), e.Prefix.DebugSprint())
 }
 
 func (e *StartsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

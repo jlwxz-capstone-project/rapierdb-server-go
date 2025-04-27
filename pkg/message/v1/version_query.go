@@ -20,7 +20,7 @@ var _ Message = &VersionQueryMessageV1{}
 
 func (m *VersionQueryMessageV1) isMessage() {}
 
-func (m *VersionQueryMessageV1) DebugPrint() string {
+func (m *VersionQueryMessageV1) DebugSprint() string {
 	queryStrs := make([]string, len(m.Queries))
 	i := 0
 	for docKey, version := range m.Queries {
@@ -39,9 +39,21 @@ func NewVersionQueryMessageV1() *VersionQueryMessageV1 {
 	}
 }
 
+// Encode 将 VersionQueryMessageV1 编码为 []byte
+func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	util.WriteUint8(buf, m.Type())
+	nDocs := len(m.Queries)
+	util.WriteVarUint(buf, uint64(nDocs))
+	for docKey := range m.Queries {
+		util.WriteVarString(buf, docKey)
+	}
+	return buf.Bytes(), nil
+}
+
 // decodeVersionQueryMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryMessageV1
 // 如果解码失败，返回 nil
-func decodeVersionQueryMessageV1Body(b *bytes.Buffer) (*VersionQueryMessageV1, error) {
+func decodeVersionQueryMessageV1(b *bytes.Buffer) (*VersionQueryMessageV1, error) {
 	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -59,19 +71,7 @@ func decodeVersionQueryMessageV1Body(b *bytes.Buffer) (*VersionQueryMessageV1, e
 	}, nil
 }
 
-// Encode 将 VersionQueryMessageV1 编码为 []byte
-func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
-	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
-	nDocs := len(m.Queries)
-	util.WriteVarUint(buf, uint64(nDocs))
-	for docKey := range m.Queries {
-		util.WriteVarString(buf, docKey)
-	}
-	return buf.Bytes(), nil
-}
-
-func (m *VersionQueryMessageV1) Type() uint64 {
+func (m *VersionQueryMessageV1) Type() uint8 {
 	return MSG_TYPE_VERSION_QUERY_V1
 }
 

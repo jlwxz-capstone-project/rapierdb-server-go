@@ -4,11 +4,13 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/stretchr/testify/assert"
 )
@@ -87,4 +89,29 @@ func TestQfe(t *testing.T) {
 			assert.Equal(t, testCase.Expected.Value, res.Value)
 		})
 	}
+}
+
+func TestFindManyQuery(t *testing.T) {
+	q := &query.FindManyQuery{
+		Collection: "test",
+		Filter: qfe.NewGtExpr(
+			qfe.NewFieldValueExpr(qfe.NewValueExpr("age")),
+			qfe.NewValueExpr(18),
+		),
+		Sort: []query.SortField{
+			{
+				Field: "name",
+				Order: query.SortOrderAsc,
+			},
+		},
+		Skip:  0,
+		Limit: 10,
+	}
+	encoded, err := q.Encode()
+	assert.NoError(t, err)
+	fmt.Println(string(encoded))
+	decoded, err := query.DecodeFindManyQuery(encoded)
+	assert.NoError(t, err)
+	assert.Equal(t, q, decoded)
+	fmt.Printf("decoded: %+v\n", decoded)
 }

@@ -19,14 +19,14 @@ var _ Message = &TransactionFailedMessageV1{}
 
 func (m *TransactionFailedMessageV1) isMessage() {}
 
-func (m *TransactionFailedMessageV1) DebugPrint() string {
+func (m *TransactionFailedMessageV1) DebugSprint() string {
 	return fmt.Sprintf("TransactionFailedMessageV1{TxID: %s, Reason: %v}", m.TxID, m.Reason)
 }
 
 // Encode 将 TransactionFailedMessageV1 编码为 []byte
 func (m *TransactionFailedMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
+	util.WriteUint8(buf, m.Type())
 	err := util.WriteVarString(buf, m.TxID)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func (m *TransactionFailedMessageV1) Encode() ([]byte, error) {
 
 // DecodeTransactionFailedMessageV1 从 bytes.Buffer 中解码得到 TransactionFailedMessageV1
 // 如果解码失败，返回 nil
-func decodeTransactionFailedMessageV1Body(b *bytes.Buffer) (*TransactionFailedMessageV1, error) {
+func decodeTransactionFailedMessageV1(b *bytes.Buffer) (*TransactionFailedMessageV1, error) {
 	txID, err := util.ReadVarString(b)
 	if err != nil {
 		return nil, err
@@ -55,6 +55,6 @@ func decodeTransactionFailedMessageV1Body(b *bytes.Buffer) (*TransactionFailedMe
 	}, nil
 }
 
-func (m *TransactionFailedMessageV1) Type() uint64 {
+func (m *TransactionFailedMessageV1) Type() uint8 {
 	return MSG_TYPE_TRANSACTION_FAILED_V1
 }

@@ -23,8 +23,8 @@ func NewEndsWithExpr(target QueryFilterExpr, suffix QueryFilterExpr) *EndsWithEx
 	}
 }
 
-func (e *EndsWithExpr) DebugPrint() string {
-	return fmt.Sprintf("EndsWithExpr{Target: %s, Suffix: %s}", e.Target.DebugPrint(), e.Suffix.DebugPrint())
+func (e *EndsWithExpr) DebugSprint() string {
+	return fmt.Sprintf("EndsWithExpr{Target: %s, Suffix: %s}", e.Target.DebugSprint(), e.Suffix.DebugSprint())
 }
 
 func (e *EndsWithExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

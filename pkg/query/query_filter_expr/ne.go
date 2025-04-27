@@ -23,8 +23,8 @@ func NewNeExpr(o1 QueryFilterExpr, o2 QueryFilterExpr) *NeExpr {
 	}
 }
 
-func (e *NeExpr) DebugPrint() string {
-	return fmt.Sprintf("NeExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+func (e *NeExpr) DebugSprint() string {
+	return fmt.Sprintf("NeExpr{O1: %s, O2: %s}", e.O1.DebugSprint(), e.O2.DebugSprint())
 }
 
 func (e *NeExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

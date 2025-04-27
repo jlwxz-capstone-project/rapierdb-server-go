@@ -23,8 +23,8 @@ func NewExistsExpr(path QueryFilterExpr) *ExistsExpr {
 	}
 }
 
-func (e *ExistsExpr) DebugPrint() string {
-	return fmt.Sprintf("ExistsExpr{Path: %s}", e.Path.DebugPrint())
+func (e *ExistsExpr) DebugSprint() string {
+	return fmt.Sprintf("ExistsExpr{Path: %s}", e.Path.DebugSprint())
 }
 
 func (e *ExistsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {
