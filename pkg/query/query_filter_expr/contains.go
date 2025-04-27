@@ -24,8 +24,8 @@ func NewContainsExpr(target QueryFilterExpr, substr QueryFilterExpr) *ContainsEx
 	}
 }
 
-func (e *ContainsExpr) DebugPrint() string {
-	return fmt.Sprintf("ContainsExpr{Target: %s, Substr: %s}", e.Target.DebugPrint(), e.Substr.DebugPrint())
+func (e *ContainsExpr) DebugSprint() string {
+	return fmt.Sprintf("ContainsExpr{Target: %s, Substr: %s}", e.Target.DebugSprint(), e.Substr.DebugSprint())
 }
 
 func (e *ContainsExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

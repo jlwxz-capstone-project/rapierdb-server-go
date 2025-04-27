@@ -24,13 +24,13 @@ func NewInExpr(o1 QueryFilterExpr, o2 []QueryFilterExpr) *InExpr {
 	}
 }
 
-func (e *InExpr) DebugPrint() string {
+func (e *InExpr) DebugSprint() string {
 	o2 := make([]string, len(e.O2))
 	for i, expr := range e.O2 {
-		o2[i] = expr.DebugPrint()
+		o2[i] = expr.DebugSprint()
 	}
 	o2Str := fmt.Sprintf("[%s]", strings.Join(o2, ", "))
-	return fmt.Sprintf("InExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), o2Str)
+	return fmt.Sprintf("InExpr{O1: %s, O2: %s}", e.O1.DebugSprint(), o2Str)
 }
 
 func (e *InExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

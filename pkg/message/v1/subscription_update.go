@@ -20,15 +20,15 @@ var _ Message = &SubscriptionUpdateMessageV1{}
 
 func (m *SubscriptionUpdateMessageV1) isMessage() {}
 
-func (m *SubscriptionUpdateMessageV1) DebugPrint() string {
+func (m *SubscriptionUpdateMessageV1) DebugSprint() string {
 	addedStrs := make([]string, len(m.Added))
 	for i, sub := range m.Added {
-		addedStrs[i] = sub.DebugPrint()
+		addedStrs[i] = sub.DebugSprint()
 	}
 	addedStr := strings.Join(addedStrs, ", ")
 	removedStrs := make([]string, len(m.Removed))
 	for i, sub := range m.Removed {
-		removedStrs[i] = sub.DebugPrint()
+		removedStrs[i] = sub.DebugSprint()
 	}
 	removedStr := strings.Join(removedStrs, ", ")
 	return fmt.Sprintf("SubscriptionUpdateMessageV1{Added: [%s], Removed: [%s]}", addedStr, removedStr)
@@ -36,14 +36,14 @@ func (m *SubscriptionUpdateMessageV1) DebugPrint() string {
 
 func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
+	util.WriteUint8(buf, uint8(m.Type()))
 	util.WriteVarUint(buf, uint64(len(m.Added)))
 	for _, sub := range m.Added {
 		encoded, err := sub.Encode()
 		if err != nil {
 			return nil, err
 		}
-		util.WriteBytes(buf, encoded)
+		util.WriteVarString(buf, string(encoded))
 	}
 	util.WriteVarUint(buf, uint64(len(m.Removed)))
 	for _, sub := range m.Removed {
@@ -51,42 +51,42 @@ func (m *SubscriptionUpdateMessageV1) Encode() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		util.WriteBytes(buf, encoded)
+		util.WriteVarString(buf, string(encoded))
 	}
 	return buf.Bytes(), nil
 }
 
-func decodeSubscriptionUpdateMessageV1Body(b *bytes.Buffer) (*SubscriptionUpdateMessageV1, error) {
-	addedLen, err := util.ReadVarUint(b)
+func decodeSubscriptionUpdateMessageV1(b *bytes.Buffer) (*SubscriptionUpdateMessageV1, error) {
+	nAdded, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
 	}
 
-	added := make([]query.Query, 0, addedLen)
-	for i := uint64(0); i < addedLen; i++ {
-		queryBytes, err := util.ReadBytes(b)
+	added := make([]query.Query, 0, nAdded)
+	for i := uint64(0); i < nAdded; i++ {
+		queryStr, err := util.ReadVarString(b)
 		if err != nil {
 			return nil, err
 		}
-		query, err := query.DecodeQuery(queryBytes)
+		query, err := query.DecodeQuery([]byte(queryStr))
 		if err != nil {
 			return nil, err
 		}
 		added = append(added, query)
 	}
 
-	removedLen, err := util.ReadVarUint(b)
+	nRemoved, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
 	}
 
-	removed := make([]query.Query, 0, removedLen)
-	for i := uint64(0); i < removedLen; i++ {
-		queryBytes, err := util.ReadBytes(b)
+	removed := make([]query.Query, 0, nRemoved)
+	for i := uint64(0); i < nRemoved; i++ {
+		queryStr, err := util.ReadVarString(b)
 		if err != nil {
 			return nil, err
 		}
-		query, err := query.DecodeQuery(queryBytes)
+		query, err := query.DecodeQuery([]byte(queryStr))
 		if err != nil {
 			return nil, err
 		}
@@ -99,6 +99,6 @@ func decodeSubscriptionUpdateMessageV1Body(b *bytes.Buffer) (*SubscriptionUpdate
 	}, nil
 }
 
-func (m *SubscriptionUpdateMessageV1) Type() uint64 {
+func (m *SubscriptionUpdateMessageV1) Type() uint8 {
 	return MSG_TYPE_SUBSCRIPTION_UPDATE_V1
 }

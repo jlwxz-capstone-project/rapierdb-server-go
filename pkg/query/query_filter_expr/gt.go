@@ -23,8 +23,8 @@ func NewGtExpr(o1 QueryFilterExpr, o2 QueryFilterExpr) *GtExpr {
 	}
 }
 
-func (e *GtExpr) DebugPrint() string {
-	return fmt.Sprintf("GtExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+func (e *GtExpr) DebugSprint() string {
+	return fmt.Sprintf("GtExpr{O1: %s, O2: %s}", e.O1.DebugSprint(), e.O2.DebugSprint())
 }
 
 func (e *GtExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

@@ -121,7 +121,7 @@ func (c *TestClient) handleServerMessage(data []byte) {
 		return
 	}
 
-	log.Debugf("客户端收到 %s", msg.DebugPrint())
+	log.Debugf("客户端收到 %s", msg.DebugSprint())
 
 	switch msg := msg.(type) {
 	case *message.AckTransactionMessageV1:
@@ -215,7 +215,7 @@ func (c *TestClient) FindOne(q *query.FindOneQuery) (*ReactiveFindOneQuery, erro
 		if q, ok := q.(*ReactiveFindOneQuery); ok {
 			return q, nil
 		} else {
-			return nil, pe.WithStack(fmt.Errorf("query %s is not a FindOneQuery", q.Query.DebugPrint()))
+			return nil, pe.WithStack(fmt.Errorf("query %s is not a FindOneQuery", q.Query.DebugSprint()))
 		}
 	}
 
@@ -247,7 +247,7 @@ func (c *TestClient) FindMany(q *query.FindManyQuery) (*ReactiveFindManyQuery, e
 		if q, ok := q.(*ReactiveFindManyQuery); ok {
 			return q, nil
 		} else {
-			return nil, pe.WithStack(fmt.Errorf("query %s is not a FindManyQuery", q.Query.DebugPrint()))
+			return nil, pe.WithStack(fmt.Errorf("query %s is not a FindManyQuery", q.Query.DebugSprint()))
 		}
 	}
 

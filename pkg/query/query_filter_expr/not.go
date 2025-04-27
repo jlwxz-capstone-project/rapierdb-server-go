@@ -21,8 +21,8 @@ func NewNotExpr(expr QueryFilterExpr) *NotExpr {
 	}
 }
 
-func (e *NotExpr) DebugPrint() string {
-	return fmt.Sprintf("NotExpr{Expr: %s}", e.Expr.DebugPrint())
+func (e *NotExpr) DebugSprint() string {
+	return fmt.Sprintf("NotExpr{Expr: %s}", e.Expr.DebugSprint())
 }
 
 func (e *NotExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

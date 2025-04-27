@@ -13,7 +13,6 @@ import (
 // VersionQueryMessageV1 由服务端发送给客户端
 // 表示服务端希望查询客户端指定文档的版本
 type VersionQueryMessageV1 struct {
-	ID      string
 	Queries map[string]struct{} // collection -> doc_ids
 }
 
@@ -21,7 +20,7 @@ var _ Message = &VersionQueryMessageV1{}
 
 func (m *VersionQueryMessageV1) isMessage() {}
 
-func (m *VersionQueryMessageV1) DebugPrint() string {
+func (m *VersionQueryMessageV1) DebugSprint() string {
 	queryStrs := make([]string, len(m.Queries))
 	i := 0
 	for docKey, version := range m.Queries {
@@ -34,20 +33,27 @@ func (m *VersionQueryMessageV1) DebugPrint() string {
 	return fmt.Sprintf("VersionQueryMessageV1{Queries: {%s}}", strings.Join(queryStrs, ", "))
 }
 
-func NewVersionQueryMessageV1(id string) *VersionQueryMessageV1 {
+func NewVersionQueryMessageV1() *VersionQueryMessageV1 {
 	return &VersionQueryMessageV1{
-		ID:      id,
 		Queries: make(map[string]struct{}),
 	}
 }
 
+// Encode 将 VersionQueryMessageV1 编码为 []byte
+func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	util.WriteUint8(buf, m.Type())
+	nDocs := len(m.Queries)
+	util.WriteVarUint(buf, uint64(nDocs))
+	for docKey := range m.Queries {
+		util.WriteVarString(buf, docKey)
+	}
+	return buf.Bytes(), nil
+}
+
 // decodeVersionQueryMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryMessageV1
 // 如果解码失败，返回 nil
-func decodeVersionQueryMessageV1Body(b *bytes.Buffer) (*VersionQueryMessageV1, error) {
-	id, err := util.ReadVarString(b)
-	if err != nil {
-		return nil, err
-	}
+func decodeVersionQueryMessageV1(b *bytes.Buffer) (*VersionQueryMessageV1, error) {
 	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -61,25 +67,11 @@ func decodeVersionQueryMessageV1Body(b *bytes.Buffer) (*VersionQueryMessageV1, e
 		queries[docKey] = struct{}{}
 	}
 	return &VersionQueryMessageV1{
-		ID:      id,
 		Queries: queries,
 	}, nil
 }
 
-// Encode 将 VersionQueryMessageV1 编码为 []byte
-func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
-	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
-	util.WriteVarString(buf, m.ID)
-	nDocs := len(m.Queries)
-	util.WriteVarUint(buf, uint64(nDocs))
-	for docKey := range m.Queries {
-		util.WriteVarString(buf, docKey)
-	}
-	return buf.Bytes(), nil
-}
-
-func (m *VersionQueryMessageV1) Type() uint64 {
+func (m *VersionQueryMessageV1) Type() uint8 {
 	return MSG_TYPE_VERSION_QUERY_V1
 }
 

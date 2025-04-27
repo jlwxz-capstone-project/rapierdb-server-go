@@ -22,7 +22,7 @@ func (s *DatabaseMeta) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	util.WriteBytes(&buf, schemaJsonStr)
+	util.WriteVarByteArray(&buf, schemaJsonStr)
 	util.WriteVarString(&buf, s.Permissions)
 	util.WriteUint64(&buf, s.CreatedAt)
 	return buf.Bytes(), nil
@@ -31,7 +31,7 @@ func (s *DatabaseMeta) ToBytes() ([]byte, error) {
 // NewDatabaseMetaFromBytes 从字节数组反序列化数据库元数据
 func NewDatabaseMetaFromBytes(data []byte) (*DatabaseMeta, error) {
 	buf := bytes.NewBuffer(data)
-	schemaBytes, err := util.ReadBytes(buf)
+	schemaBytes, err := util.ReadVarByteArray(buf)
 	if err != nil {
 		return nil, err
 	}

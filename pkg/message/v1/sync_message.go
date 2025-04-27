@@ -20,7 +20,7 @@ var _ Message = &PostDocMessageV1{}
 
 func (m *PostDocMessageV1) isMessage() {}
 
-func (m *PostDocMessageV1) DebugPrint() string {
+func (m *PostDocMessageV1) DebugSprint() string {
 	upsertStrs := make([]string, len(m.Upsert))
 	i := 0
 	for docKey := range m.Upsert {
@@ -36,7 +36,7 @@ func (m *PostDocMessageV1) DebugPrint() string {
 
 func (m *PostDocMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
-	util.WriteVarUint(buf, m.Type())
+	util.WriteUint8(buf, uint8(m.Type()))
 	err := util.WriteVarUint(buf, uint64(len(m.Upsert)))
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (m *PostDocMessageV1) Encode() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = util.WriteBytes(buf, value)
+		err = util.WriteVarByteArray(buf, value)
 		if err != nil {
 			return nil, err
 		}
@@ -64,32 +64,32 @@ func (m *PostDocMessageV1) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodeSyncMessageV1Body(b *bytes.Buffer) (*PostDocMessageV1, error) {
-	upsertLen, err := util.ReadVarUint(b)
+func decodeSyncMessageV1(b *bytes.Buffer) (*PostDocMessageV1, error) {
+	nUpsert, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
 	}
 
-	upsert := make(map[string][]byte, upsertLen)
-	for i := uint64(0); i < upsertLen; i++ {
+	upsert := make(map[string][]byte, nUpsert)
+	for i := uint64(0); i < nUpsert; i++ {
 		key, err := util.ReadVarString(b)
 		if err != nil {
 			return nil, err
 		}
-		value, err := util.ReadBytes(b)
+		value, err := util.ReadVarByteArray(b)
 		if err != nil {
 			return nil, err
 		}
 		upsert[key] = value
 	}
 
-	deleteLen, err := util.ReadVarUint(b)
+	nDelete, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
 	}
 
-	delete := make([]string, 0, deleteLen)
-	for i := uint64(0); i < deleteLen; i++ {
+	delete := make([]string, 0, nDelete)
+	for i := uint64(0); i < nDelete; i++ {
 		key, err := util.ReadVarString(b)
 		if err != nil {
 			return nil, err
@@ -103,6 +103,6 @@ func decodeSyncMessageV1Body(b *bytes.Buffer) (*PostDocMessageV1, error) {
 	}, nil
 }
 
-func (m *PostDocMessageV1) Type() uint64 {
-	return MSG_TYPE_POST_DOC_V1
+func (m *PostDocMessageV1) Type() uint8 {
+	return MSG_TYPE_SYNC_V1
 }

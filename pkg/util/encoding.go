@@ -5,6 +5,11 @@ import (
 	"encoding/binary"
 )
 
+// WriteUint8 编码一个无符号 8 位整数到 buf 中
+func WriteUint8(buf *bytes.Buffer, n uint8) error {
+	return buf.WriteByte(n)
+}
+
 // WriteVarUint 编码一个无符号整数到 buf 中，
 // 使用变长编码，每个字节的高位表示是否继续，低位表示数值
 func WriteVarUint(buf *bytes.Buffer, x uint64) error {
@@ -68,17 +73,9 @@ func WriteFloat64(buf *bytes.Buffer, n float64) error {
 	return binary.Write(buf, binary.LittleEndian, n)
 }
 
-// WriteBool 编码一个布尔值到 buf 中，使用一个字节表示
-func WriteBool(buf *bytes.Buffer, b bool) error {
-	if b {
-		return buf.WriteByte(1)
-	}
-	return buf.WriteByte(0)
-}
-
-// WriteBytes 编码一个字节数组到 buf 中
+// WriteVarByteArray 编码一个变长字节数组到 buf 中
 // 先写入数组的长度，然后写入数组内容
-func WriteBytes(buf *bytes.Buffer, b []byte) error {
+func WriteVarByteArray(buf *bytes.Buffer, b []byte) error {
 	if err := WriteVarUint(buf, uint64(len(b))); err != nil {
 		return err
 	}
@@ -92,4 +89,12 @@ func WriteVarInt(buf *bytes.Buffer, x int64) error {
 	// ZigZag 编码：(x << 1) ^ (x >> 63)
 	ux := uint64((x << 1) ^ (x >> 63))
 	return WriteVarUint(buf, ux)
+}
+
+// WriteBool 编码一个布尔值到 buf 中，与 JS 的 readAny 兼容
+func WriteBool(buf *bytes.Buffer, b bool) error {
+	if b {
+		return buf.WriteByte(120) // JS readAny uses 120 for true
+	}
+	return buf.WriteByte(121) // JS readAny uses 121 for false
 }

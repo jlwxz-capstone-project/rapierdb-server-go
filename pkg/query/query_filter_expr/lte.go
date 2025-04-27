@@ -23,8 +23,8 @@ func NewLteExpr(o1 QueryFilterExpr, o2 QueryFilterExpr) *LteExpr {
 	}
 }
 
-func (e *LteExpr) DebugPrint() string {
-	return fmt.Sprintf("LteExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), e.O2.DebugPrint())
+func (e *LteExpr) DebugSprint() string {
+	return fmt.Sprintf("LteExpr{O1: %s, O2: %s}", e.O1.DebugSprint(), e.O2.DebugSprint())
 }
 
 func (e *LteExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

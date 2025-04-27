@@ -17,13 +17,13 @@ type AllExpr struct {
 	Items  []QueryFilterExpr   `json:"items"`
 }
 
-func (e *AllExpr) DebugPrint() string {
+func (e *AllExpr) DebugSprint() string {
 	items := make([]string, len(e.Items))
 	for i, item := range e.Items {
-		items[i] = item.DebugPrint()
+		items[i] = item.DebugSprint()
 	}
 	itemsStr := fmt.Sprintf("[%s]", strings.Join(items, ", "))
-	return fmt.Sprintf("AllExpr{Target: %s, Items: %s}", e.Target.DebugPrint(), itemsStr)
+	return fmt.Sprintf("AllExpr{Target: %s, Items: %s}", e.Target.DebugSprint(), itemsStr)
 }
 
 func (e *AllExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

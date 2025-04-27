@@ -26,7 +26,7 @@ func NewValueExpr(value any) *ValueExpr {
 	}
 }
 
-func (e *ValueExpr) DebugPrint() string {
+func (e *ValueExpr) DebugSprint() string {
 	return fmt.Sprintf("ValueExpr{Value: %v}", e.Value)
 }
 

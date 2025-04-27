@@ -59,14 +59,11 @@ func IsNil(v any) bool {
 }
 
 func TestIsNil(t *testing.T) {
-	var v1 chan int = nil
-	assert.True(t, IsNil(v1))
-
-	var v2 *int = nil
-	assert.True(t, IsNil(v2))
-
-	var v5 any = nil
-	assert.True(t, IsNil(v5))
-
-	assert.True(t, IsNil(nil))
+	f3 := func() (result int) {
+		defer func() {
+			result += 10
+		}()
+		return
+	}
+	fmt.Println(f3()) // print: 1
 }

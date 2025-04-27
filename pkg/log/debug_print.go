@@ -3,12 +3,12 @@ package log
 import "fmt"
 
 type DebugPrintable interface {
-	DebugPrint() string
+	DebugSprint() string
 }
 
-func DebugPrint(v any) string {
+func DebugSprint(v any) string {
 	if dp, ok := v.(DebugPrintable); ok {
-		return dp.DebugPrint()
+		return dp.DebugSprint()
 	} else {
 		return fmt.Sprintf("%v", v)
 	}

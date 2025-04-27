@@ -24,13 +24,13 @@ func NewNinExpr(o1 QueryFilterExpr, o2 []QueryFilterExpr) *NinExpr {
 	}
 }
 
-func (e *NinExpr) DebugPrint() string {
+func (e *NinExpr) DebugSprint() string {
 	o2 := make([]string, len(e.O2))
 	for i, expr := range e.O2 {
-		o2[i] = expr.DebugPrint()
+		o2[i] = expr.DebugSprint()
 	}
 	o2Str := fmt.Sprintf("[%s]", strings.Join(o2, ", "))
-	return fmt.Sprintf("NinExpr{O1: %s, O2: %s}", e.O1.DebugPrint(), o2Str)
+	return fmt.Sprintf("NinExpr{O1: %s, O2: %s}", e.O1.DebugSprint(), o2Str)
 }
 
 func (e *NinExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

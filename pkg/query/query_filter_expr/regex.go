@@ -23,8 +23,8 @@ func NewRegexExpr(o1 QueryFilterExpr, regex string) *RegexExpr {
 	}
 }
 
-func (e *RegexExpr) DebugPrint() string {
-	return fmt.Sprintf("RegexExpr{O1: %s, Regex: %s}", e.O1.DebugPrint(), e.Regex)
+func (e *RegexExpr) DebugSprint() string {
+	return fmt.Sprintf("RegexExpr{O1: %s, Regex: %s}", e.O1.DebugSprint(), e.Regex)
 }
 
 func (e *RegexExpr) Eval(doc *loro.LoroDoc) (*ValueExpr, error) {

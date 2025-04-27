@@ -22,10 +22,10 @@ func NewAndExpr(exprs []QueryFilterExpr) *AndExpr {
 	}
 }
 
-func (e *AndExpr) DebugPrint() string {
+func (e *AndExpr) DebugSprint() string {
 	exprs := make([]string, len(e.Exprs))
 	for i, expr := range e.Exprs {
-		exprs[i] = expr.DebugPrint()
+		exprs[i] = expr.DebugSprint()
 	}
 	return fmt.Sprintf("AndExpr{Exprs: %s}", strings.Join(exprs, " && "))
 }
