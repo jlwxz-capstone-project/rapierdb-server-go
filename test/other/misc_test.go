@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"unsafe"
 
 	pe "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -52,10 +51,6 @@ func TestJson(t *testing.T) {
 	json, err := json.Marshal(val)
 	assert.NoError(t, err)
 	fmt.Println(string(json))
-}
-
-func IsNil(v any) bool {
-	return (*[2]uintptr)(unsafe.Pointer(&v))[1] == 0
 }
 
 func TestIsNil(t *testing.T) {

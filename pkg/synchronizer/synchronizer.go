@@ -20,7 +20,7 @@ var (
 	ErrInvalidStorageEvent = errors.New("invalid storage event")
 )
 
-// 同步器状态常量
+// Synchronizer status constants
 type SynchronizerStatus string
 
 const (
@@ -37,14 +37,14 @@ type Synchronizer struct {
 	storageEngine       *storage_engine.StorageEngine
 	storageEngineEvents *StorageEngineEvents
 	queryExecutor       *query.QueryExecutor
-	channel             network_server.Channel
+	network             network_server.NetworkProvider
 	config              SynchronizerConfig
 	permission          *query.Permissions
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	queryManager        *QueryManager
 
-	// 状态相关字段
+	// Fields related to status
 	status     SynchronizerStatus
 	statusLock sync.RWMutex
 	eventBus   *util.EventBus[SynchronizerStatus]
@@ -56,23 +56,23 @@ type StorageEngineEvents struct {
 	RollbackedCh <-chan *storage_engine.TransactionRollbackedEvent
 }
 
-func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel network_server.Channel, config *SynchronizerConfig) *Synchronizer {
+func NewSynchronizer(storageEngine *storage_engine.StorageEngine, channel network_server.NetworkProvider, config *SynchronizerConfig) *Synchronizer {
 	return NewSynchronizerWithContext(context.Background(), storageEngine, channel, config)
 }
 
-func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engine.StorageEngine, channel network_server.Channel, config *SynchronizerConfig) *Synchronizer {
-	// 使用默认配置
+func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engine.StorageEngine, channel network_server.NetworkProvider, config *SynchronizerConfig) *Synchronizer {
+	// Use default config if nil
 	if config == nil {
 		config = &SynchronizerConfig{}
 	}
 
-	log.Debugf("NewSynchronizer: 正在创建同步器")
+	log.Debugf("NewSynchronizer: Creating synchronizer")
 	permission, err := query.NewPermissionFromJs(storageEngine.GetPermissionsJs())
 	if err != nil {
-		log.Errorf("NewSynchronizer: 创建权限失败: %v", err)
+		log.Errorf("NewSynchronizer: Failed to create permissions: %v", err)
 	}
 
-	// 创建上下文
+	// Create context
 	ctx, cancel := context.WithCancel(ctx)
 
 	queryExecutor := query.NewQueryExecutor(storageEngine)
@@ -80,7 +80,7 @@ func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engi
 		storageEngine:       storageEngine,
 		storageEngineEvents: &StorageEngineEvents{},
 		queryExecutor:       queryExecutor,
-		channel:             channel,
+		network:             channel,
 		config:              *config,
 		permission:          permission,
 		queryManager:        NewQueryManager(queryExecutor, permission),
@@ -90,41 +90,41 @@ func NewSynchronizerWithContext(ctx context.Context, storageEngine *storage_engi
 		statusLock:          sync.RWMutex{},
 		eventBus:            util.NewEventBus[SynchronizerStatus](),
 	}
-	log.Debugf("NewSynchronizer: 同步器创建成功")
+	log.Debugf("NewSynchronizer: Synchronizer created successfully")
 	return synchronizer
 }
 
-// GetStatus 获取同步器当前状态
+// GetStatus returns the current status of the synchronizer
 func (s *Synchronizer) GetStatus() SynchronizerStatus {
 	s.statusLock.RLock()
 	defer s.statusLock.RUnlock()
 	return s.status
 }
 
-// setStatus 设置同步器状态（内部使用）
+// setStatus sets the synchronizer status (internal use)
 func (s *Synchronizer) setStatus(status SynchronizerStatus) {
 	s.statusLock.Lock()
 	oldStatus := s.status
 	s.status = status
 	s.statusLock.Unlock()
 
-	// 只有状态发生变化时才发布事件
+	// Only publish event if status actually changed
 	if oldStatus != status {
 		s.eventBus.Publish(status)
 	}
 }
 
-// SubscribeStatusChange 订阅状态变更事件
+// SubscribeStatusChange subscribes to status change events
 func (s *Synchronizer) SubscribeStatusChange() <-chan SynchronizerStatus {
 	return s.eventBus.Subscribe()
 }
 
-// UnsubscribeStatusChange 取消订阅状态变更事件
+// UnsubscribeStatusChange unsubscribes from status change events
 func (s *Synchronizer) UnsubscribeStatusChange(ch <-chan SynchronizerStatus) {
 	s.eventBus.Unsubscribe(ch)
 }
 
-// WaitForStatus 等待同步器达到指定状态
+// WaitForStatus waits for the synchronizer to reach the target status
 func (s *Synchronizer) WaitForStatus(targetStatus SynchronizerStatus) <-chan struct{} {
 	statusCh := s.SubscribeStatusChange()
 	cleanup := func() {
@@ -134,16 +134,16 @@ func (s *Synchronizer) WaitForStatus(targetStatus SynchronizerStatus) <-chan str
 }
 
 func (s *Synchronizer) Start() error {
-	log.Debugf("Synchronizer.Start: 正在启动同步器")
+	log.Debugf("Synchronizer.Start: Starting synchronizer")
 	s.setStatus(SynchronizerStatusStarting)
 
-	// 订阅存储引擎事件
+	// Subscribe to storage engine events
 	committedCh := s.storageEngine.SubscribeCommitted()
 	canceledCh := s.storageEngine.SubscribeCanceled()
 	rollbackedCh := s.storageEngine.SubscribeRollbacked()
-	log.Debugf("Synchronizer.Start: 已订阅存储引擎事件")
+	log.Debugf("Synchronizer.Start: Subscribed to storage engine events")
 
-	// 保存订阅通道以便后续清理
+	// Save subscription channels for later cleanup
 	s.storageEngineEvents = &StorageEngineEvents{
 		CommittedCh:  committedCh,
 		CanceledCh:   canceledCh,
@@ -151,66 +151,66 @@ func (s *Synchronizer) Start() error {
 	}
 
 	go func() {
-		log.Debugf("Synchronizer: 事件处理协程已启动")
+		log.Debugf("Synchronizer: Event handler goroutine started")
 		for {
 			select {
 			case <-s.ctx.Done():
-				log.Debugf("Synchronizer: 收到取消信号，事件处理协程退出")
+				log.Debugf("Synchronizer: Received cancel signal, event handler goroutine exiting")
+				s.Stop()
 				return
 			case event := <-committedCh:
-				log.Debugf("Synchronizer: 收到事务提交事件")
+				log.Debugf("Synchronizer: Received transaction committed event")
 				s.handleTransactionCommitted(event)
 			case event := <-canceledCh:
-				log.Debugf("Synchronizer: 收到事务取消事件")
+				log.Debugf("Synchronizer: Received transaction canceled event")
 				s.handleTransactionCanceled(event)
 			case event := <-rollbackedCh:
-				log.Debugf("Synchronizer: 收到事务回滚事件")
+				log.Debugf("Synchronizer: Received transaction rollbacked event")
 				s.handleTransactionRollbacked(event)
 			}
 		}
 	}()
 
-	// 负责处理收到的客户端消息
 	msgHandler := func(clientId string, msgBytes []byte) {
-		log.Debugf("Synchronizer.msgHandler: 收到来自客户端 %s 的消息，长度 %d 字节", clientId, len(msgBytes))
+		log.Debugf("Synchronizer.msgHandler: Received message from client %s, length %d bytes", clientId, len(msgBytes))
 		buf := bytes.NewBuffer(msgBytes)
 		msg, err := message.DecodeMessage(buf)
 		if err != nil {
-			log.Errorf("msgHandler: 解码消息失败: %#+v", err)
+			log.Errorf("msgHandler: Failed to decode message: %#+v", err)
 			return
 		}
 		switch msg := msg.(type) {
 		case *message.PostTransactionMessageV1:
-			// 提交事务到存储引擎
-			// 为事务设置提交者ID
-			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
+			// Commit transaction to storage engine
+			// Set committer ID for the transaction
+			log.Debugf("msgHandler: Received %s from %s", msg.DebugSprint(), clientId)
 			msg.Transaction.Committer = clientId
-			log.Debugf("msgHandler: 正在提交事务 %s 到存储引擎", msg.Transaction.TxID)
+			log.Debugf("msgHandler: Committing transaction %s to storage engine", msg.Transaction.TxID)
 			err = s.storageEngine.Commit(msg.Transaction)
 			if err != nil {
-				log.Errorf("msgHandler: 提交事务失败: %v", err)
+				log.Errorf("msgHandler: Failed to commit transaction: %v", err)
 				return
 			}
-			log.Debugf("msgHandler: 事务 %s 提交成功", msg.Transaction.TxID)
+			log.Debugf("msgHandler: Transaction %s committed successfully", msg.Transaction.TxID)
 
 		case *message.SubscriptionUpdateMessageV1:
-			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
-			// 处理移除的订阅
+			log.Debugf("msgHandler: Received %s from %s", msg.DebugSprint(), clientId)
+			// Handle removed subscriptions
 			for _, q := range msg.Removed {
-				log.Debugf("msgHandler: 客户端 %s 取消订阅查询 %s", clientId, q.DebugSprint())
+				log.Debugf("msgHandler: Client %s unsubscribed query %s", clientId, q.DebugSprint())
 				err := s.queryManager.RemoveSubscriptedQuery(clientId, q)
 				if err != nil {
-					log.Errorf("msgHandler: 移除订阅失败: %v", err)
+					log.Errorf("msgHandler: Failed to remove subscription: %v", err)
 				}
 			}
 
-			// 处理添加的订阅
+			// Handle added subscriptions
 			vqm := message.NewVersionQueryMessageV1()
 			for _, q := range msg.Added {
-				log.Debugf("msgHandler: 客户端 %s 订阅查询 %s", clientId, q.DebugSprint())
+				log.Debugf("msgHandler: Client %s subscribed query %s", clientId, q.DebugSprint())
 				err := s.queryManager.SubscribeNewQuery(clientId, q)
 				if err != nil {
-					log.Errorf("msgHandler: 添加订阅失败: %v", err)
+					log.Errorf("msgHandler: Failed to add subscription: %v", err)
 				}
 
 				var queryCollection string
@@ -221,13 +221,13 @@ func (s *Synchronizer) Start() error {
 					queryCollection = q.Collection
 				}
 
-				// TODO: 按理说这里应该只将查询结果中包含的文档放入 vqm 中
-				// 但简单起见，这里将查询对应集合里的所有文档都放入 vqm 中
+				// TODO: Ideally, only documents included in the query result should be added to vqm.
+				// For simplicity, all documents in the collection are added to vqm here.
 				allCollections := vqm.GetAllCollections()
 				if !slices.Contains(allCollections, queryCollection) {
 					docs, err := s.storageEngine.LoadAllDocsInCollection(queryCollection, true)
 					if err != nil {
-						log.Errorf("msgHandler: 获取集合 %s 所有文档失败: %v", queryCollection, err)
+						log.Errorf("msgHandler: Failed to get all documents in collection %s: %v", queryCollection, err)
 						continue
 					}
 					for docId := range docs {
@@ -238,15 +238,15 @@ func (s *Synchronizer) Start() error {
 
 			vqmBytes, err := vqm.Encode()
 			if err != nil {
-				log.Errorf("msgHandler: 编码版本查询消息失败: %v", err)
+				log.Errorf("msgHandler: Failed to encode version query message: %v", err)
 				return
 			}
 
-			log.Debugf("msgHandler: 向客户端 %s 发送版本查询消息 %s", clientId, vqm.DebugSprint())
-			s.channel.Send(clientId, vqmBytes)
+			log.Debugf("msgHandler: Sending version query message %s to client %s", vqm.DebugSprint(), clientId)
+			s.network.Send(clientId, vqmBytes)
 
 		case *message.VersionQueryRespMessageV1:
-			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
+			log.Debugf("msgHandler: Received %s from %s", msg.DebugSprint(), clientId)
 			toUpsert := make(map[string][]byte)
 			toDelete := make([]string, 0)
 			for docKey, vvBytes := range msg.Responses {
@@ -256,7 +256,7 @@ func (s *Synchronizer) Start() error {
 				if vvBytes == nil || len(vvBytes) == 0 {
 					doc, err := s.storageEngine.LoadDoc(collection, docId)
 					if err != nil {
-						log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
+						log.Errorf("msgHandler: Failed to load document %s/%s: %v", collection, docId, err)
 						continue
 					}
 					docBytes := doc.ExportSnapshot().Bytes()
@@ -264,7 +264,7 @@ func (s *Synchronizer) Start() error {
 				} else {
 					doc, err := s.storageEngine.LoadDoc(collection, docId)
 					if err != nil {
-						log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
+						log.Errorf("msgHandler: Failed to load document %s/%s: %v", collection, docId, err)
 						continue
 					}
 					vv := loro.NewVvFromBytes(loro.NewRustBytesVec(vvBytes))
@@ -278,65 +278,92 @@ func (s *Synchronizer) Start() error {
 					Upsert: toUpsert,
 					Delete: toDelete,
 				}
-				log.Debugf("msgHandler: 向客户端 %s 发送同步消息 %s", clientId, syncMsg.DebugSprint())
+				log.Debugf("msgHandler: Sending sync message %s to client %s", syncMsg.DebugSprint(), clientId)
 				syncMsgBytes, err := syncMsg.Encode()
 				if err != nil {
-					log.Errorf("msgHandler: 编码同步消息失败: %v", err)
+					log.Errorf("msgHandler: Failed to encode sync message: %v", err)
 					return
 				}
-				s.channel.Send(clientId, syncMsgBytes)
+				s.network.Send(clientId, syncMsgBytes)
 			}
 		}
 	}
-	s.channel.SetMsgHandler(msgHandler)
+	s.network.SetMsgHandler(msgHandler)
 
-	// 设置状态为运行中
+	// Set status to running
 	s.setStatus(SynchronizerStatusRunning)
-	log.Debugf("Synchronizer.Start: 同步器启动完成")
+	log.Debugf("Synchronizer.Start: Synchronizer started")
 
 	return nil
 }
 
-// handleTransactionCommitted 处理事务提交事件
-// 注意，这个方法会捕获所有错误，保证不会因为错误而中断
-func (s *Synchronizer) handleTransactionCommitted(event_ any) {
-	log.Debugf("handleTransactionCommitted: 开始处理事务提交事件")
-	event, ok := event_.(*storage_engine.TransactionCommittedEvent)
-	if !ok {
-		log.Errorf("handleTransactionCommitted: 事件不是 *storage.TransactionCommittedEvent 类型")
+// Stop stops the synchronizer
+func (s *Synchronizer) Stop() {
+	if s.status != SynchronizerStatusRunning {
+		log.Warn("Synchronizer.Stop: Synchronizer is not running, no need to stop")
 		return
 	}
-	log.Debugf("handleTransactionCommitted: 处理事务 %s 提交事件，提交者 %s", event.Transaction.TxID, event.Committer)
 
-	// 哪个节点提交的事务，就向这个节点发送 AckTransactionMessage
+	log.Debugf("Synchronizer.Stop: Stopping synchronizer")
+	log.Debugf("Synchronizer.Stop: Stopping synchronizer")
+	s.setStatus(SynchronizerStatusStopping)
+
+	// Unsubscribe from storage engine events
+	s.storageEngine.UnsubscribeCommitted(s.storageEngineEvents.CommittedCh)
+	s.storageEngine.UnsubscribeCanceled(s.storageEngineEvents.CanceledCh)
+	s.storageEngine.UnsubscribeRollbacked(s.storageEngineEvents.RollbackedCh)
+	log.Debugf("Synchronizer.Stop: Unsubscribed from storage engine events")
+
+	// Close all client connections
+	s.network.CloseAllConnections()
+
+	// Cancel context, notify all goroutines to exit
+	s.cancel()
+
+	log.Debugf("Synchronizer.Stop: Synchronizer stopped")
+	s.setStatus(SynchronizerStatusStopped)
+}
+
+// handleTransactionCommitted handles transaction committed events
+// Note: This method catches all errors to ensure it doesn't break on error
+func (s *Synchronizer) handleTransactionCommitted(event_ any) {
+	log.Debugf("handleTransactionCommitted: Handling transaction committed event")
+	event, ok := event_.(*storage_engine.TransactionCommittedEvent)
+	if !ok {
+		log.Errorf("handleTransactionCommitted: Event is not of type *storage.TransactionCommittedEvent")
+		return
+	}
+	log.Debugf("handleTransactionCommitted: Handling transaction %s committed event, committer %s", event.Transaction.TxID, event.Committer)
+
+	// Send AckTransactionMessage to the node that committed the transaction
 	ackMsg := message.AckTransactionMessageV1{
 		TxID: event.Transaction.TxID,
 	}
 	ackMsgBytes, err := ackMsg.Encode()
 	if err != nil {
-		log.Errorf("handleTransactionCommitted: 编码确认消息失败", err)
+		log.Errorf("handleTransactionCommitted: Failed to encode ack message: %v", err)
 	}
-	log.Debugf("handleTransactionCommitted: 向提交者 %s 发送确认消息", event.Committer)
-	err = s.channel.Send(event.Committer, ackMsgBytes)
+	log.Debugf("handleTransactionCommitted: Sending ack message to committer %s", event.Committer)
+	err = s.network.Send(event.Committer, ackMsgBytes)
 	if err != nil {
-		log.Errorf("handleTransactionCommitted: 发送确认消息失败", err)
+		log.Errorf("handleTransactionCommitted: Failed to send ack message: %v", err)
 	}
 
-	// 将事务告诉 queryManager
-	// queryManager 直接根据事务更新所有查询的结果
-	// 并将每个客户端能看到的更新放到 cus 里返回
+	// Notify queryManager of the transaction
+	// queryManager updates all query results based on the transaction
+	// and returns the updates each client should see in cus
 	cus := s.queryManager.HandleTransaction(event.Transaction)
 	for clientId, cu := range cus {
-		// 跳过提交事务的客户端，因为它已经收到了确认消息
+		// Skip the committer client, since it already received the ack message
 		if clientId == event.Committer {
-			log.Debugf("handleTransactionCommitted: 跳过提交者 %s", clientId)
+			log.Debugf("handleTransactionCommitted: Skipping committer %s", clientId)
 			continue
 		}
 
 		if cu.IsEmpty() {
-			log.Debugf("handleTransactionCommitted: 客户端 %s 没有需要同步的文档", clientId)
+			log.Debugf("handleTransactionCommitted: Client %s has no documents to sync", clientId)
 		} else {
-			log.Debugf("handleTransactionCommitted: 向客户端 %s 发送同步消息，upsert: %d, delete: %d",
+			log.Debugf("handleTransactionCommitted: Sending sync message to client %s, upsert: %d, delete: %d",
 				clientId, len(cu.Updates), len(cu.Deletes))
 
 			deletedKeys := make([]string, 0, len(cu.Deletes))
@@ -351,33 +378,33 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 
 			syncMsgBytes, err := syncMsg.Encode()
 			if err != nil {
-				log.Errorf("handleTransactionCommitted: 为客户端 %s 编码同步消息失败: %v",
+				log.Errorf("handleTransactionCommitted: Failed to encode sync message for client %s: %v",
 					clientId, err)
 				continue
 			}
 
-			err = s.channel.Send(clientId, syncMsgBytes)
+			err = s.network.Send(clientId, syncMsgBytes)
 			if err != nil {
-				log.Errorf("handleTransactionCommitted: 向客户端 %s 发送同步消息失败: %v",
+				log.Errorf("handleTransactionCommitted: Failed to send sync message to client %s: %v",
 					clientId, err)
 			} else {
-				log.Debugf("handleTransactionCommitted: 成功向客户端 %s 发送同步消息", clientId)
+				log.Debugf("handleTransactionCommitted: Successfully sent sync message to client %s", clientId)
 			}
 		}
 	}
 
-	log.Debugf("handleTransactionCommitted: 事务 %s 处理完成", event.Transaction.TxID)
+	log.Debugf("handleTransactionCommitted: Transaction %s handled", event.Transaction.TxID)
 }
 
 func (s *Synchronizer) handleTransactionCanceled(event any) {
-	log.Debugf("handleTransactionCanceled: 开始处理事务取消事件")
-	// 哪个节点发送的事务被取消，就向这个节点发送 TransactionFailedMessage
+	log.Debugf("handleTransactionCanceled: Handling transaction canceled event")
+	// Send TransactionFailedMessage to the node whose transaction was canceled
 	canceledEvent, ok := event.(*storage_engine.TransactionCanceledEvent)
 	if !ok {
-		log.Errorf("handleTransactionCanceled: 事件不是 *storage.TransactionCanceledEvent 类型")
+		log.Errorf("handleTransactionCanceled: Event is not of type *storage.TransactionCanceledEvent")
 		return
 	}
-	log.Debugf("handleTransactionCanceled: 处理事务 %s 取消事件，提交者 %s，原因: %s",
+	log.Debugf("handleTransactionCanceled: Handling transaction %s canceled event, committer %s, reason: %s",
 		canceledEvent.Transaction.TxID, canceledEvent.Committer, canceledEvent.Reason)
 
 	failedMsg := message.TransactionFailedMessageV1{
@@ -387,28 +414,28 @@ func (s *Synchronizer) handleTransactionCanceled(event any) {
 
 	failedMsgBytes, err := failedMsg.Encode()
 	if err != nil {
-		log.Errorf("handleTransactionCanceled: 编码失败消息失败", err)
+		log.Errorf("handleTransactionCanceled: Failed to encode failed message: %v", err)
 		return
 	}
 
-	log.Debugf("handleTransactionCanceled: 向提交者 %s 发送失败消息", canceledEvent.Committer)
-	err = s.channel.Send(canceledEvent.Committer, failedMsgBytes)
+	log.Debugf("handleTransactionCanceled: Sending failed message to committer %s", canceledEvent.Committer)
+	err = s.network.Send(canceledEvent.Committer, failedMsgBytes)
 	if err != nil {
-		log.Errorf("handleTransactionCanceled: 发送失败消息失败", err)
+		log.Errorf("handleTransactionCanceled: Failed to send failed message: %v", err)
 	} else {
-		log.Debugf("handleTransactionCanceled: 成功发送失败消息")
+		log.Debugf("handleTransactionCanceled: Successfully sent failed message")
 	}
 }
 
 func (s *Synchronizer) handleTransactionRollbacked(event any) {
-	log.Debugf("handleTransactionRollbacked: 开始处理事务回滚事件")
-	// 哪个节点发送的事务被回滚，就向这个节点发送 TransactionFailedMessage
+	log.Debugf("handleTransactionRollbacked: Handling transaction rollbacked event")
+	// Send TransactionFailedMessage to the node whose transaction was rollbacked
 	rollbackedEvent, ok := event.(*storage_engine.TransactionRollbackedEvent)
 	if !ok {
-		log.Errorf("handleTransactionRollbacked: 事件不是 *storage.TransactionRollbackedEvent 类型")
+		log.Errorf("handleTransactionRollbacked: Event is not of type *storage.TransactionRollbackedEvent")
 		return
 	}
-	log.Debugf("handleTransactionRollbacked: 处理事务 %s 回滚事件，提交者 %s，原因: %s",
+	log.Debugf("handleTransactionRollbacked: Handling transaction %s rollbacked event, committer %s, reason: %s",
 		rollbackedEvent.Transaction.TxID, rollbackedEvent.Committer, rollbackedEvent.Reason)
 
 	failedMsg := message.TransactionFailedMessageV1{
@@ -418,46 +445,15 @@ func (s *Synchronizer) handleTransactionRollbacked(event any) {
 
 	failedMsgBytes, err := failedMsg.Encode()
 	if err != nil {
-		log.Errorf("handleTransactionRollbacked: 编码失败消息失败", err)
+		log.Errorf("handleTransactionRollbacked: Failed to encode failed message: %v", err)
 		return
 	}
 
-	log.Debugf("handleTransactionRollbacked: 向提交者 %s 发送失败消息", rollbackedEvent.Committer)
-	err = s.channel.Send(rollbackedEvent.Committer, failedMsgBytes)
+	log.Debugf("handleTransactionRollbacked: Sending failed message to committer %s", rollbackedEvent.Committer)
+	err = s.network.Send(rollbackedEvent.Committer, failedMsgBytes)
 	if err != nil {
-		log.Errorf("handleTransactionRollbacked: 发送失败消息失败", err)
+		log.Errorf("handleTransactionRollbacked: Failed to send failed message: %v", err)
 	} else {
-		log.Debugf("handleTransactionRollbacked: 成功发送失败消息")
+		log.Debugf("handleTransactionRollbacked: Successfully sent failed message")
 	}
-}
-
-func (s *Synchronizer) Stop() {
-	log.Debugf("Synchronizer.Stop: 正在停止同步器")
-	s.setStatus(SynchronizerStatusStopping)
-
-	// 发送取消信号
-	if s.cancel != nil {
-		log.Debugf("Synchronizer.Stop: 发送取消信号")
-		s.cancel()
-	}
-
-	// 取消所有订阅
-	if s.storageEngineEvents != nil {
-		log.Debugf("Synchronizer.Stop: 取消存储引擎事件订阅")
-		s.storageEngine.UnsubscribeCommitted(s.storageEngineEvents.CommittedCh)
-		s.storageEngine.UnsubscribeCanceled(s.storageEngineEvents.CanceledCh)
-		s.storageEngine.UnsubscribeRollbacked(s.storageEngineEvents.RollbackedCh)
-	}
-	s.storageEngineEvents = nil
-
-	// 卸载消息处理器
-	log.Debugf("Synchronizer.Stop: 卸载消息处理器")
-	s.channel.SetMsgHandler(nil)
-
-	// 关闭所有连接
-	log.Debugf("Synchronizer.Stop: 关闭所有连接")
-	s.channel.CloseAll()
-
-	s.setStatus(SynchronizerStatusStopped)
-	log.Debugf("Synchronizer.Stop: 同步器已停止")
 }

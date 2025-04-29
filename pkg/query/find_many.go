@@ -150,7 +150,14 @@ func (q *FindManyQuery) Compare(doc1, doc2 *loro.LoroDoc) (int, error) {
 }
 
 func (q *FindManyQuery) Encode() ([]byte, error) {
-	jsonBytes, err := json.Marshal(q)
+	var temp struct {
+		Type uint64 `json:"type"`
+		*FindManyQuery
+	}
+	temp.Type = FIND_MANY_QUERY_TYPE
+	temp.FindManyQuery = q
+
+	jsonBytes, err := json.Marshal(temp)
 	if err != nil {
 		return nil, err
 	}

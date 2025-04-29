@@ -1,6 +1,7 @@
 package storage_engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -8,49 +9,51 @@ import (
 
 	pe "github.com/pkg/errors"
 
+	"sync/atomic"
+
 	"github.com/cockroachdb/pebble"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
-// 存储引擎使用的常量
+// Constants used by the storage engine
 const (
-	// 存储元数据的键
+	// Key for storing metadata
 	STORAGE_META_KEY = "m"
-	// 文档键的前缀
+	// Prefix for document keys
 	DOC_KEY_PREFIX = "d"
-	// 集合名称的最大字节数
+	// Maximum bytes for collection name
 	COLLECTION_SIZE_IN_BYTES = 16
-	// 文档ID的最大字节数
+	// Maximum bytes for document ID
 	DOC_ID_SIZE_IN_BYTES = 16
 )
 
-// 文档键的总字节数 = 前缀(1) + 数据库名称字节数(16) + 分隔符(1) + 集合名称字节数(16) + 分隔符(1) + 文档ID字节数(16)
+// Total bytes for a document key = prefix(1) + db name bytes(16) + sep(1) + collection name bytes(16) + sep(1) + doc id bytes(16)
 var KEY_SIZE_IN_BYTES = 1 + COLLECTION_SIZE_IN_BYTES + 1 + DOC_ID_SIZE_IN_BYTES
 
-// 存储引擎可能返回的错误
+// Possible errors returned by the storage engine
 var (
-	// 尝试插入已存在的文档时返回
+	// Returned when trying to insert a document that already exists
 	ErrInsertExistingDoc = errors.New("insert existing doc")
-	// 尝试更新不存在的文档时返回
+	// Returned when trying to update a document that does not exist
 	ErrUpdateNonExistentDoc = errors.New("update non-existent doc")
-	// 尝试删除不存在的文档时返回
+	// Returned when trying to delete a document that does not exist
 	ErrDeleteNonExistentDoc = errors.New("delete non-existent doc")
-	// 数据库元数据不存在时返回
+	// Returned when database metadata does not exist
 	ErrDatabaseMetaNotFound = errors.New("database meta not found")
-	// 集合元数据不存在时返回
+	// Returned when collection metadata does not exist
 	ErrCollectionMetaNotFound = errors.New("collection meta not found")
-	// 存储引擎已关闭时返回
+	// Returned when the storage engine is closed
 	ErrStorageEngineClosed = errors.New("storage engine closed")
-	// 事务被取消时返回
+	// Returned when a transaction is cancelled
 	ErrTransactionCancelled = errors.New("transaction cancelled")
-	// 集合名称超过最大长度时返回
+	// Returned when collection name exceeds max length
 	ErrCollectionNameTooLarge = errors.New("collection name too large")
-	// 文档ID超过最大长度时返回
+	// Returned when document ID exceeds max length
 	ErrDocIDTooLarge = errors.New("doc id too large")
 )
 
-// 存储引擎事件主题
+// Storage engine event topics
 const (
 	STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED  = "transaction_committed"
 	STORAGE_ENGINE_EVENT_TRANSACTION_CANCELED   = "transaction_canceled"
@@ -58,15 +61,30 @@ const (
 	STORAGE_ENGINE_EVENT_STATUS_CHANGED         = "storage_engine_status_changed"
 )
 
-// 存储引擎状态常量
-type StorageEngineStatus string
+// Storage engine status constants
+type StorageEngineStatus int32
 
 const (
-	StorageEngineStatusClosed  StorageEngineStatus = "closed"
-	StorageEngineStatusOpening StorageEngineStatus = "opening"
-	StorageEngineStatusOpen    StorageEngineStatus = "open"
-	StorageEngineStatusClosing StorageEngineStatus = "closing"
+	StorageEngineStatusClosed  StorageEngineStatus = 0
+	StorageEngineStatusOpening StorageEngineStatus = 1
+	StorageEngineStatusOpen    StorageEngineStatus = 2
+	StorageEngineStatusClosing StorageEngineStatus = 3
 )
+
+func (s StorageEngineStatus) String() string {
+	switch s {
+	case StorageEngineStatusClosed:
+		return "closed"
+	case StorageEngineStatusOpening:
+		return "opening"
+	case StorageEngineStatusOpen:
+		return "open"
+	case StorageEngineStatusClosing:
+		return "closing"
+	default:
+		return "unknown"
+	}
+}
 
 type TransactionCanceledEvent struct {
 	Committer   string
@@ -85,43 +103,45 @@ type TransactionRollbackedEvent struct {
 	Transaction *Transaction
 }
 
-// StorageEngine 是存储引擎的主要结构体
-// 每个存储引擎只能管理一个 RapierDB 数据库
-// 如果需要管理多个数据库，需要创建多个存储引擎
+// StorageEngine is the main struct for the storage engine.
+// Each storage engine manages only one RapierDB database.
+// To manage multiple databases, create multiple storage engines.
 type StorageEngine struct {
-	mu        sync.RWMutex          // 用于保护并发访问
-	pebbleDB  *pebble.DB            // 底层的 PebbleDB 实例
-	docsCache *DocsCache            // 文档缓存
-	meta      *DatabaseMeta         // 存储引擎元数据
-	hooks     *StorageEngineHooks   // 存储引擎钩子
-	opts      *StorageEngineOptions // 存储引擎选项
+	mu        sync.RWMutex          // Protects concurrent access
+	pebbleDB  *pebble.DB            // Underlying PebbleDB instance
+	docsCache *DocsCache            // Document cache
+	meta      *DatabaseMeta         // Storage engine metadata
+	hooks     *StorageEngineHooks   // Storage engine hooks
+	opts      *StorageEngineOptions // Storage engine options
 
-	// 每类事件对应的消息总线
+	// Event buses for each event type
 	committedEb  *util.EventBus[*TransactionCommittedEvent]
 	canceledEb   *util.EventBus[*TransactionCanceledEvent]
 	rollbackedEb *util.EventBus[*TransactionRollbackedEvent]
 
-	// 状态相关字段
-	status     StorageEngineStatus
-	statusLock sync.RWMutex
-	statusEb   *util.EventBus[StorageEngineStatus]
+	// Status-related fields
+	status   atomic.Int32
+	statusEb *util.EventBus[StorageEngineStatus]
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-// StorageEngineHooks 定义了存储引擎的钩子函数
+// StorageEngineHooks defines hook functions for the storage engine
 type StorageEngineHooks struct {
-	// BeforeTransaction 在事务开始前调用
-	// 如果返回错误，事务将被取消
+	// BeforeTransaction is called before a transaction starts.
+	// If it returns an error, the transaction will be cancelled.
 	BeforeTransaction *func(tr *Transaction) error
 }
 
-// rollbackInfo 存储回滚信息
+// rollbackInfo stores rollback information
 type rollbackInfo struct {
-	toDelete [][]byte // 需要删除的键
-	toUpdate [][3]any // 需要更新的文档信息，格式为 [文档ID, 键, 文档对象]
+	toDelete [][]byte // Keys to delete
+	toUpdate [][3]any // Document info to update, format: [docID, key, doc object]
 }
 
-// CreateNewDatabase 创建一个新的数据库
-// path: 数据库的存储路径，要求不能有已经存在的数据库
+// CreateNewDatabase creates a new database
+// path: storage path for the database, must not already exist
 func CreateNewDatabase(path string, schema *DatabaseSchema, permissions string) error {
 	pebbleOpts := &pebble.Options{}
 	pebbleOpts.EnsureDefaults()
@@ -150,15 +170,22 @@ func CreateNewDatabase(path string, schema *DatabaseSchema, permissions string) 
 	return nil
 }
 
-// OpenStorageEngine 打开存储引擎
-// path: 存储路径
-// options: 存储引擎选项
+// OpenStorageEngine opens a storage engine
+// path: storage path
+// options: storage engine options
 func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
+	return NewStorageEngineWithContext(opts, context.Background())
+}
+
+// NewStorageEngineWithContext opens a storage engine with the specified context
+func NewStorageEngineWithContext(opts *StorageEngineOptions, ctx context.Context) (*StorageEngine, error) {
+	subCtx, cancel := context.WithCancel(ctx)
+
 	engine := &StorageEngine{
 		mu:        sync.RWMutex{},
-		pebbleDB:  nil, // 下面初始化
-		docsCache: nil, // 下面初始化
-		meta:      nil, // 下面初始化
+		pebbleDB:  nil, // Will be initialized below
+		docsCache: nil, // Will be initialized below
+		meta:      nil, // Will be initialized below
 		hooks:     &StorageEngineHooks{},
 		opts:      opts,
 
@@ -166,9 +193,11 @@ func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
 		canceledEb:   util.NewEventBus[*TransactionCanceledEvent](),
 		rollbackedEb: util.NewEventBus[*TransactionRollbackedEvent](),
 
-		status:     StorageEngineStatusClosed,
-		statusLock: sync.RWMutex{},
-		statusEb:   util.NewEventBus[StorageEngineStatus](),
+		status:   atomic.Int32{},
+		statusEb: util.NewEventBus[StorageEngineStatus](),
+
+		ctx:    subCtx,
+		cancel: cancel,
 	}
 
 	engine.setStatus(StorageEngineStatusOpening)
@@ -181,7 +210,7 @@ func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
 	}
 	engine.pebbleDB = pebbleDB
 
-	// 加载数据库元数据
+	// Load database metadata
 	meta, err := loadDatabaseMeta(pebbleDB)
 	if err != nil {
 		pebbleDB.Close()
@@ -190,23 +219,37 @@ func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
 	}
 	engine.meta = meta
 
-	// 初始化文档缓存
+	// Initialize document cache
 	engine.docsCache = NewEmptyDocsCache()
+
+	// Start goroutine to listen for context cancellation
+	go engine.stopOnDone()
 
 	engine.setStatus(StorageEngineStatusOpen)
 	return engine, nil
 }
 
-// loadDatabaseMeta 加载数据库元数据
+// stopOnDone listens for context cancellation signal
+func (e *StorageEngine) stopOnDone() {
+	<-e.ctx.Done()
+
+	if e.GetStatus() == StorageEngineStatusClosed {
+		return
+	}
+
+	e.Close()
+}
+
+// loadDatabaseMeta loads database metadata
 func loadDatabaseMeta(pebbleDB *pebble.DB) (*DatabaseMeta, error) {
 	if pebbleDB == nil {
 		return nil, ErrStorageEngineClosed
 	}
 
-	// 尝试获取已存在的存储元数据
+	// Try to get existing storage metadata
 	storageMetaBytes, closer, err := pebbleDB.Get([]byte(STORAGE_META_KEY))
 
-	// 元数据不存在
+	// Metadata does not exist
 	if err == pebble.ErrNotFound {
 		return nil, ErrDatabaseMetaNotFound
 	} else if err != nil {
@@ -225,16 +268,20 @@ func writeDatabaseMeta(pebbleDB *pebble.DB, meta *DatabaseMeta) error {
 	return pebbleDB.Set([]byte(STORAGE_META_KEY), metaBytes, pebble.Sync)
 }
 
-// LoadDoc 加载指定的文档
-// 如果文档在缓存中存在，直接返回缓存的文档
-// 否则从存储中加载文档并更新缓存
+// LoadDoc loads the specified document.
+// If the document exists in the cache, returns the cached document.
+// Otherwise, loads the document from storage and updates the cache.
 func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, error) {
+	if e.GetStatus() != StorageEngineStatusOpen {
+		return nil, ErrStorageEngineClosed
+	}
+
 	keyBytes, err := CalcDocKey(collectionName, docID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 先检查缓存
+	// Check cache first
 	{
 		e.mu.RLock()
 		doc, ok := e.docsCache.Get(keyBytes)
@@ -244,16 +291,16 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 		}
 	}
 
-	// 缓存未命中，获取写锁
+	// Cache miss, acquire write lock
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// 双重检查，防止在获取锁的过程中其他goroutine已经加载了文档
+	// Double check in case another goroutine loaded the doc while acquiring the lock
 	if doc, ok := e.docsCache.Get(keyBytes); ok {
 		return doc, nil
 	}
 
-	// 从存储加载文档
+	// Load document from storage
 	snapshot, _, err := e.pebbleDB.Get(keyBytes)
 	if err != nil {
 		return nil, pe.WithStack(fmt.Errorf("failed to load doc %s from collection %s: %w", docID, collectionName, err))
@@ -262,15 +309,19 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 	doc := loro.NewLoroDoc()
 	doc.Import(snapshot)
 
-	// 更新缓存
+	// Update cache
 	e.docsCache.Set(keyBytes, docID, doc)
 	return doc, nil
 }
 
-// LoadAllDocsInCollection 加载指定集合中的所有文档
-// updateCache: 是否更新缓存
-// 返回值: 文档ID到文档的映射
+// LoadAllDocsInCollection loads all documents in the specified collection.
+// updateCache: whether to update the cache
+// Returns: map from document ID to document
 func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCache bool) (map[string]*loro.LoroDoc, error) {
+	if e.GetStatus() != StorageEngineStatusOpen {
+		return nil, ErrStorageEngineClosed
+	}
+
 	lowerbound, err := CalcCollectionLowerBound(collectionName)
 	if err != nil {
 		return nil, err
@@ -281,7 +332,7 @@ func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCac
 		return nil, err
 	}
 
-	// 创建迭代器
+	// Create iterator
 	iter, err := e.pebbleDB.NewIter(&pebble.IterOptions{
 		LowerBound: lowerbound,
 		UpperBound: upperbound,
@@ -291,7 +342,7 @@ func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCac
 	}
 	defer iter.Close()
 
-	// 遍历集合中的所有文档
+	// Iterate all documents in the collection
 	result := make(map[string]*loro.LoroDoc)
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
@@ -308,8 +359,12 @@ func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCac
 	return result, nil
 }
 
-// LoadDocAndFork 加载文档并创建一个分支
+// LoadDocAndFork loads a document and creates a fork
 func (e *StorageEngine) LoadDocAndFork(collectionName, docID string) (*loro.LoroDoc, error) {
+	if e.GetStatus() != StorageEngineStatusOpen {
+		return nil, ErrStorageEngineClosed
+	}
+
 	doc, err := e.LoadDoc(collectionName, docID)
 	if err != nil {
 		return nil, err
@@ -317,9 +372,9 @@ func (e *StorageEngine) LoadDocAndFork(collectionName, docID string) (*loro.Loro
 	return doc.Fork(), nil
 }
 
-// commitInner 执行事务提交的内部逻辑
+// commitInner performs the internal logic for committing a transaction
 func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
-	// 执行事务前钩子
+	// Call before-transaction hook
 	if e.hooks.BeforeTransaction != nil {
 		err := (*e.hooks.BeforeTransaction)(tr)
 		if err != nil {
@@ -335,7 +390,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 
 	batch := e.pebbleDB.NewBatch()
 
-	// 处理事务中的每个操作
+	// Process each operation in the transaction
 	for _, op := range tr.Operations {
 		switch op := op.(type) {
 		case *InsertOp:
@@ -348,21 +403,21 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 					return err
 				}
 
-				// 检查文档是否已存在
+				// Check if document already exists
 				_, ok := e.docsCache.Get(keyBytes)
 				if ok {
 					return fmt.Errorf("%w: doc key = %s", ErrInsertExistingDoc, key)
 				}
 
-				// 更新缓存
+				// Update cache
 				doc := loro.NewLoroDoc()
 				doc.Import(op.Snapshot)
 				e.docsCache.Set(keyBytes, docID, doc)
 
-				// 记录回滚信息
+				// Record rollback info
 				rb.toDelete = append(rb.toDelete, keyBytes)
 
-				// 添加到批处理
+				// Add to batch
 				batch.Set(keyBytes, op.Snapshot, pebble.Sync)
 			}
 		case *UpdateOp:
@@ -375,18 +430,18 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 					return err
 				}
 
-				// 检查文档是否存在
+				// Check if document exists
 				doc, ok := e.docsCache.Get(keyBytes)
 				if !ok {
 					return fmt.Errorf("%w: doc key = %s", ErrUpdateNonExistentDoc, key)
 				}
 
-				// 更新缓存
+				// Update cache
 				forkedDoc := doc.Fork()
 				doc.Import(op.Update)
 				snapshot := doc.ExportSnapshot()
 
-				// 记录回滚信息
+				// Record rollback info
 				rbAction := [3]any{
 					docID,
 					keyBytes,
@@ -394,7 +449,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 				rb.toUpdate = append(rb.toUpdate, rbAction)
 
-				// 添加到批处理
+				// Add to batch
 				batch.Set(keyBytes, snapshot.Bytes(), pebble.Sync)
 			}
 		case *DeleteOp:
@@ -407,16 +462,16 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 					return err
 				}
 
-				// 检查文档是否存在
+				// Check if document exists
 				oldDoc, ok := e.docsCache.Get(keyBytes)
 				if !ok {
 					return fmt.Errorf("%w: doc key = %s", ErrDeleteNonExistentDoc, key)
 				}
 
-				// 更新缓存
+				// Update cache
 				e.docsCache.Delete(keyBytes)
 
-				// 记录回滚信息
+				// Record rollback info
 				rbAction := [3]any{
 					docID,
 					keyBytes,
@@ -424,39 +479,43 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 				rb.toUpdate = append(rb.toUpdate, rbAction)
 
-				// 添加到批处理
+				// Add to batch
 				batch.Delete(keyBytes, pebble.Sync)
 			}
 		}
 	}
 
-	// 提交批处理
+	// Commit the batch
 	return batch.Commit(pebble.Sync)
 }
 
-// Commit 提交事务
+// Commit commits a transaction
 //
-//   - 如果数据库已关闭，则返回 ErrStorageEngineClosed
-//   - 如果事务提交成功，缓存和底层存储都会被更新，并触发事务提交事件
-//   - 如果事务提交失败，则缓存和底层存储都会被回滚，触发事务回滚事件，
-//     并返回导致事务提交失败的错误
-//   - 事务提交前，会调用 beforeTransactionHook 钩子函数。
-//     可以在这个钩子中执行权限检查等操作。如果返回错误，则事务会被取消
+//   - If the database is closed, returns ErrStorageEngineClosed
+//   - If the transaction is committed successfully, both the cache and underlying storage are updated, and a commit event is triggered
+//   - If the transaction commit fails, both the cache and storage are rolled back, a rollback event is triggered,
+//     and the error that caused the failure is returned
+//   - Before committing, the beforeTransactionHook is called.
+//     You can perform permission checks in this hook. If it returns an error, the transaction is cancelled.
 func (e *StorageEngine) Commit(tr *Transaction) error {
+	if e.GetStatus() != StorageEngineStatusOpen {
+		return ErrStorageEngineClosed
+	}
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// 存储引擎关闭后不能提交事务
+	// Cannot commit transaction after storage engine is closed
 	if e.pebbleDB == nil {
 		return ErrStorageEngineClosed
 	}
 
-	// 检查事务是否有效
+	// Check if transaction is valid
 	if err := EnsureTransactionValid(tr); err != nil {
 		return err
 	}
 
-	// 确认这个事务的目标是当前数据库
+	// Ensure the transaction's target is the current database
 	if tr.TargetDatabase != e.meta.DatabaseSchema.Name {
 		return fmt.Errorf("%w: target database = %s, expected = %s", ErrTransactionInvalid, tr.TargetDatabase, e.meta.DatabaseSchema.Name)
 	}
@@ -465,7 +524,7 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 	err := e.commitInner(tr, rb)
 
 	if err == nil {
-		// 提交成功，发布事件
+		// Commit succeeded, publish event
 		event := &TransactionCommittedEvent{
 			Committer:   tr.Committer,
 			Transaction: tr,
@@ -473,7 +532,7 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 		e.committedEb.Publish(event)
 		return nil
 	} else if !errors.Is(err, ErrTransactionCancelled) {
-		// 提交失败，执行回滚
+		// Commit failed, perform rollback
 		for _, key := range rb.toDelete {
 			e.docsCache.Delete(key)
 		}
@@ -493,38 +552,33 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 	return err
 }
 
-// GetStatus 获取存储引擎当前状态
+// GetStatus returns the current status of the storage engine
 func (e *StorageEngine) GetStatus() StorageEngineStatus {
-	e.statusLock.RLock()
-	defer e.statusLock.RUnlock()
-	return e.status
+	return StorageEngineStatus(e.status.Load())
 }
 
-// setStatus 设置存储引擎状态并通知订阅者
+// setStatus sets the storage engine status and notifies subscribers
 func (e *StorageEngine) setStatus(status StorageEngineStatus) {
-	e.statusLock.Lock()
-	oldStatus := e.status
-	e.status = status
-	e.statusLock.Unlock()
+	oldStatus := e.status.Load()
+	e.status.Store(int32(status))
 
-	// 只有状态发生变化时才发布事件
-	if oldStatus != status {
-		// 通过事件总线发布状态变更事件
+	if oldStatus != int32(status) {
 		e.statusEb.Publish(status)
 	}
 }
 
-// SubscribeStatusChange 订阅状态变更事件
+// SubscribeStatusChange subscribes to status change events
 func (e *StorageEngine) SubscribeStatusChange() <-chan StorageEngineStatus {
 	return e.statusEb.Subscribe()
 }
 
-// UnsubscribeStatusChange 取消订阅状态变更事件
+// UnsubscribeStatusChange unsubscribes from status change events
 func (e *StorageEngine) UnsubscribeStatusChange(ch <-chan StorageEngineStatus) {
 	e.statusEb.Unsubscribe(ch)
 }
 
-// WaitForStatus 等待存储引擎达到指定状态，返回一个通道，当达到目标状态时会收到通知
+// WaitForStatus waits for the storage engine to reach the specified status.
+// Returns a channel that will be notified when the target status is reached.
 func (e *StorageEngine) WaitForStatus(targetStatus StorageEngineStatus) <-chan struct{} {
 	statusCh := e.SubscribeStatusChange()
 	cleanup := func() {
@@ -533,19 +587,33 @@ func (e *StorageEngine) WaitForStatus(targetStatus StorageEngineStatus) <-chan s
 	return util.WaitForStatus(e.GetStatus, targetStatus, statusCh, cleanup, 0)
 }
 
-// IsClosed 检查存储引擎是否已关闭
+// IsClosed checks if the storage engine is closed
 func (e *StorageEngine) IsClosed() bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.pebbleDB == nil
 }
 
-// Close 关闭存储引擎
+// Close closes the storage engine
 func (e *StorageEngine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// If already closed, just return
+	if e.pebbleDB == nil {
+		return nil
+	}
+
 	e.setStatus(StorageEngineStatusClosing)
+
+	// Cancel context
+	if e.cancel != nil {
+		e.cancel()
+	}
+
+	// Wait for all transactions to complete
+	// You can add waiting logic here, such as waiting for a period of time or for specific conditions
+	// For example: wait for all ongoing transactions to finish, or force close after a timeout
 
 	err := e.pebbleDB.Close()
 	if err != nil {
@@ -564,37 +632,37 @@ func (e *StorageEngine) IsValidCollection(collectionName string) bool {
 	return ok
 }
 
-// SetBeforeTransactionHook 设置事务前钩子
+// SetBeforeTransactionHook sets the before-transaction hook
 func (e *StorageEngine) SetBeforeTransactionHook(hook *func(tr *Transaction) error) {
 	e.hooks.BeforeTransaction = hook
 }
 
-// SubscribeCommitted 订阅事务提交事件
+// SubscribeCommitted subscribes to transaction committed events
 func (e *StorageEngine) SubscribeCommitted() <-chan *TransactionCommittedEvent {
 	return e.committedEb.Subscribe()
 }
 
-// UnsubscribeCommitted 取消订阅事务提交事件
+// UnsubscribeCommitted unsubscribes from transaction committed events
 func (e *StorageEngine) UnsubscribeCommitted(ch <-chan *TransactionCommittedEvent) {
 	e.committedEb.Unsubscribe(ch)
 }
 
-// SubscribeCanceled 订阅事务取消事件
+// SubscribeCanceled subscribes to transaction canceled events
 func (e *StorageEngine) SubscribeCanceled() <-chan *TransactionCanceledEvent {
 	return e.canceledEb.Subscribe()
 }
 
-// UnsubscribeCanceled 取消订阅事务取消事件
+// UnsubscribeCanceled unsubscribes from transaction canceled events
 func (e *StorageEngine) UnsubscribeCanceled(ch <-chan *TransactionCanceledEvent) {
 	e.canceledEb.Unsubscribe(ch)
 }
 
-// SubscribeRollbacked 订阅事务回滚事件
+// SubscribeRollbacked subscribes to transaction rollbacked events
 func (e *StorageEngine) SubscribeRollbacked() <-chan *TransactionRollbackedEvent {
 	return e.rollbackedEb.Subscribe()
 }
 
-// UnsubscribeRollbacked 取消订阅事务回滚事件
+// UnsubscribeRollbacked unsubscribes from transaction rollbacked events
 func (e *StorageEngine) UnsubscribeRollbacked(ch <-chan *TransactionRollbackedEvent) {
 	e.rollbackedEb.Unsubscribe(ch)
 }
