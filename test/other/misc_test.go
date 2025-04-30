@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	pe "github.com/pkg/errors"
@@ -61,4 +62,23 @@ func TestIsNil(t *testing.T) {
 		return
 	}
 	fmt.Println(f3()) // print: 1
+}
+
+type Module struct {
+	status atomic.Int32
+}
+
+const (
+	NotStarted int32 = 0
+	Starting   int32 = 1
+	Running    int32 = 2
+	Stopping   int32 = 3
+	Stopped    int32 = 4
+)
+
+func (m *Module) Stop() {
+	if m.status.CompareAndSwap(Running, Stopping) {
+		// stopping lotic...
+		m.status.Store(Stopped)
+	}
 }

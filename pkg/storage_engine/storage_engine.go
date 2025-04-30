@@ -31,28 +31,6 @@ const (
 // Total bytes for a document key = prefix(1) + db name bytes(16) + sep(1) + collection name bytes(16) + sep(1) + doc id bytes(16)
 var KEY_SIZE_IN_BYTES = 1 + COLLECTION_SIZE_IN_BYTES + 1 + DOC_ID_SIZE_IN_BYTES
 
-// Possible errors returned by the storage engine
-var (
-	// Returned when trying to insert a document that already exists
-	ErrInsertExistingDoc = errors.New("insert existing doc")
-	// Returned when trying to update a document that does not exist
-	ErrUpdateNonExistentDoc = errors.New("update non-existent doc")
-	// Returned when trying to delete a document that does not exist
-	ErrDeleteNonExistentDoc = errors.New("delete non-existent doc")
-	// Returned when database metadata does not exist
-	ErrDatabaseMetaNotFound = errors.New("database meta not found")
-	// Returned when collection metadata does not exist
-	ErrCollectionMetaNotFound = errors.New("collection meta not found")
-	// Returned when the storage engine is closed
-	ErrStorageEngineClosed = errors.New("storage engine closed")
-	// Returned when a transaction is cancelled
-	ErrTransactionCancelled = errors.New("transaction cancelled")
-	// Returned when collection name exceeds max length
-	ErrCollectionNameTooLarge = errors.New("collection name too large")
-	// Returned when document ID exceeds max length
-	ErrDocIDTooLarge = errors.New("doc id too large")
-)
-
 // Storage engine event topics
 const (
 	STORAGE_ENGINE_EVENT_TRANSACTION_COMMITTED  = "transaction_committed"
@@ -65,10 +43,11 @@ const (
 type StorageEngineStatus int32
 
 const (
-	StorageEngineStatusClosed  StorageEngineStatus = 0
-	StorageEngineStatusOpening StorageEngineStatus = 1
-	StorageEngineStatusOpen    StorageEngineStatus = 2
-	StorageEngineStatusClosing StorageEngineStatus = 3
+	StorageEngineStatusNotStarted StorageEngineStatus = 0
+	StorageEngineStatusOpening    StorageEngineStatus = 1
+	StorageEngineStatusOpen       StorageEngineStatus = 2
+	StorageEngineStatusClosing    StorageEngineStatus = 3
+	StorageEngineStatusClosed     StorageEngineStatus = 4
 )
 
 func (s StorageEngineStatus) String() string {
@@ -107,7 +86,6 @@ type TransactionRollbackedEvent struct {
 // Each storage engine manages only one RapierDB database.
 // To manage multiple databases, create multiple storage engines.
 type StorageEngine struct {
-	mu        sync.RWMutex          // Protects concurrent access
 	pebbleDB  *pebble.DB            // Underlying PebbleDB instance
 	docsCache *DocsCache            // Document cache
 	meta      *DatabaseMeta         // Storage engine metadata
@@ -118,6 +96,11 @@ type StorageEngine struct {
 	committedEb  *util.EventBus[*TransactionCommittedEvent]
 	canceledEb   *util.EventBus[*TransactionCanceledEvent]
 	rollbackedEb *util.EventBus[*TransactionRollbackedEvent]
+
+	// Locks
+	mu struct {
+		docsCache sync.RWMutex
+	}
 
 	// Status-related fields
 	status   atomic.Int32
@@ -174,15 +157,15 @@ func CreateNewDatabase(path string, schema *DatabaseSchema, permissions string) 
 // path: storage path
 // options: storage engine options
 func OpenStorageEngine(opts *StorageEngineOptions) (*StorageEngine, error) {
-	return NewStorageEngineWithContext(opts, context.Background())
+	return OpenStorageEngineWithContext(opts, context.Background())
 }
 
-// NewStorageEngineWithContext opens a storage engine with the specified context
-func NewStorageEngineWithContext(opts *StorageEngineOptions, ctx context.Context) (*StorageEngine, error) {
+// OpenStorageEngineWithContext opens a storage engine with the specified context
+// It ensures proper status transitions and resource cleanup even if initialization fails.
+func OpenStorageEngineWithContext(opts *StorageEngineOptions, ctx context.Context) (engine *StorageEngine, err error) {
 	subCtx, cancel := context.WithCancel(ctx)
 
-	engine := &StorageEngine{
-		mu:        sync.RWMutex{},
+	engine = &StorageEngine{
 		pebbleDB:  nil, // Will be initialized below
 		docsCache: nil, // Will be initialized below
 		meta:      nil, // Will be initialized below
@@ -197,70 +180,86 @@ func NewStorageEngineWithContext(opts *StorageEngineOptions, ctx context.Context
 		statusEb: util.NewEventBus[StorageEngineStatus](),
 
 		ctx:    subCtx,
-		cancel: cancel,
+		cancel: cancel, // Assign cancel function
 	}
 
+	// If err != nil, do cleanup in defer
+	defer func() {
+		if err != nil { // An error occurred during initialization.
+			if engine.pebbleDB != nil {
+				_ = engine.pebbleDB.Close()
+			}
+			engine.setStatus(StorageEngineStatusClosed)
+			engine.cancel()
+			engine = nil
+		}
+	}()
+
+	// Indicate that the engine is attempting to open.
 	engine.setStatus(StorageEngineStatusOpening)
 
+	// Open the underlying Pebble database.
+	var pebbleDB *pebble.DB
 	pebbleOpts := opts.GetPebbleOpts()
-	pebbleDB, err := pebble.Open(opts.Path, pebbleOpts)
+	pebbleDB, err = pebble.Open(opts.Path, pebbleOpts)
 	if err != nil {
-		engine.setStatus(StorageEngineStatusClosed)
-		return nil, err
+		return nil, pe.Wrap(err, "failed to open pebble db")
 	}
+	// Assign pebbleDB to the engine only after successful opening.
 	engine.pebbleDB = pebbleDB
 
-	// Load database metadata
-	meta, err := loadDatabaseMeta(pebbleDB)
+	// Load the database metadata from the Pebble database.
+	var meta *DatabaseMeta
+	meta, err = loadDatabaseMeta(pebbleDB)
 	if err != nil {
-		pebbleDB.Close()
-		engine.setStatus(StorageEngineStatusClosed)
-		return nil, err
+		return nil, pe.Wrap(err, "failed to load database metadata")
 	}
+
+	// Assign meta to the engine only after successful loading.
 	engine.meta = meta
 
-	// Initialize document cache
+	// Initialize the document cache
 	engine.docsCache = NewEmptyDocsCache()
 
-	// Start goroutine to listen for context cancellation
-	go engine.stopOnDone()
+	// Open a goroutine to listen to the context
+	// And trigger a close event if the context is cancelled
+	go func() {
+		<-subCtx.Done()
+		engine.Close()
+	}()
 
+	// If all initialization steps succeeded, set the status to Open.
 	engine.setStatus(StorageEngineStatusOpen)
+
 	return engine, nil
-}
-
-// stopOnDone listens for context cancellation signal
-func (e *StorageEngine) stopOnDone() {
-	<-e.ctx.Done()
-
-	if e.GetStatus() == StorageEngineStatusClosed {
-		return
-	}
-
-	e.Close()
 }
 
 // loadDatabaseMeta loads database metadata
 func loadDatabaseMeta(pebbleDB *pebble.DB) (*DatabaseMeta, error) {
 	if pebbleDB == nil {
-		return nil, ErrStorageEngineClosed
+		return nil, pe.Errorf("pebble db is nil")
 	}
 
 	// Try to get existing storage metadata
 	storageMetaBytes, closer, err := pebbleDB.Get([]byte(STORAGE_META_KEY))
+	defer closer.Close()
 
 	// Metadata does not exist
-	if err == pebble.ErrNotFound {
-		return nil, ErrDatabaseMetaNotFound
+	if errors.Is(err, pebble.ErrNotFound) {
+		return nil, pe.Errorf("database meta not found")
 	} else if err != nil {
 		return nil, err
 	} else {
-		closer.Close()
 		return NewDatabaseMetaFromBytes(storageMetaBytes)
 	}
 }
 
+// writeDatabaseMeta writes database metadata to the Pebble database
 func writeDatabaseMeta(pebbleDB *pebble.DB, meta *DatabaseMeta) error {
+	if pebbleDB == nil {
+		return pe.Errorf("pebble db is nil")
+	}
+
 	metaBytes, err := meta.ToBytes()
 	if err != nil {
 		return err
@@ -273,7 +272,7 @@ func writeDatabaseMeta(pebbleDB *pebble.DB, meta *DatabaseMeta) error {
 // Otherwise, loads the document from storage and updates the cache.
 func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, error) {
 	if e.GetStatus() != StorageEngineStatusOpen {
-		return nil, ErrStorageEngineClosed
+		return nil, pe.Errorf("storage engine is not open")
 	}
 
 	keyBytes, err := CalcDocKey(collectionName, docID)
@@ -283,17 +282,17 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 
 	// Check cache first
 	{
-		e.mu.RLock()
+		e.mu.docsCache.RLock()
 		doc, ok := e.docsCache.Get(keyBytes)
-		e.mu.RUnlock()
+		e.mu.docsCache.RUnlock()
 		if ok {
 			return doc, nil
 		}
 	}
 
 	// Cache miss, acquire write lock
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.mu.docsCache.Lock()
+	defer e.mu.docsCache.Unlock()
 
 	// Double check in case another goroutine loaded the doc while acquiring the lock
 	if doc, ok := e.docsCache.Get(keyBytes); ok {
@@ -319,7 +318,7 @@ func (e *StorageEngine) LoadDoc(collectionName, docID string) (*loro.LoroDoc, er
 // Returns: map from document ID to document
 func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCache bool) (map[string]*loro.LoroDoc, error) {
 	if e.GetStatus() != StorageEngineStatusOpen {
-		return nil, ErrStorageEngineClosed
+		return nil, pe.Errorf("storage engine is not open")
 	}
 
 	lowerbound, err := CalcCollectionLowerBound(collectionName)
@@ -362,7 +361,7 @@ func (e *StorageEngine) LoadAllDocsInCollection(collectionName string, updateCac
 // LoadDocAndFork loads a document and creates a fork
 func (e *StorageEngine) LoadDocAndFork(collectionName, docID string) (*loro.LoroDoc, error) {
 	if e.GetStatus() != StorageEngineStatusOpen {
-		return nil, ErrStorageEngineClosed
+		return nil, pe.Errorf("storage engine is not open")
 	}
 
 	doc, err := e.LoadDoc(collectionName, docID)
@@ -384,7 +383,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				Transaction: tr,
 			}
 			e.canceledEb.Publish(event)
-			return fmt.Errorf("%w: %v", ErrTransactionCancelled, err)
+			return pe.Errorf("transaction cancelled: %v", err)
 		}
 	}
 
@@ -406,7 +405,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// Check if document already exists
 				_, ok := e.docsCache.Get(keyBytes)
 				if ok {
-					return fmt.Errorf("%w: doc key = %s", ErrInsertExistingDoc, key)
+					return pe.Errorf("doc already exists: %s", key)
 				}
 
 				// Update cache
@@ -433,7 +432,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// Check if document exists
 				doc, ok := e.docsCache.Get(keyBytes)
 				if !ok {
-					return fmt.Errorf("%w: doc key = %s", ErrUpdateNonExistentDoc, key)
+					return pe.Errorf("doc does not exist: %s", key)
 				}
 
 				// Update cache
@@ -465,7 +464,7 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				// Check if document exists
 				oldDoc, ok := e.docsCache.Get(keyBytes)
 				if !ok {
-					return fmt.Errorf("%w: doc key = %s", ErrDeleteNonExistentDoc, key)
+					return pe.Errorf("doc does not exist: %s", key)
 				}
 
 				// Update cache
@@ -499,16 +498,11 @@ func (e *StorageEngine) commitInner(tr *Transaction, rb *rollbackInfo) error {
 //     You can perform permission checks in this hook. If it returns an error, the transaction is cancelled.
 func (e *StorageEngine) Commit(tr *Transaction) error {
 	if e.GetStatus() != StorageEngineStatusOpen {
-		return ErrStorageEngineClosed
+		return pe.Errorf("storage engine is not open")
 	}
 
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	// Cannot commit transaction after storage engine is closed
-	if e.pebbleDB == nil {
-		return ErrStorageEngineClosed
-	}
+	e.mu.docsCache.Lock()
+	defer e.mu.docsCache.Unlock()
 
 	// Check if transaction is valid
 	if err := EnsureTransactionValid(tr); err != nil {
@@ -531,7 +525,7 @@ func (e *StorageEngine) Commit(tr *Transaction) error {
 		}
 		e.committedEb.Publish(event)
 		return nil
-	} else if !errors.Is(err, ErrTransactionCancelled) {
+	} else {
 		// Commit failed, perform rollback
 		for _, key := range rb.toDelete {
 			e.docsCache.Delete(key)
@@ -587,43 +581,23 @@ func (e *StorageEngine) WaitForStatus(targetStatus StorageEngineStatus) <-chan s
 	return util.WaitForStatus(e.GetStatus, targetStatus, statusCh, cleanup, 0)
 }
 
-// IsClosed checks if the storage engine is closed
-func (e *StorageEngine) IsClosed() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.pebbleDB == nil
-}
-
 // Close closes the storage engine
 func (e *StorageEngine) Close() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	status := e.GetStatus()
+	if status == StorageEngineStatusOpen {
+		e.setStatus(StorageEngineStatusClosing)
 
-	// If already closed, just return
-	if e.pebbleDB == nil {
-		return nil
-	}
-
-	e.setStatus(StorageEngineStatusClosing)
-
-	// Cancel context
-	if e.cancel != nil {
+		// Cancel context
 		e.cancel()
+
+		// Close pebble db
+		_ = e.pebbleDB.Close()
+		e.pebbleDB = nil
+		e.meta = nil
+		e.docsCache = nil
+
+		e.setStatus(StorageEngineStatusClosed)
 	}
-
-	// Wait for all transactions to complete
-	// You can add waiting logic here, such as waiting for a period of time or for specific conditions
-	// For example: wait for all ongoing transactions to finish, or force close after a timeout
-
-	err := e.pebbleDB.Close()
-	if err != nil {
-		return err
-	}
-	e.pebbleDB = nil
-	e.meta = nil
-	e.docsCache = nil
-
-	e.setStatus(StorageEngineStatusClosed)
 	return nil
 }
 
