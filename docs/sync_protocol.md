@@ -68,6 +68,16 @@
   - 方案二、在服务端维护每个客户端每个文档的版本（不好）
 - 如果事务提交非常频繁，考虑使用节流算法
 
+```go
+//使用versionGapMsg
+1.也需要避免越权的问题：client也可能通过伪造versionGapMsg来请求自己无权限的文档
+    --map维护该事务相关的文档
+2.流程：
+    --提交事务成功，S发送sync消息给各个client，同时记录map：<client --> transactionId : d1,d2,d......(需要update的文档ids)>
+    --client检查是否有缺失版本，如有发送VersionGapMsg到Synchronizer,放弃本次syncMsg更新
+    --Syncrhonizer检查VersionGapMsg是否越权，没有则发送新的SyncMsg
+    --client收到了新的SyncMsg，检查无缺失版本，正常更新
+```
 ---
 
 场景 3：客户端取消订阅一个查询

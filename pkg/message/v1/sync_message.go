@@ -12,8 +12,9 @@ import (
 // PostDocMessageV1 由服务端发送给客户端
 // 携带有客户端需要同步的数据
 type PostDocMessageV1 struct {
-	Upsert map[string][]byte
-	Delete []string
+	TransactionID string
+	Upsert        map[string][]byte
+	Delete        []string
 }
 
 var _ Message = &PostDocMessageV1{}
@@ -31,13 +32,17 @@ func (m *PostDocMessageV1) DebugSprint() string {
 	}
 	upsertStr := strings.Join(upsertStrs, ", ")
 	deleteStr := strings.Join(m.Delete, ", ")
-	return fmt.Sprintf("PostDocMessageV1{Upsert: [%s], Delete: [%s]}", upsertStr, deleteStr)
+	return fmt.Sprintf("PostDocMessageV1{TransactionID: %s, Upsert: [%s], Delete: [%s]}", m.TransactionID, upsertStr, deleteStr)
 }
 
 func (m *PostDocMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteUint8(buf, uint8(m.Type()))
-	err := util.WriteVarUint(buf, uint64(len(m.Upsert)))
+	err := util.WriteVarString(buf, m.TransactionID)
+	if err != nil {
+		return nil, err
+	}
+	err = util.WriteVarUint(buf, uint64(len(m.Upsert)))
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +70,11 @@ func (m *PostDocMessageV1) Encode() ([]byte, error) {
 }
 
 func decodeSyncMessageV1(b *bytes.Buffer) (*PostDocMessageV1, error) {
+	txID, err := util.ReadVarString(b)
+	if err != nil {
+		return nil, err
+	}
+
 	nUpsert, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -98,8 +108,9 @@ func decodeSyncMessageV1(b *bytes.Buffer) (*PostDocMessageV1, error) {
 	}
 
 	return &PostDocMessageV1{
-		Upsert: upsert,
-		Delete: delete,
+		TransactionID: txID,
+		Upsert:        upsert,
+		Delete:        delete,
 	}, nil
 }
 

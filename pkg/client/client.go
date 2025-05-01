@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	BYTES "bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -193,8 +194,38 @@ func (c *TestClient) handleServerMessage(data []byte) {
 					}
 				}
 			} else {
-				log.Debugf("文档 %s.%s 存在，更新本地数据库", collection, docId)
-				doc.Import(bytes)
+				importBlobMeta, err := loro.InspectImport(bytes, false)
+				if err != nil {
+					log.Warnf("解析blobMeta失败: %v", err)
+				}
+				startVV := importBlobMeta.PartialStartVV.Encode().Bytes()
+				currentVV := doc.GetStateVv().Encode().Bytes()
+
+				if !BYTES.Equal(startVV, currentVV) {
+					//存在中间版本缺失，告诉服务器自己的版本
+					versionGapMsg := &message.VersionGapMessageV1{
+						TransactionID: msg.TransactionID,
+						Responses:     make(map[string][]byte),
+					}
+					versionGapMsg.Responses[docKey] = currentVV
+
+					// 将响应发送回服务器
+					respData, err := versionGapMsg.Encode()
+					if err != nil {
+						log.Warnf("编码响应失败: %v", err)
+						return
+					}
+
+					err = c.Channel.Send(respData)
+					if err != nil {
+						log.Warnf("发送响应失败: %v", err)
+						return
+					}
+				} else {
+					//无中间版本缺失，可以正常更新
+					log.Debugf("文档 %s.%s 存在，更新本地数据库", collection, docId)
+					doc.Import(bytes)
+				}
 			}
 		}
 

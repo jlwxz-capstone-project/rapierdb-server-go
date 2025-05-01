@@ -9,7 +9,8 @@ import (
 )
 
 type VersionGapMessageV1 struct {
-	Responses map[string][]byte
+	TransactionID string
+	Responses     map[string][]byte
 }
 
 var _ Message = &VersionGapMessageV1{}
@@ -24,21 +25,38 @@ func (m *VersionGapMessageV1) DebugSprint() string {
 		i++
 	}
 	responseStr := strings.Join(responseStrs, ", ")
-	return fmt.Sprintf("VersionGapMessageV1{Responses: [%s]}", responseStr)
+	return fmt.Sprintf("VersionGapMessageV1{TransactionID: %s, Responses: [%s]}", m.TransactionID, responseStr)
 }
 
 func (m *VersionGapMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteUint8(buf, uint8(m.Type()))
-	util.WriteVarUint(buf, uint64(len(m.Responses)))
+	err := util.WriteVarString(buf, m.TransactionID)
+	if err != nil {
+		return nil, err
+	}
+	err = util.WriteVarUint(buf, uint64(len(m.Responses)))
+	if err != nil {
+		return nil, err
+	}
 	for key, value := range m.Responses {
-		util.WriteVarString(buf, key)
-		util.WriteVarByteArray(buf, value)
+		err = util.WriteVarString(buf, key)
+		if err != nil {
+			return nil, err
+		}
+		err = util.WriteVarByteArray(buf, value)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return buf.Bytes(), nil
 }
 
 func decodeVersionGapMessageV1(b *bytes.Buffer) (*VersionGapMessageV1, error) {
+	txID, err := util.ReadVarString(b)
+	if err != nil {
+		return nil, err
+	}
 	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
 		return nil, err
@@ -55,7 +73,10 @@ func decodeVersionGapMessageV1(b *bytes.Buffer) (*VersionGapMessageV1, error) {
 		}
 		responses[key] = value
 	}
-	return &VersionGapMessageV1{Responses: responses}, nil
+	return &VersionGapMessageV1{
+		TransactionID: txID,
+		Responses:     responses,
+	}, nil
 }
 
 func (m *VersionGapMessageV1) Type() uint8 {

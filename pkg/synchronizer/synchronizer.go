@@ -52,6 +52,8 @@ type Synchronizer struct {
 
 	//维护VQM和请求文档集合的映射关系：clientId -> vqmId -> docIds
 	vqmToDocIDsMap map[string]map[string][]string
+	//维护各个客户端的事务与请求文档集合的映射关系：clientId -> transactionId -> docIds，用于对versionGapMessage的鉴权
+	txToDocIDsMap map[string]map[string][]string
 }
 
 type StorageEngineEvents struct {
@@ -304,6 +306,49 @@ func (s *Synchronizer) Start() error {
 				}
 				s.channel.Send(clientId, syncMsgBytes)
 			}
+		case *message.VersionGapMessageV1:
+			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)
+			toUpsert := make(map[string][]byte)
+			toDelete := make([]string, 0)
+			for docKey, vvBytes := range msg.Responses {
+				docKeyBytes := util.String2Bytes(docKey)
+				collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
+				docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+				docIdsQueryKey := collection + ":" + docId
+				validDocIds := s.txToDocIDsMap[clientId][msg.TransactionID]
+				if !slices.Contains(validDocIds, docIdsQueryKey) {
+					log.Errorf("msgHandler: 客户端 %s 越权请求文档 %s/%s", clientId, collection, docId)
+					continue
+				}
+				// VersionGapMessage应该携带的都是需要增量更新的文档
+				// doc是synchronizer侧最新的文档，vv是client侧的版本
+				doc, err := s.storageEngine.LoadDoc(collection, docId)
+				if err != nil {
+					log.Errorf("msgHandler: 加载文档 %s/%s 失败: %v", collection, docId, err)
+					continue
+				}
+				vv := loro.NewVvFromBytes(loro.NewRustBytesVec(vvBytes))
+				updateBytesVec := doc.ExportUpdatesFrom(vv)
+				updateBytes := updateBytesVec.Bytes()
+				toUpsert[docKey] = updateBytes
+			}
+			//处理完毕，删除该client下： txToDocIDsMap中该事务对应的所有文档，避免map中数据堆积
+			delete(s.txToDocIDsMap[clientId], msg.TransactionID)
+			//发送同步消息SyncMsg
+			if len(toUpsert) > 0 {
+				syncMsg := message.PostDocMessageV1{
+					TransactionID: msg.TransactionID,
+					Upsert:        toUpsert,
+					Delete:        toDelete,
+				}
+				log.Debugf("msgHandler: 向客户端 %s 发送同步消息 %s", clientId, syncMsg.DebugSprint())
+				syncMsgBytes, err := syncMsg.Encode()
+				if err != nil {
+					log.Errorf("msgHandler: 编码同步消息失败: %v", err)
+					return
+				}
+				s.channel.Send(clientId, syncMsgBytes)
+			}
 		}
 	}
 	s.channel.SetMsgHandler(msgHandler)
@@ -357,14 +402,23 @@ func (s *Synchronizer) handleTransactionCommitted(event_ any) {
 			log.Debugf("handleTransactionCommitted: 向客户端 %s 发送同步消息，upsert: %d, delete: %d",
 				clientId, len(cu.Updates), len(cu.Deletes))
 
+			//建立事务 - 更新的文档id的映射关系,用于后续versionGapMessage的鉴权
+			for docKey, _ := range cu.Updates {
+				docKeyBytes := util.String2Bytes(docKey)
+				collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
+				docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+				s.txToDocIDsMap[clientId][event.Transaction.TxID] = append(s.txToDocIDsMap[clientId][event.Transaction.TxID], collection+":"+docId)
+			}
+
 			deletedKeys := make([]string, 0, len(cu.Deletes))
 			for docKey := range cu.Deletes {
 				deletedKeys = append(deletedKeys, docKey)
 			}
 
 			syncMsg := message.PostDocMessageV1{
-				Upsert: cu.Updates,
-				Delete: deletedKeys,
+				TransactionID: event.Transaction.TxID,
+				Upsert:        cu.Updates,
+				Delete:        deletedKeys,
 			}
 
 			syncMsgBytes, err := syncMsg.Encode()
