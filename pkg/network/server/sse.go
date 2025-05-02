@@ -51,3 +51,36 @@ func EncodeSSE(data []byte, config *SSEConfig) []byte {
 
 	return buf.Bytes()
 }
+
+// EncodeSSEBase64 将 base64 编码的消息编码为SSE格式
+// 使用 config 参数进行配置，传 nil 时使用默认配置
+func EncodeSSEBase64(data string, config *SSEConfig) []byte {
+	// 设置默认值
+	cfg := SSEConfig{
+		ID:    fmt.Sprintf("%d", time.Now().UnixNano()),
+		Retry: 5000,
+	}
+
+	// 合并自定义配置
+	if config != nil {
+		if config.Event != "" {
+			cfg.Event = config.Event
+		}
+		if config.ID != "" {
+			cfg.ID = config.ID
+		}
+		if config.Retry > 0 {
+			cfg.Retry = config.Retry
+		}
+	}
+
+	var buf bytes.Buffer
+	if cfg.Event != "" {
+		buf.WriteString(fmt.Sprintf("event: %s\n", cfg.Event))
+	}
+	buf.WriteString(fmt.Sprintf("id: %s\n", cfg.ID))
+	buf.WriteString(fmt.Sprintf("retry: %d\n", cfg.Retry))
+	buf.WriteString(fmt.Sprintf("data: %s\n\n", data))
+
+	return buf.Bytes()
+}

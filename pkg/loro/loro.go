@@ -418,6 +418,7 @@ const (
 )
 
 // PartialCompare 比较两个版本向量
+//
 // 注意：两个版本向量可能不可比。比如：a - do something -> b,
 // a -> do nothing -> c，则 b 和 c 不可比
 func (vv *VersionVector) PartialCompare(other *VersionVector) PartialOrder {

@@ -2,6 +2,7 @@ package network_server
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -143,7 +144,8 @@ func (s *HttpNetwork) Send(clientId string, msg []byte) error {
 		return pe.Errorf("Connection for client %s not found", clientId)
 	}
 	if conn, ok := conn.(HttpConnection); ok {
-		encodedMsg := EncodeSSE(msg, nil)
+		base64Msg := base64.StdEncoding.EncodeToString(msg)
+		encodedMsg := EncodeSSEBase64(base64Msg, nil)
 		_, err := conn.responseWriter.Write(encodedMsg)
 		if err != nil {
 			return pe.Wrapf(err, "Failed to send message to client %s", clientId)
@@ -154,7 +156,8 @@ func (s *HttpNetwork) Send(clientId string, msg []byte) error {
 }
 
 func (s *HttpNetwork) Broadcast(msg []byte) error {
-	encodedMsg := EncodeSSE(msg, nil)
+	base64Msg := base64.StdEncoding.EncodeToString(msg)
+	encodedMsg := EncodeSSEBase64(base64Msg, nil)
 	s.connections.Range(func(key, value any) bool {
 		if conn, ok := value.(HttpConnection); ok {
 			_, err := conn.responseWriter.Write(encodedMsg)
