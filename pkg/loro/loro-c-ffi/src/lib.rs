@@ -681,6 +681,20 @@ pub extern "C" fn loro_text_to_value(ptr: *mut LoroText) -> *mut LoroValue {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn vv_partial_cmp(ptr1: *mut VersionVector, ptr2: *mut VersionVector) -> i32 {
+    unsafe {
+        let vv1 = &*ptr1;
+        let vv2 = &*ptr2;
+        match vv1.partial_cmp(vv2) {
+            Some(std::cmp::Ordering::Less) => -1,
+            Some(std::cmp::Ordering::Greater) => 1,
+            Some(std::cmp::Ordering::Equal) => 0,
+            None => 2,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,6 +715,29 @@ mod tests {
         }
         let time_end = std::time::Instant::now();
         println!("Time taken: {:?}", time_end.duration_since(time_start));
+    }
+
+    #[test]
+    fn test_vv_distance() {
+        let doc = LoroDoc::new();
+
+        let data_map = doc.get_map("data");
+        data_map.insert("name", "Chris");
+        data_map.insert("age", 30);
+
+        let doc1 = doc.fork();
+        let data_map1 = doc1.get_map("data");
+        data_map1.insert("age", 15);
+        let vv1 = doc1.oplog_vv();
+
+        let doc2 = doc.fork();
+        let data_map2 = doc2.get_map("data");
+        data_map2.insert("age", 50);
+        let vv2 = doc2.oplog_vv();
+
+        println!("vv1 < vv2: {}", vv1 < vv2);
+        println!("vv1 > vv2: {}", vv1 > vv2);
+        vv1.partial_cmp(&vv2);
     }
 
     #[test]

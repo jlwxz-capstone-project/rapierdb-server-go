@@ -408,6 +408,23 @@ func (vv *VersionVector) Encode() *RustBytesVec {
 	return bytesVec
 }
 
+type PartialOrder int
+
+const (
+	PartialOrderLt            PartialOrder = -1
+	PartialOrderEq            PartialOrder = 0
+	PartialOrderGt            PartialOrder = 1
+	PartialOrderNotComparable PartialOrder = 2
+)
+
+// PartialCompare 比较两个版本向量
+// 注意：两个版本向量可能不可比。比如：a - do something -> b,
+// a -> do nothing -> c，则 b 和 c 不可比
+func (vv *VersionVector) PartialCompare(other *VersionVector) PartialOrder {
+	ptr := C.vv_partial_cmp(vv.ptr, other.ptr)
+	return PartialOrder(C.int(ptr))
+}
+
 // -------------- Frontier -----------
 
 type Frontiers struct {

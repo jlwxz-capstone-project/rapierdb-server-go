@@ -45,6 +45,8 @@ extern void destroy_map_delta(void* ptr);
 extern void destroy_tree_diff(void* ptr);
 extern int diff_event_get_type(void* ptr);
 
+extern int vv_partial_cmp(void* ptr1, void* ptr2);
+
 // Loro Doc
 extern void* create_loro_doc();
 extern void destroy_loro_doc(void* ptr);

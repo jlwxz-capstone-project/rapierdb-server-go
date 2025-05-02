@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
@@ -65,4 +66,25 @@ func TestLoroList(t *testing.T) {
 	assert.Equal(t, []byte("hello"), l.MustGet(7))
 
 	assert.Equal(t, uint32(8), l.GetLen())
+}
+
+func TestVvCompare(t *testing.T) {
+	doc1 := loro.NewLoroDoc()
+	dataMap1 := doc1.GetMap("data")
+	dataMap1.InsertValueCoerce("age", 30)
+
+	doc2 := doc1.Fork()
+	dataMap2 := doc2.GetMap("data")
+	dataMap2.InsertValueCoerce("age", 31)
+	vv2 := doc2.GetOplogVv()
+
+	doc3 := doc1.Fork()
+	dataMap3 := doc3.GetMap("data")
+	dataMap3.InsertValueCoerce("age", 32)
+	vv3 := doc3.GetOplogVv()
+
+	fmt.Println("doc1.age", dataMap1.MustGet("age"))
+	fmt.Println("doc2.age", dataMap2.MustGet("age"))
+	fmt.Println("doc3.age", dataMap3.MustGet("age"))
+	fmt.Println(vv2.PartialCompare(vv3))
 }
