@@ -304,7 +304,7 @@ func (s *Synchronizer) Start() error {
 					log.Errorf("msgHandler: 编码同步消息失败: %v", err)
 					return
 				}
-				s.channel.Send(clientId, syncMsgBytes)
+				s.network.Send(clientId, syncMsgBytes)
 			}
 		case *message.VersionGapMessageV1:
 			log.Debugf("msgHandler: 收到 %s 来自 %s", msg.DebugSprint(), clientId)

@@ -212,16 +212,17 @@ func (c *TestClient) handleServerMessage(data []byte) {
 				if err != nil {
 					log.Warnf("解析blobMeta失败: %v", err)
 				}
-				startVV := importBlobMeta.PartialStartVV.Encode().Bytes()
-				currentVV := doc.GetStateVv().Encode().Bytes()
-
-				if !BYTES.Equal(startVV, currentVV) {
+				startVV := importBlobMeta.PartialStartVV
+				clientVV := doc.GetOplogVv()
+				updateFromClientVV := doc.ExportUpdatesFrom(clientVV).Bytes()
+				updateFromLatestVV := doc.ExportUpdatesFrom(startVV).Bytes()
+				if !BYTES.Equal(updateFromClientVV, updateFromLatestVV) {
 					//存在中间版本缺失，告诉服务器自己的版本
 					versionGapMsg := &message.VersionGapMessageV1{
 						TransactionID: msg.TransactionID,
 						Responses:     make(map[string][]byte),
 					}
-					versionGapMsg.Responses[docKey] = currentVV
+					versionGapMsg.Responses[docKey] = clientVV.Encode().Bytes()
 
 					// 将响应发送回服务器
 					respData, err := versionGapMsg.Encode()
@@ -230,7 +231,7 @@ func (c *TestClient) handleServerMessage(data []byte) {
 						return
 					}
 
-					err = c.Channel.Send(respData)
+					err = c.NetworkProvider.Send(respData)
 					if err != nil {
 						log.Warnf("发送响应失败: %v", err)
 						return
