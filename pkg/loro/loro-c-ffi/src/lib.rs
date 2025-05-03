@@ -13,10 +13,10 @@ mod loro_value;
 
 use loro::event::{Diff, DiffBatch, ListDiffItem, MapDelta};
 use loro::{
-    ContainerID, ContainerTrait, Counter, ExportMode, Frontiers, ImportBlobMetadata,
+    ContainerID, ContainerTrait, Counter, ExportMode, Frontiers, ImportBlobMetadata, ImportStatus,
     LoroBinaryValue, LoroDoc, LoroList, LoroListValue, LoroMap, LoroMovableList, LoroStringValue,
     LoroText, LoroValue, PeerID, TextDelta, TreeDiff, UpdateOptions, ValueOrContainer,
-    VersionVector, ID,
+    VersionRange, VersionVector, ID,
 };
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -172,11 +172,68 @@ pub extern "C" fn new_vec_from_bytes(
 }
 
 #[no_mangle]
-pub extern "C" fn loro_doc_import(doc_ptr: *mut LoroDoc, vec_ptr: *mut Vec<u8>) {
+pub extern "C" fn loro_doc_import(
+    doc_ptr: *mut LoroDoc,
+    vec_ptr: *mut Vec<u8>,
+) -> *mut ImportStatus {
     unsafe {
         let doc = &mut *doc_ptr;
         let vec = &mut *vec_ptr;
-        doc.import(vec).unwrap();
+        let status = doc.import(vec).unwrap();
+        let boxed = Box::new(status);
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_import_status(ptr: *mut ImportStatus) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn import_status_get_success(ptr: *mut ImportStatus) -> *mut VersionRange {
+    unsafe {
+        let status = &*ptr;
+        let boxed = Box::new(status.success.clone());
+        let ptr = Box::into_raw(boxed);
+        ptr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn import_status_get_pending(ptr: *mut ImportStatus) -> *mut VersionRange {
+    unsafe {
+        let status = &*ptr;
+        match status.pending.clone() {
+            Some(pending) => {
+                let boxed = Box::new(pending);
+                let ptr = Box::into_raw(boxed);
+                ptr
+            }
+            None => std::ptr::null_mut(),
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn version_range_is_empty(ptr: *mut VersionRange) -> i32 {
+    unsafe {
+        let range = &*ptr;
+        if range.is_empty() {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_version_range(ptr: *mut VersionRange) {
+    unsafe {
+        let _ = Box::from_raw(ptr);
     }
 }
 
@@ -681,6 +738,20 @@ pub extern "C" fn loro_text_to_value(ptr: *mut LoroText) -> *mut LoroValue {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn vv_partial_cmp(ptr1: *mut VersionVector, ptr2: *mut VersionVector) -> i32 {
+    unsafe {
+        let vv1 = &*ptr1;
+        let vv2 = &*ptr2;
+        match vv1.partial_cmp(vv2) {
+            Some(std::cmp::Ordering::Less) => -1,
+            Some(std::cmp::Ordering::Greater) => 1,
+            Some(std::cmp::Ordering::Equal) => 0,
+            None => 2,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,6 +772,29 @@ mod tests {
         }
         let time_end = std::time::Instant::now();
         println!("Time taken: {:?}", time_end.duration_since(time_start));
+    }
+
+    #[test]
+    fn test_vv_distance() {
+        let doc = LoroDoc::new();
+
+        let data_map = doc.get_map("data");
+        data_map.insert("name", "Chris");
+        data_map.insert("age", 30);
+
+        let doc1 = doc.fork();
+        let data_map1 = doc1.get_map("data");
+        data_map1.insert("age", 15);
+        let vv1 = doc1.oplog_vv();
+
+        let doc2 = doc.fork();
+        let data_map2 = doc2.get_map("data");
+        data_map2.insert("age", 50);
+        let vv2 = doc2.oplog_vv();
+
+        println!("vv1 < vv2: {}", vv1 < vv2);
+        println!("vv1 > vv2: {}", vv1 > vv2);
+        vv1.partial_cmp(&vv2);
     }
 
     #[test]

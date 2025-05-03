@@ -2,6 +2,8 @@ package storage_engine
 
 import (
 	"strings"
+
+	pe "github.com/pkg/errors"
 )
 
 // CalcDocKey 计算文档的键值
@@ -10,10 +12,10 @@ import (
 func CalcDocKey(collectionName, docID string) ([]byte, error) {
 	// 先检查长度限制
 	if len(collectionName) > COLLECTION_SIZE_IN_BYTES {
-		return nil, ErrCollectionNameTooLarge
+		return nil, pe.Errorf("collection name too large: %s", collectionName)
 	}
 	if len(docID) > DOC_ID_SIZE_IN_BYTES {
-		return nil, ErrDocIDTooLarge
+		return nil, pe.Errorf("doc id too large: %s", docID)
 	}
 
 	result := make([]byte, KEY_SIZE_IN_BYTES)
@@ -47,7 +49,7 @@ func CalcCollectionLowerBound(collectionName string) ([]byte, error) {
 	// 填充集合名称
 	collectionNameLen := copy(result[n:], collectionName)
 	if collectionNameLen > COLLECTION_SIZE_IN_BYTES {
-		return nil, ErrCollectionNameTooLarge
+		return nil, pe.Errorf("collection name too large: %s", collectionName)
 	}
 	for i := n + collectionNameLen; i < n+COLLECTION_SIZE_IN_BYTES; i++ {
 		result[i] = 0
@@ -74,7 +76,7 @@ func CalcCollectionUpperBound(collectionName string) ([]byte, error) {
 	// 填充集合名称
 	collectionNameLen := copy(result[n:], collectionName)
 	if collectionNameLen > COLLECTION_SIZE_IN_BYTES {
-		return nil, ErrCollectionNameTooLarge
+		return nil, pe.Errorf("collection name too large: %s", collectionName)
 	}
 	for i := n + collectionNameLen; i < n+COLLECTION_SIZE_IN_BYTES; i++ {
 		result[i] = 0

@@ -261,9 +261,16 @@ func (doc *LoroDoc) ExportUpdatesTill(till *VersionVector) *RustBytesVec {
 }
 
 // 导入快照 / 更新（都是一堆字节）
-func (doc *LoroDoc) Import(data []byte) {
+func (doc *LoroDoc) Import(data []byte) *ImportStatus {
 	snapshot := NewRustBytesVec(data)
-	C.loro_doc_import(doc.Ptr, snapshot.ptr)
+	ptr := C.loro_doc_import(doc.Ptr, snapshot.ptr)
+	status := &ImportStatus{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(status, func(status *ImportStatus) {
+		status.Destroy()
+	})
+	return status
 }
 
 func (doc *LoroDoc) GetOplogVv() *VersionVector {
@@ -365,6 +372,64 @@ func (doc *LoroDoc) Diff(v1, v2 *Frontiers) *DiffBatch {
 	return diffBatch
 }
 
+// ----------- Import Status ------------
+
+type ImportStatus struct {
+	ptr unsafe.Pointer
+}
+
+func (status *ImportStatus) Destroy() {
+	C.destroy_import_status(status.ptr)
+}
+
+// 获取成功合入的版本范围
+//
+// 注意：如果所有更改都失败，则 GetSuccess() 返回空 VersionRange；
+// 否则返回非空 VersionRange。
+func (status *ImportStatus) GetSuccess() *VersionRange {
+	ptr := C.import_status_get_success(status.ptr)
+	versionRange := &VersionRange{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(versionRange, func(r *VersionRange) {
+		r.Destroy()
+	})
+	return versionRange
+}
+
+// 获取 pending 的版本范围
+//
+// 注意：如果所有更改都成功合入，则 GetPending() 返回 nil
+func (status *ImportStatus) GetPending() *VersionRange {
+	ptr := C.import_status_get_pending(status.ptr)
+	if ptr == nil {
+		return nil
+	}
+	versionRange := &VersionRange{
+		ptr: unsafe.Pointer(ptr),
+	}
+	runtime.SetFinalizer(versionRange, func(r *VersionRange) {
+		r.Destroy()
+	})
+	return versionRange
+}
+
+// ---------- Version Range ------------
+
+type VersionRange struct {
+	ptr unsafe.Pointer
+}
+
+func (r *VersionRange) Destroy() {
+	C.destroy_version_range(r.ptr)
+}
+
+// 判断版本范围是否为空
+func (r *VersionRange) IsEmpty() bool {
+	res := C.version_range_is_empty(r.ptr)
+	return res == 1
+}
+
 // ----------- Version Vector -----------
 
 type VersionVector struct {
@@ -406,6 +471,24 @@ func (vv *VersionVector) Encode() *RustBytesVec {
 		vec.Destroy()
 	})
 	return bytesVec
+}
+
+type PartialOrder int
+
+const (
+	PartialOrderLt            PartialOrder = -1
+	PartialOrderEq            PartialOrder = 0
+	PartialOrderGt            PartialOrder = 1
+	PartialOrderNotComparable PartialOrder = 2
+)
+
+// PartialCompare 比较两个版本向量
+//
+// 注意：两个版本向量可能不可比。比如：a - do something -> b,
+// a -> do nothing -> c，则 b 和 c 不可比
+func (vv *VersionVector) PartialCompare(other *VersionVector) PartialOrder {
+	ptr := C.vv_partial_cmp(vv.ptr, other.ptr)
+	return PartialOrder(C.int(ptr))
 }
 
 // -------------- Frontier -----------

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
+	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,4 +41,17 @@ func TestMessageEncodingDecoding(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestMiscEncodingDecoding(t *testing.T) {
+	query1 := &query.FindManyQuery{
+		Collection: "users",
+		Filter:     qfe.NewValueExpr(true),
+	}
+	encoded, err := query1.Encode()
+	assert.NoError(t, err)
+
+	decoded, err := query.DecodeQuery(encoded)
+	assert.NoError(t, err)
+	assert.Equal(t, query1, decoded)
 }

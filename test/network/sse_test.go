@@ -14,9 +14,10 @@ import (
 	network_client "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/client"
 	network_server "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/server"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	db "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/synchronizer"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -83,9 +84,8 @@ func TestClientCodeStart(t *testing.T) {
 		return err
 	}
 
-	// 启动服务器
+	// Start server
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	serverReadyCh := make(chan struct{})
 	testServerOpts := &testServerOptions{
 		SchemaJs:      testSchema1,
@@ -100,23 +100,21 @@ func TestClientCodeStart(t *testing.T) {
 	}
 	go startServer(testServerOpts)
 	<-serverReadyCh
-	log.Info("服务器已启动")
+	log.Info("Server started")
 
-	// 启动 SSE 客户端
+	// Start SSE client
 	clientReadyCh := make(chan struct{})
 	clientAction := func(c *client.TestClient) error {
 		query1 := query.FindManyQuery{
 			Collection: "users",
-			Filter: &query_filter_expr.ValueExpr{
-				Value: true,
-			},
+			Filter:     qfe.NewValueExpr(true),
 		}
 		rquery1, err := c.FindMany(&query1)
 		assert.NoError(t, err)
 
-		log.Debugf("query1 之前结果：%v", rquery1.Result.Get())
+		log.Debugf("Result before query1: %v", rquery1.Result.Get())
 		time.Sleep(2 * time.Second)
-		log.Debugf("query1 之后结果：%v", rquery1.Result.Get())
+		log.Debugf("Result after query1: %v", rquery1.Result.Get())
 
 		user4 := loro.NewLoroDoc()
 		user4Map := user4.GetMap("data")
@@ -138,7 +136,7 @@ func TestClientCodeStart(t *testing.T) {
 		})
 
 		time.Sleep(2 * time.Second)
-		log.Debugf("事务提交之后结果：%v", rquery1.Result.Get())
+		log.Debugf("Result after transaction commit: %v", rquery1.Result.Get())
 
 		return nil
 	}
@@ -156,29 +154,30 @@ func TestClientCodeStart(t *testing.T) {
 	}
 	go startTestClient(testClientOpts)
 	<-clientReadyCh
-	log.Info("客户端已启动")
+	log.Info("Client started")
 
 	time.Sleep(5 * time.Second)
 
-	// 通过取消上下文来触发所有组件的优雅关闭
+	// Trigger graceful shutdown of all components by canceling the context
 	cancel()
 
-	// 给组件一些时间进行清理
+	// Give components some time to clean up
 	time.Sleep(1 * time.Second)
 
-	log.Info("测试成功完成")
+	log.Info("Test completed successfully")
 }
 
 type testServerOptions struct {
-	SchemaJs      string                                                         // 数据库的 schema（Js 字符串）
-	Addr          string                                                         // 服务器地址，如: "localhost:8080"
-	SseEndpoint   string                                                         // SSE 端点，如: "/sse"
-	ApiEndpoint   string                                                         // API 端点，如: "/api"
-	AuthProvider  auth.Authenticator[*http.Request]                              // 认证器，测试时可以使用 HttpMockAuthProvider
-	DbSetup       func(t *testing.T, engine *storage_engine.StorageEngine) error // 数据库后处理函数，用于在测试开始前插入测试数据
-	T             *testing.T                                                     //
-	ServerReadyCh chan<- struct{}                                                // 就绪后向这个通道发送一个信号
-	Ctx           context.Context                                                // 上下文，用于优雅关闭
+	SchemaJs        string                                                         // Database schema (JS string)
+	Addr            string                                                         // Server address, e.g., "localhost:8080"
+	SseEndpoint     string                                                         // SSE endpoint, e.g., "/sse"
+	ApiEndpoint     string                                                         // API endpoint, e.g., "/api"
+	AuthProvider    auth.Authenticator[*http.Request]                              // Authenticator, can use HttpMockAuthProvider for testing
+	DbSetup         func(t *testing.T, engine *storage_engine.StorageEngine) error // Database post-processing function, used to insert test data before test starts
+	T               *testing.T                                                     //
+	ServerReadyCh   chan<- struct{}                                                // Send a signal to this channel when ready
+	Ctx             context.Context                                                // Context, used for graceful shutdown
+	ShutdownTimeout time.Duration                                                  // New field for server shutdown timeout
 }
 
 func setupTempStorageEngine(opts *testServerOptions) *storage_engine.StorageEngine {
@@ -204,54 +203,61 @@ func setupTempStorageEngine(opts *testServerOptions) *storage_engine.StorageEngi
 func startServer(opts *testServerOptions) {
 	var err error
 
-	// 1. 准备存储引擎
-	tempStorageEngine := setupTempStorageEngine(opts)                         // 初始化临时存储引擎
-	<-tempStorageEngine.WaitForStatus(storage_engine.StorageEngineStatusOpen) // 等待存储引擎打开成功
-	err = opts.DbSetup(opts.T, tempStorageEngine)                             // 后处理，比如插入数据
+	// 1. Prepare storage engine
+	tempStorageEngine := setupTempStorageEngine(opts)                         // Initialize temporary storage engine
+	<-tempStorageEngine.WaitForStatus(storage_engine.StorageEngineStatusOpen) // Wait for storage engine to open successfully
+	err = opts.DbSetup(opts.T, tempStorageEngine)                             // Post-processing, e.g., insert data
 	if err != nil {
-		log.Terrorf(opts.T, "数据库后处理函数失败: %v", err)
+		log.Terrorf(opts.T, "Database post-processing function failed: %v", err)
 		return
 	}
 
-	// 2. 启动服务器
-	server := network_server.NewRapierDbHTTPServer(&network_server.RapierDbHTTPServerOption{
-		Addr:        opts.Addr,
-		SseEndpoint: opts.SseEndpoint,
-		ApiEndpoint: opts.ApiEndpoint,
-	})
-	server.SetAuthProvider(opts.AuthProvider) // 设置认证器
+	// 2. Start server
+	serverOptions := &network_server.HttpNetworkOptions{
+		BaseUrl:         opts.Addr,
+		ReceiveEndpoint: opts.ApiEndpoint, // API is the receive endpoint for server (client sends here)
+		SendEndpoint:    opts.SseEndpoint, // SSE is the send endpoint for server (server sends here)
+		Authenticator:   opts.AuthProvider,
+		ShutdownTimeout: opts.ShutdownTimeout,
+	}
+	server := network_server.NewHttpNetworkWithContext(serverOptions, opts.Ctx)
 
-	log.Info("服务器启动中...")
+	log.Info("Server starting...")
 	err = server.Start()
 	if err != nil {
-		log.Terrorf(opts.T, "启动服务器失败: %v", err)
+		log.Terrorf(opts.T, "Failed to start server: %v", err)
 		return
 	}
-	<-server.WaitForStatus(network_server.ServerStatusRunning)
 
-	// 3. 启动同步器
-	channel := server.GetChannel()
+	// Wait for server to be running using the new status subscription
+	serverStatusCh := server.SubscribeStatusChange()
+	cleanupServerWait := func() {
+		server.UnsubscribeStatusChange(serverStatusCh)
+	}
+	<-util.WaitForStatus(server.GetStatus, network_server.NetworkRunning, serverStatusCh, cleanupServerWait, 0)
+
+	// 3. Start synchronizer
 	synchronizerConfig := &db.SynchronizerConfig{}
-	synchronizer := db.NewSynchronizer(tempStorageEngine, channel, synchronizerConfig)
+	synchronizer := db.NewSynchronizerWithContext(opts.Ctx, tempStorageEngine, server, synchronizerConfig)
+
 	err = synchronizer.Start()
 	if err != nil {
-		log.Terrorf(opts.T, "启动同步器失败: %v", err)
+		log.Terrorf(opts.T, "Failed to start synchronizer: %v", err)
 		return
 	}
 	<-synchronizer.WaitForStatus(db.SynchronizerStatusRunning)
 
-	// 4. 通知测试函数服务器已就绪
+	// 4. Notify test function that server is ready
 	opts.ServerReadyCh <- struct{}{}
 
-	// 5. 接收到关闭信号时，优雅关闭
+	// 5. Graceful shutdown when shutdown signal is received
 	<-opts.Ctx.Done()
-	log.Info("开始关闭服务器...")
+	log.Info("Shutting down server...")
 
-	synchronizer.Stop()
-	server.Stop()
-	tempStorageEngine.Close()
+	// we don't need to stop these components manually, because we use
+	// context to control the shutdown of all components
 
-	log.Info("服务器已完全关闭")
+	log.Info("Server fully shut down")
 }
 
 type testClientOptions struct {
@@ -266,20 +272,39 @@ type testClientOptions struct {
 }
 
 func startTestClient(opts *testClientOptions) {
-	cm := network_client.NewHttpChannelManager(network_client.HttpChannelConfig{
-		ReceiveURL: "http://" + opts.ServerUrl + opts.SseEndpoint,
-		SendURL:    "http://" + opts.ServerUrl + opts.ApiEndpoint,
-		Headers:    opts.Headers,
-	})
-	c := client.NewTestClient(cm)
-	c.Connect()
+	// Create the new HttpNetwork client provider
+	networkOptions := &network_client.HttpNetworkOptions{
+		BackendUrl:      "http://" + opts.ServerUrl, // Base URL of the server
+		ReceiveEndpoint: opts.SseEndpoint,           // SSE endpoint for receiving messages from server
+		SendEndpoint:    opts.ApiEndpoint,           // API endpoint for sending messages to server
+		Headers:         opts.Headers,
+	}
+	networkProvider := network_client.NewHttpNetworkWithContext(networkOptions, opts.Ctx)
 
+	// Create the test client with the new network provider
+	c := client.NewTestClient(networkProvider)
+
+	// Connect the client
+	err := c.Connect()
+	if err != nil {
+		log.Terrorf(opts.T, "Client connection failed: %v", err)
+		return
+	}
+
+	// Wait for the client to be ready
 	<-c.WaitForStatus(client.TEST_CLIENT_STATUS_READY)
 	opts.ClientReadyCh <- struct{}{}
 
-	err := opts.ClientAction(c)
+	// Execute the client action
+	err = opts.ClientAction(c)
 	if err != nil {
-		log.Terrorf(opts.T, "客户端操作失败: %v", err)
+		log.Terrorf(opts.T, "Client action failed: %v", err)
 		return
 	}
+
+	// Wait for context cancellation to close the client
+	<-opts.Ctx.Done()
+	log.Info("Shutting down client...")
+	c.Close()
+	log.Info("Client shut down")
 }

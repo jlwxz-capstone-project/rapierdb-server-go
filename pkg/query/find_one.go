@@ -55,7 +55,14 @@ func (q *FindOneQuery) Match(doc *loro.LoroDoc) (bool, error) {
 }
 
 func (q *FindOneQuery) Encode() ([]byte, error) {
-	jsonBytes, err := json.Marshal(q)
+	var temp struct {
+		Type uint64 `json:"type"`
+		*FindOneQuery
+	}
+	temp.Type = FIND_ONE_QUERY_TYPE
+	temp.FindOneQuery = q
+
+	jsonBytes, err := json.Marshal(temp)
 	if err != nil {
 		return nil, err
 	}
