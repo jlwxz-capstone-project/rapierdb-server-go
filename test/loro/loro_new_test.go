@@ -88,3 +88,27 @@ func TestVvCompare(t *testing.T) {
 	fmt.Println("doc3.age", dataMap3.MustGet("age"))
 	fmt.Println(vv2.PartialCompare(vv3))
 }
+
+func TestVersionGap(t *testing.T) {
+	doc1 := loro.NewLoroDoc()
+	dataMap1 := doc1.GetMap("data")
+	dataMap1.InsertValueCoerce("age", 30)
+	vv1 := doc1.GetOplogVv()
+
+	doc2 := doc1.Fork()
+	dataMap2 := doc2.GetMap("data")
+	dataMap2.InsertValueCoerce("age", 21)
+	vv21 := doc2.GetOplogVv()
+	dataMap2.InsertValueCoerce("name", "John")
+	updateFromVv21 := doc2.ExportUpdatesFrom(vv21).Bytes()
+	updateFromVv1 := doc2.ExportUpdatesFrom(vv1).Bytes()
+
+	doc3 := doc1.Fork()
+	status := doc3.Import(updateFromVv21)
+	assert.True(t, status.GetSuccess().IsEmpty())
+	assert.NotNil(t, status.GetPending())
+
+	status2 := doc3.Import(updateFromVv1)
+	assert.False(t, status2.GetSuccess().IsEmpty())
+	assert.Nil(t, status2.GetPending())
+}

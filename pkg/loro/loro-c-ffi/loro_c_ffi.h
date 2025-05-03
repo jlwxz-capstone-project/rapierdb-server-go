@@ -58,7 +58,7 @@ extern void* export_loro_doc_snapshot(void* doc_ptr);
 extern void* export_loro_doc_all_updates(void* doc_ptr);
 extern void* export_loro_doc_updates_from(void* doc_ptr, void* from_ptr);
 extern void* export_loro_doc_updates_till(void* doc_ptr, void* till_ptr);
-extern void loro_doc_import(void* doc_ptr, void* vec_ptr);
+extern void* loro_doc_import(void* doc_ptr, void* vec_ptr);
 extern void loro_doc_decode_import_blob_meta(
   void* blob,
   int check_checksum,
@@ -72,6 +72,15 @@ extern void loro_doc_decode_import_blob_meta(
   uint32_t* change_num
 );
 extern void* loro_doc_get_by_path(void* doc_ptr, char* path_ptr);
+
+// Loro Import Status
+extern void destroy_import_status(void* ptr);
+extern void* import_status_get_success(void* ptr);
+extern void* import_status_get_pending(void* ptr);
+
+// Loro Version Range
+extern void destroy_version_range(void* ptr);
+extern int version_range_is_empty(void* ptr);
 
 // Loro List Diff Item
 extern void destroy_list_diff_item(void* ptr);
