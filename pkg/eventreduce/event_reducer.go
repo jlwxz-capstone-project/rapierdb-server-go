@@ -2,14 +2,14 @@ package eventreduce
 
 import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/bdd"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 )
 
 // 一个 EventReducer 会根据 ListeningQuery lq 和 TransactionOp
 // 计算出应该采取什么 Action 更新 lq 的结果集
 type EventReducer interface {
-	Reduce(lq query.ListeningQuery, op storage_engine.TransactionOp) ActionName
+	Reduce(lq query.ListeningQuery, op db_conn.TransactionOp) ActionName
 }
 
 var eventReducer EventReducer = NewMockEventReducer()
@@ -25,7 +25,7 @@ type MockEventReducer struct{}
 
 var _ EventReducer = &MockEventReducer{}
 
-func (m *MockEventReducer) Reduce(lq query.ListeningQuery, op storage_engine.TransactionOp) ActionName {
+func (m *MockEventReducer) Reduce(lq query.ListeningQuery, op db_conn.TransactionOp) ActionName {
 	return ActionRunFullQueryAgain // mock 实例总是重新运行查询
 }
 
@@ -49,6 +49,6 @@ func NewBddEventReducerFromMinimalString(minimalBddString string) (*BddEventRedu
 	return &BddEventReducer{bdd: bdd}, nil
 }
 
-func (r *BddEventReducer) Reduce(lq query.ListeningQuery, op storage_engine.TransactionOp) ActionName {
+func (r *BddEventReducer) Reduce(lq query.ListeningQuery, op db_conn.TransactionOp) ActionName {
 	panic("not implemented")
 }

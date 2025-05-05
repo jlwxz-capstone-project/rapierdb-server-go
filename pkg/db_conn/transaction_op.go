@@ -1,13 +1,10 @@
-package storage_engine
+package db_conn
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
-
-	pe "github.com/pkg/errors"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	pe "github.com/pkg/errors"
 )
 
 type TransactionOpType int
@@ -16,10 +13,6 @@ const (
 	OP_INSERT TransactionOpType = 0
 	OP_UPDATE TransactionOpType = 1
 	OP_DELETE TransactionOpType = 2
-)
-
-var (
-	ErrTransactionInvalid = errors.New("transaction invalid")
 )
 
 type TransactionOp interface {
@@ -49,46 +42,7 @@ type DeleteOp struct {
 
 func (op *DeleteOp) isTransactionOp() {}
 
-type Transaction struct {
-	// 事务 ID，应该是 UUID，通常由客户端生成
-	TxID string
-	// 目标数据库
-	TargetDatabase string
-	// 提交者，通常是客户端的 ID
-	Committer string
-	// 操作
-	Operations []TransactionOp
-}
-
-func EnsureTransactionValid(tr *Transaction) error {
-	if len(tr.TxID) != 36 {
-		return pe.WithStack(fmt.Errorf("%w: invalid tx_id = \"%s\"", ErrTransactionInvalid, tr.TxID))
-	}
-
-	if tr.TargetDatabase == "" {
-		return pe.WithStack(fmt.Errorf("%w: invalid target_database = \"%s\"", ErrTransactionInvalid, tr.TargetDatabase))
-	}
-
-	if tr.Committer == "" {
-		return pe.WithStack(fmt.Errorf("%w: invalid committer = \"%s\"", ErrTransactionInvalid, tr.Committer))
-	}
-
-	if len(tr.Operations) == 0 {
-		return pe.WithStack(fmt.Errorf("%w: empty operations", ErrTransactionInvalid))
-	}
-
-	for _, op := range tr.Operations {
-		switch op := op.(type) {
-		case *InsertOp, *UpdateOp, *DeleteOp:
-			continue
-		default:
-			return pe.WithStack(fmt.Errorf("%w: invalid operation type = %T", ErrTransactionInvalid, op))
-		}
-	}
-
-	return nil
-}
-
+// writeInsertOp writes an insert operation to a buffer
 func writeInsertOp(buf *bytes.Buffer, op *InsertOp) error {
 	if err := util.WriteUint8(buf, uint8(OP_INSERT)); err != nil {
 		return err
@@ -105,6 +59,7 @@ func writeInsertOp(buf *bytes.Buffer, op *InsertOp) error {
 	return nil
 }
 
+// writeUpdateOp writes an update operation to a buffer
 func writeUpdateOp(buf *bytes.Buffer, op *UpdateOp) error {
 	if err := util.WriteUint8(buf, uint8(OP_UPDATE)); err != nil {
 		return err
@@ -121,6 +76,7 @@ func writeUpdateOp(buf *bytes.Buffer, op *UpdateOp) error {
 	return nil
 }
 
+// writeDeleteOp writes a delete operation to a buffer
 func writeDeleteOp(buf *bytes.Buffer, op *DeleteOp) error {
 	if err := util.WriteUint8(buf, uint8(OP_DELETE)); err != nil {
 		return err
@@ -134,6 +90,7 @@ func writeDeleteOp(buf *bytes.Buffer, op *DeleteOp) error {
 	return nil
 }
 
+// writeTransactionOp writes a transaction operation to a buffer
 func writeTransactionOp(buf *bytes.Buffer, op TransactionOp) error {
 	switch op := op.(type) {
 	case *InsertOp:
@@ -146,36 +103,8 @@ func writeTransactionOp(buf *bytes.Buffer, op TransactionOp) error {
 		return pe.Errorf("unknown operation type: %T", op)
 	}
 }
-func writeTransaction(buf *bytes.Buffer, tr *Transaction) error {
-	if err := util.WriteVarString(buf, tr.TxID); err != nil {
-		return err
-	}
-	if err := util.WriteVarString(buf, tr.TargetDatabase); err != nil {
-		return err
-	}
-	if err := util.WriteVarString(buf, tr.Committer); err != nil {
-		return err
-	}
-	if err := util.WriteVarUint(buf, uint64(len(tr.Operations))); err != nil {
-		return err
-	}
-	for _, op := range tr.Operations {
-		if err := writeTransactionOp(buf, op); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
-func EncodeTransaction(tr *Transaction) (res []byte, err error) {
-	buf := bytes.NewBuffer(nil)
-	err = writeTransaction(buf, tr)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
+// readTransactionOp reads a transaction operation from a buffer
 func readTransactionOp(data *bytes.Buffer) (TransactionOp, error) {
 	opType, err := util.ReadUint8(data)
 	if err != nil {
@@ -235,45 +164,4 @@ func readTransactionOp(data *bytes.Buffer) (TransactionOp, error) {
 	default:
 		return nil, pe.Errorf("unknown operation type: %d", opType)
 	}
-}
-
-func ReadTransaction(data *bytes.Buffer) (*Transaction, error) {
-	txID, err := util.ReadVarString(data)
-	if err != nil {
-		return nil, err
-	}
-	targetDatabase, err := util.ReadVarString(data)
-	if err != nil {
-		return nil, err
-	}
-	committer, err := util.ReadVarString(data)
-	if err != nil {
-		return nil, err
-	}
-	nOperations, err := util.ReadVarUint(data)
-	if err != nil {
-		return nil, err
-	}
-
-	operations := make([]TransactionOp, 0, nOperations)
-	for i := uint64(0); i < nOperations; i++ {
-		op, err := readTransactionOp(data)
-		if err != nil {
-			return nil, err // Propagate error
-		}
-		operations = append(operations, op)
-	}
-
-	return &Transaction{
-		TxID:           txID,
-		TargetDatabase: targetDatabase,
-		Committer:      committer,
-		Operations:     operations,
-	}, nil
-}
-
-func DecodeTransaction(data []byte) (res *Transaction, err error) {
-	buf := bytes.NewBuffer(data)
-	res, err = ReadTransaction(buf)
-	return res, err
 }

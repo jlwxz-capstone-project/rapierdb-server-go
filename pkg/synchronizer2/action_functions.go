@@ -1,21 +1,24 @@
-package synchronizer
+package synchronizer2
 
 import (
 	"fmt"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/eventreduce"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/key_utils"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permission_proxy"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query_executor"
 )
 
 type ActionFunctionInput struct {
 	clientId       string
 	listeningQuery query.ListeningQuery
-	permissions    *query.Permissions
-	op             storage_engine.TransactionOp
+	permissions    *permission_proxy.PermissionProxy
+	op             db_conn.TransactionOp
 	clientUpdates  *ClientUpdates
-	queryExecutor  *query.QueryExecutor
+	queryExecutor  *query_executor.QueryExecutor
 }
 
 type ActionFunction func(in ActionFunctionInput)
@@ -62,8 +65,8 @@ func updateClientUpdates(in ActionFunctionInput) {
 	}
 
 	switch op := in.op.(type) {
-	case *storage_engine.InsertOp:
-		key, err := storage_engine.CalcDocKey(lq.Query.Collection, op.DocID)
+	case *db_conn.InsertOp:
+		key, err := key_utils.CalcDocKey(lq.Query.Collection, op.DocID)
 		if err != nil {
 			panic(fmt.Sprintf("calc doc key error: %v", err))
 		}
@@ -71,8 +74,8 @@ func updateClientUpdates(in ActionFunctionInput) {
 		// 如果该键已在删除集合中，先从删除集合中移除（虽然一般不会出现这种情况）
 		delete(in.clientUpdates.Deletes, stringKey)
 		in.clientUpdates.Updates[stringKey] = op.Snapshot
-	case *storage_engine.UpdateOp:
-		key, err := storage_engine.CalcDocKey(lq.Query.Collection, op.DocID)
+	case *db_conn.UpdateOp:
+		key, err := key_utils.CalcDocKey(lq.Query.Collection, op.DocID)
 		if err != nil {
 			panic(fmt.Sprintf("calc doc key error: %v", err))
 		}
@@ -81,8 +84,8 @@ func updateClientUpdates(in ActionFunctionInput) {
 		if _, exists := in.clientUpdates.Deletes[stringKey]; !exists {
 			in.clientUpdates.Updates[stringKey] = op.Update
 		}
-	case *storage_engine.DeleteOp:
-		key, err := storage_engine.CalcDocKey(lq.Query.Collection, op.DocID)
+	case *db_conn.DeleteOp:
+		key, err := key_utils.CalcDocKey(lq.Query.Collection, op.DocID)
 		if err != nil {
 			panic(fmt.Sprintf("calc doc key error: %v", err))
 		}
@@ -98,7 +101,7 @@ func ActionDoNothing(in ActionFunctionInput) {
 
 func ActionInsertFirst(in ActionFunctionInput) {
 	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
-	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
+	insertOp, isInsertOp := in.op.(*db_conn.InsertOp)
 	if isFindMany {
 		if isInsertOp {
 			doc := loro.NewLoroDoc()
@@ -119,7 +122,7 @@ func ActionInsertFirst(in ActionFunctionInput) {
 
 func ActionInsertLast(in ActionFunctionInput) {
 	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
-	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
+	insertOp, isInsertOp := in.op.(*db_conn.InsertOp)
 	if isFindMany {
 		if isInsertOp {
 			doc := loro.NewLoroDoc()
@@ -206,7 +209,7 @@ func ActionRemoveExisting(in ActionFunctionInput) {
 
 func ActionReplaceExisting(in ActionFunctionInput) {
 	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
-	op, isUpdateOp := in.op.(*storage_engine.UpdateOp)
+	op, isUpdateOp := in.op.(*db_conn.UpdateOp)
 	if isFindMany {
 		if isUpdateOp {
 			idx := -1
@@ -235,7 +238,7 @@ func ActionAlwaysWrong(in ActionFunctionInput) {
 
 func ActionInsertAtSortPosition(in ActionFunctionInput) {
 	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
-	insertOp, isInsertOp := in.op.(*storage_engine.InsertOp)
+	insertOp, isInsertOp := in.op.(*db_conn.InsertOp)
 	if isFindMany {
 		if isInsertOp {
 			doc := loro.NewLoroDoc()
@@ -284,13 +287,13 @@ func ActionUnknownAction(in ActionFunctionInput) {
 	panic("unknown action")
 }
 
-func getDocId(op storage_engine.TransactionOp) string {
+func getDocId(op db_conn.TransactionOp) string {
 	switch op := op.(type) {
-	case *storage_engine.InsertOp:
+	case *db_conn.InsertOp:
 		return op.DocID
-	case *storage_engine.UpdateOp:
+	case *db_conn.UpdateOp:
 		return op.DocID
-	case *storage_engine.DeleteOp:
+	case *db_conn.DeleteOp:
 		return op.DocID
 	default:
 		panic("unexpected operation")

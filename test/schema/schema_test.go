@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -12,11 +12,11 @@ import (
 var testSchema1 string
 
 func TestNewDatabaseSchemaFromJSON(t *testing.T) {
-	dbSchema, err := storage_engine.NewDatabaseSchemaFromJs(testSchema1)
+	dbSchema, err := db_conn.NewDatabaseSchemaFromJs(testSchema1)
 	assert.NoError(t, err)
 
 	// 验证解析结果
-	assert.Equal(t, storage_engine.DATABASE_SCHEMA, storage_engine.GetType(dbSchema))
+	assert.Equal(t, db_conn.DATABASE_SCHEMA, db_conn.GetType(dbSchema))
 	assert.Equal(t, "testDB", dbSchema.Name)
 	assert.Equal(t, "1.0.0", dbSchema.Version)
 	assert.Len(t, dbSchema.Collections, 1)
@@ -24,76 +24,76 @@ func TestNewDatabaseSchemaFromJSON(t *testing.T) {
 	// 验证users集合
 	usersCollection, ok := dbSchema.Collections["users"]
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.COLLECTION_SCHEMA, storage_engine.GetType(usersCollection))
+	assert.Equal(t, db_conn.COLLECTION_SCHEMA, db_conn.GetType(usersCollection))
 	assert.Equal(t, "users", usersCollection.Name)
 
 	// 验证文档schema的字段
 	fields := usersCollection.DocSchema.Fields
 
 	// 验证id字段
-	idField, ok := fields["id"].(*storage_engine.StringSchema)
+	idField, ok := fields["id"].(*db_conn.StringSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.STRING_SCHEMA, storage_engine.GetType(idField))
+	assert.Equal(t, db_conn.STRING_SCHEMA, db_conn.GetType(idField))
 	assert.True(t, idField.Unique)
-	assert.Equal(t, storage_engine.HASH_INDEX, idField.IndexType)
+	assert.Equal(t, db_conn.HASH_INDEX, idField.IndexType)
 	assert.False(t, idField.Nullable)
 
 	// 验证name字段
-	nameField, ok := fields["name"].(*storage_engine.StringSchema)
+	nameField, ok := fields["name"].(*db_conn.StringSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.STRING_SCHEMA, storage_engine.GetType(nameField))
+	assert.Equal(t, db_conn.STRING_SCHEMA, db_conn.GetType(nameField))
 	assert.True(t, nameField.Nullable)
 	assert.False(t, nameField.Unique)
-	assert.Equal(t, storage_engine.NONE_INDEX, nameField.IndexType)
+	assert.Equal(t, db_conn.NONE_INDEX, nameField.IndexType)
 
 	// 验证age字段
-	ageField, ok := fields["age"].(*storage_engine.NumberSchema)
+	ageField, ok := fields["age"].(*db_conn.NumberSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.NUMBER_SCHEMA, storage_engine.GetType(ageField))
-	assert.Equal(t, storage_engine.RANGE_INDEX, ageField.IndexType)
+	assert.Equal(t, db_conn.NUMBER_SCHEMA, db_conn.GetType(ageField))
+	assert.Equal(t, db_conn.RANGE_INDEX, ageField.IndexType)
 
 	// 验证tags字段
-	tagsField, ok := fields["tags"].(*storage_engine.ListSchema)
+	tagsField, ok := fields["tags"].(*db_conn.ListSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.LIST_SCHEMA, storage_engine.GetType(tagsField))
-	itemSchema, ok := tagsField.ItemSchema.(*storage_engine.StringSchema)
+	assert.Equal(t, db_conn.LIST_SCHEMA, db_conn.GetType(tagsField))
+	itemSchema, ok := tagsField.ItemSchema.(*db_conn.StringSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.STRING_SCHEMA, storage_engine.GetType(itemSchema))
+	assert.Equal(t, db_conn.STRING_SCHEMA, db_conn.GetType(itemSchema))
 
 	// 验证profile字段
-	profileField, ok := fields["profile"].(*storage_engine.ObjectSchema)
+	profileField, ok := fields["profile"].(*db_conn.ObjectSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.OBJECT_SCHEMA, storage_engine.GetType(profileField))
-	addressField, ok := profileField.Shape["address"].(*storage_engine.StringSchema)
+	assert.Equal(t, db_conn.OBJECT_SCHEMA, db_conn.GetType(profileField))
+	addressField, ok := profileField.Shape["address"].(*db_conn.StringSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.STRING_SCHEMA, storage_engine.GetType(addressField))
-	phoneField, ok := profileField.Shape["phone"].(*storage_engine.StringSchema)
+	assert.Equal(t, db_conn.STRING_SCHEMA, db_conn.GetType(addressField))
+	phoneField, ok := profileField.Shape["phone"].(*db_conn.StringSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.STRING_SCHEMA, storage_engine.GetType(phoneField))
+	assert.Equal(t, db_conn.STRING_SCHEMA, db_conn.GetType(phoneField))
 	assert.True(t, phoneField.Nullable)
 
 	// 验证type字段
-	typeField, ok := fields["type"].(*storage_engine.EnumSchema)
+	typeField, ok := fields["type"].(*db_conn.EnumSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.ENUM_SCHEMA, storage_engine.GetType(typeField))
+	assert.Equal(t, db_conn.ENUM_SCHEMA, db_conn.GetType(typeField))
 	assert.Equal(t, []string{"admin", "user", "guest"}, typeField.Values)
 
 	// 验证description字段
-	descField, ok := fields["description"].(*storage_engine.TextSchema)
+	descField, ok := fields["description"].(*db_conn.TextSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.TEXT_SCHEMA, storage_engine.GetType(descField))
-	assert.Equal(t, storage_engine.FULLTEXT_INDEX, descField.IndexType)
+	assert.Equal(t, db_conn.TEXT_SCHEMA, db_conn.GetType(descField))
+	assert.Equal(t, db_conn.FULLTEXT_INDEX, descField.IndexType)
 
 	// 验证其他复杂字段
-	preferencesField, ok := fields["preferences"].(*storage_engine.RecordSchema)
+	preferencesField, ok := fields["preferences"].(*db_conn.RecordSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.RECORD_SCHEMA, storage_engine.GetType(preferencesField))
+	assert.Equal(t, db_conn.RECORD_SCHEMA, db_conn.GetType(preferencesField))
 
-	categoriesField, ok := fields["categories"].(*storage_engine.TreeSchema)
+	categoriesField, ok := fields["categories"].(*db_conn.TreeSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.TREE_SCHEMA, storage_engine.GetType(categoriesField))
+	assert.Equal(t, db_conn.TREE_SCHEMA, db_conn.GetType(categoriesField))
 
-	sortedItemsField, ok := fields["sortedItems"].(*storage_engine.MovableListSchema)
+	sortedItemsField, ok := fields["sortedItems"].(*db_conn.MovableListSchema)
 	assert.True(t, ok)
-	assert.Equal(t, storage_engine.MOVABLE_LIST_SCHEMA, storage_engine.GetType(sortedItemsField))
+	assert.Equal(t, db_conn.MOVABLE_LIST_SCHEMA, db_conn.GetType(sortedItemsField))
 }

@@ -25,6 +25,8 @@ type FindManyQuery struct {
 	Limit      int64               `json:"limit,omitempty"`  // 返回的最大文档数量
 }
 
+type FindManyResult = []*DocWithId
+
 var _ Query = &FindManyQuery{}
 
 func (q *FindManyQuery) isQuery() {}
@@ -32,7 +34,10 @@ func (q *FindManyQuery) isQuery() {}
 // DebugSprint 返回查询的调试字符串表示
 // 实现 log.DebugPrintable 接口
 func (q *FindManyQuery) DebugSprint() string {
-	filterStr := q.Filter.DebugSprint()
+	filterStr := "nil"
+	if q.Filter != nil {
+		filterStr = q.Filter.DebugSprint()
+	}
 	sortStr := make([]string, len(q.Sort))
 	for i, sort := range q.Sort {
 		sortStr[i] = sort.DebugSprint()

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/key_utils"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -25,8 +25,8 @@ func (m *VersionQueryMessageV1) DebugSprint() string {
 	i := 0
 	for docKey, version := range m.Queries {
 		docKeyBytes := util.String2Bytes(docKey)
-		collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
-		docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+		collection := key_utils.GetCollectionNameFromKey(docKeyBytes)
+		docId := key_utils.GetDocIdFromKey(docKeyBytes)
 		queryStrs[i] = fmt.Sprintf("[%s.%s]: %s", collection, docId, version)
 		i++
 	}
@@ -76,7 +76,7 @@ func (m *VersionQueryMessageV1) Type() uint8 {
 }
 
 func (m *VersionQueryMessageV1) AddDoc(collection string, docId string) {
-	docKeyBytes, err := storage_engine.CalcDocKey(collection, docId)
+	docKeyBytes, err := key_utils.CalcDocKey(collection, docId)
 	if err != nil {
 		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
 		return
@@ -86,7 +86,7 @@ func (m *VersionQueryMessageV1) AddDoc(collection string, docId string) {
 }
 
 func (m *VersionQueryMessageV1) RemoveDoc(collection string, docId string) {
-	docKeyBytes, err := storage_engine.CalcDocKey(collection, docId)
+	docKeyBytes, err := key_utils.CalcDocKey(collection, docId)
 	if err != nil {
 		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
 		return
@@ -99,13 +99,13 @@ func (m *VersionQueryMessageV1) GetAllCollections() []string {
 	collections := make([]string, 0, len(m.Queries))
 	for docKey := range m.Queries {
 		docKeyBytes := util.String2Bytes(docKey)
-		collections = append(collections, storage_engine.GetCollectionNameFromKey(docKeyBytes))
+		collections = append(collections, key_utils.GetCollectionNameFromKey(docKeyBytes))
 	}
 	return collections
 }
 
 func (m *VersionQueryMessageV1) ContainsDoc(collection string, docId string) bool {
-	docKeyBytes, err := storage_engine.CalcDocKey(collection, docId)
+	docKeyBytes, err := key_utils.CalcDocKey(collection, docId)
 	if err != nil {
 		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
 		return false
@@ -113,4 +113,8 @@ func (m *VersionQueryMessageV1) ContainsDoc(collection string, docId string) boo
 	docKey := util.Bytes2String(docKeyBytes)
 	_, exists := m.Queries[docKey]
 	return exists
+}
+
+func (m *VersionQueryMessageV1) IsEmpty() bool {
+	return len(m.Queries) == 0
 }

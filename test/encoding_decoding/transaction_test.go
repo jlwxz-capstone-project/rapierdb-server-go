@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,7 +23,7 @@ func TestTransactionDecoding(t *testing.T) {
 			}
 			decoded, err := base64.StdEncoding.DecodeString(line)
 			assert.NoError(t, err)
-			_, err = storage_engine.DecodeTransaction(decoded)
+			_, err = db_conn.DecodeTransaction(decoded)
 			assert.NoError(t, err)
 		})
 	}

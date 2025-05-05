@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"unsafe"
 
 	pe "github.com/pkg/errors"
 
@@ -1084,9 +1085,10 @@ func toFloat64(v any) (float64, bool) {
 
 // isTruthy 判断一个值是否为真值（JavaScript 风格）
 func isTruthy(v any) bool {
-	switch x := v.(type) {
-	case nil:
+	if isNil(v) {
 		return false
+	}
+	switch x := v.(type) {
 	case bool:
 		return x
 	case string:
@@ -1104,4 +1106,8 @@ func isTruthy(v any) bool {
 	default:
 		return true
 	}
+}
+
+func isNil(v any) bool {
+	return (*[2]uintptr)(unsafe.Pointer(&v))[1] == 0
 }

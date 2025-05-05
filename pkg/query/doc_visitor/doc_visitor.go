@@ -36,7 +36,7 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 	for _, segment := range segments {
 		// 访问不存在的路径返回 PathNotFoundError
 		if isNil(curr) {
-			return nil, PathNotFoundError
+			return nil, pe.Wrapf(PathNotFoundError, path)
 		}
 
 		index, isIndex := segment.(int)
@@ -49,7 +49,7 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 				val, err := v.Get(key)
 				if err != nil {
 					if pe.Is(err, loro.ErrLoroGetNull) {
-						return nil, PathNotFoundError
+						return nil, pe.Wrapf(PathNotFoundError, path)
 					}
 					return nil, err
 				}
@@ -59,7 +59,7 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 			if isIndex {
 				vlen := int(v.GetLen())
 				if index < 0 || index >= vlen {
-					return nil, PathNotFoundError
+					return nil, pe.Wrapf(PathNotFoundError, path)
 				}
 				val, err := v.Get(uint32(index))
 				if err != nil {
@@ -73,7 +73,7 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 			if isIndex {
 				vlen := int(v.GetLen())
 				if index < 0 || index >= vlen {
-					return nil, PathNotFoundError
+					return nil, pe.Wrapf(PathNotFoundError, path)
 				}
 				val, err := v.Get(uint32(index))
 				if err != nil {
@@ -92,7 +92,7 @@ func VisitDocByPath(doc *loro.LoroDoc, path string) (any, error) {
 		case []loro.LoroValue:
 			if isIndex {
 				if index < 0 || index >= len(v) {
-					return nil, PathNotFoundError
+					return nil, pe.Wrapf(PathNotFoundError, path)
 				}
 				curr = v[index]
 			} else {

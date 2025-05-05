@@ -1,35 +1,43 @@
-package synchronizer
+package synchronizer2
 
 import (
 	"sync"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/eventreduce"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permission_proxy"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query_executor"
 )
 
+// QueryManager is responsible for managing all the queries subscribed by clients
+//
+// It also responsible for keeping the result of the query up to date, by
+// listening to the incoming transactions, using the EventReduce algorithm to
+// calculate the Action to take for updating the result set, and then executing
+// the ActionFunction to update the result set.
 type QueryManager struct {
-	// 每个客户端订阅的查询
+	// Queries subscribed by each client
 	// clientId -> queryHash -> query
-	subscriptions map[string]map[string]query.ListeningQuery
-	queryExecutor *query.QueryExecutor
-	permissions   *query.Permissions
-	eventReducer  eventreduce.EventReducer
-	mu            sync.RWMutex // 保护 subscriptions 的并发访问
+	subscriptions   map[string]map[string]query.ListeningQuery
+	queryExecutor   *query_executor.QueryExecutor
+	permissionProxy *permission_proxy.PermissionProxy
+	eventReducer    eventreduce.EventReducer
+	mu              sync.RWMutex // Protect concurrent access to subscriptions
 }
 
-// NewQueryManager 创建并返回一个新的 QueryManager 实例
-func NewQueryManager(queryExecutor *query.QueryExecutor, permissions *query.Permissions) *QueryManager {
+// NewQueryManager creates and returns a new QueryManager instance
+func NewQueryManager(queryExecutor *query_executor.QueryExecutor, permissionProxy *permission_proxy.PermissionProxy) *QueryManager {
 	return &QueryManager{
-		subscriptions: make(map[string]map[string]query.ListeningQuery),
-		queryExecutor: queryExecutor,
-		permissions:   permissions,
-		eventReducer:  eventreduce.GetEventReducer(),
-		mu:            sync.RWMutex{},
+		subscriptions:   make(map[string]map[string]query.ListeningQuery),
+		queryExecutor:   queryExecutor,
+		permissionProxy: permissionProxy,
+		eventReducer:    eventreduce.GetEventReducer(),
+		mu:              sync.RWMutex{},
 	}
 }
 
-// createListeningQuery 创建一个 ListeningQuery 实例，会执行查询放到 Result 中
+// createListeningQuery creates a ListeningQuery instance, executes the query, and stores the result in Result
 func (m *QueryManager) createListeningQuery(q query.Query) (query.ListeningQuery, error) {
 	switch q := q.(type) {
 	case *query.FindOneQuery:
@@ -57,7 +65,7 @@ func (m *QueryManager) createListeningQuery(q query.Query) (query.ListeningQuery
 	}
 }
 
-// SubscribeNewQuery 订阅新的查询
+// SubscribeNewQuery subscribes to a new query
 func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -82,7 +90,7 @@ func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) 
 	return nil
 }
 
-// RemoveSubscriptedQuery 移除指定客户端的查询订阅
+// RemoveSubscriptedQuery removes the query subscription for the specified client
 func (s *QueryManager) RemoveSubscriptedQuery(clientId string, q query.Query) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,7 +106,7 @@ func (s *QueryManager) RemoveSubscriptedQuery(clientId string, q query.Query) er
 	return nil
 }
 
-// CheckSubscriptedQuery 检查指定客户端是否订阅了给定的查询
+// CheckSubscriptedQuery checks if the specified client has subscribed to the given query
 func (a *QueryManager) CheckSubscriptedQuery(clientId string, q query.Query) (bool, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -124,7 +132,7 @@ func (cu *ClientUpdates) IsEmpty() bool {
 	return len(cu.Updates) == 0 && len(cu.Deletes) == 0
 }
 
-func (a *QueryManager) HandleTransaction(txn *storage_engine.Transaction) map[string]*ClientUpdates {
+func (a *QueryManager) HandleTransaction(txn *db_conn.Transaction) map[string]*ClientUpdates {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -141,14 +149,14 @@ func (a *QueryManager) HandleTransaction(txn *storage_engine.Transaction) map[st
 			}
 
 			for _, lq := range queries {
-				// 使用 EventReduce 算法计算更新结果集应该采取的 Action
+				// Use the EventReduce algorithm to calculate the Action to take for updating the result set
 				action := a.eventReducer.Reduce(lq, op)
-				// 根据 Action 获取对应的 ActionFunction
+				// Get the corresponding ActionFunction based on the Action
 				actionFunc := GetActionFunction(action)
-				// 执行 ActionFunction
+				// Execute the ActionFunction
 				actionFunc(ActionFunctionInput{
 					clientId:       clientId,
-					permissions:    a.permissions,
+					permissions:    a.permissionProxy,
 					listeningQuery: lq,
 					op:             op,
 					clientUpdates:  clientUpdates,

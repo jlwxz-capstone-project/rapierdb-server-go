@@ -1,4 +1,4 @@
-package query
+package permission_proxy
 
 import (
 	"errors"
@@ -10,8 +10,6 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 )
 
-var ErrInvalidPermissionDefinition = errors.New("invalid permission definition")
-
 type Permissions struct {
 	// 权限定义的版本
 	Version string
@@ -20,6 +18,8 @@ type Permissions struct {
 	// 权限定义的 Js 代码，序列化和反序列化时仅处理 JsDef 即可
 	JsDef string
 }
+
+var ErrInvalidPermissionDefinition = errors.New("invalid permission definition")
 
 type CollectionRuleFunc = func(...any) (any, error)
 
@@ -150,6 +150,7 @@ func NewPermissionFuncScope() *transpiler.Scope {
 	propGetter := transpiler.NewPropGetter(
 		DbWrapperAccessHandler,
 		CollectionWrapperAccessHandler,
+		DocWithIdAccessHandler,
 		LoroDocAccessHandler,
 		LoroTextAccessHandler,
 		LoroMapAccessHandler,

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/key_utils"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
@@ -25,8 +25,8 @@ func (m *VersionQueryRespMessageV1) DebugSprint() string {
 	i := 0
 	for docKey, version := range m.Responses {
 		docKeyBytes := util.String2Bytes(docKey)
-		collection := storage_engine.GetCollectionNameFromKey(docKeyBytes)
-		docId := storage_engine.GetDocIdFromKey(docKeyBytes)
+		collection := key_utils.GetCollectionNameFromKey(docKeyBytes)
+		docId := key_utils.GetDocIdFromKey(docKeyBytes)
 		respStrs[i] = fmt.Sprintf("[%s.%s]: %s", collection, docId, version)
 		i++
 	}

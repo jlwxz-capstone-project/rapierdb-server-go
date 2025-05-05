@@ -3,16 +3,17 @@ package eventreduce
 import (
 	"strings"
 
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query_executor"
 )
 
 type StateResolverInput struct {
 	lq            query.ListeningQuery
-	op            storage_engine.TransactionOp
-	queryExecutor *query.QueryExecutor
+	op            db_conn.TransactionOp
+	queryExecutor *query_executor.QueryExecutor
 }
 
 type StateResolver = func(input StateResolverInput) bool
@@ -97,17 +98,17 @@ func HasSkip(input StateResolverInput) bool {
 }
 
 func IsDelete(input StateResolverInput) bool {
-	_, isDelete := input.op.(*storage_engine.DeleteOp)
+	_, isDelete := input.op.(*db_conn.DeleteOp)
 	return isDelete
 }
 
 func IsInsert(input StateResolverInput) bool {
-	_, isInsert := input.op.(*storage_engine.InsertOp)
+	_, isInsert := input.op.(*db_conn.InsertOp)
 	return isInsert
 }
 
 func IsUpdate(input StateResolverInput) bool {
-	_, isUpdate := input.op.(*storage_engine.UpdateOp)
+	_, isUpdate := input.op.(*db_conn.UpdateOp)
 	return isUpdate
 }
 
@@ -347,25 +348,25 @@ func WasResultEmpty(input StateResolverInput) bool {
 	return len(q.Result) == 0
 }
 
-func getCollection(op storage_engine.TransactionOp) string {
+func getCollection(op db_conn.TransactionOp) string {
 	switch op := op.(type) {
-	case *storage_engine.InsertOp:
+	case *db_conn.InsertOp:
 		return op.Collection
-	case *storage_engine.UpdateOp:
+	case *db_conn.UpdateOp:
 		return op.Collection
-	case *storage_engine.DeleteOp:
+	case *db_conn.DeleteOp:
 		return op.Collection
 	default:
 		panic("unknown transaction op")
 	}
 }
-func getDocId(op storage_engine.TransactionOp) string {
+func getDocId(op db_conn.TransactionOp) string {
 	switch op := op.(type) {
-	case *storage_engine.InsertOp:
+	case *db_conn.InsertOp:
 		return op.DocID
-	case *storage_engine.UpdateOp:
+	case *db_conn.UpdateOp:
 		return op.DocID
-	case *storage_engine.DeleteOp:
+	case *db_conn.DeleteOp:
 		return op.DocID
 	default:
 		panic("unknown transaction op")
@@ -385,13 +386,13 @@ func getPrevDoc(input StateResolverInput) *loro.LoroDoc {
 
 func getCurrDoc(input StateResolverInput) *loro.LoroDoc {
 	switch op := input.op.(type) {
-	case *storage_engine.InsertOp:
+	case *db_conn.InsertOp:
 		doc := loro.NewLoroDoc()
 		doc.Import(op.Snapshot)
 		return doc
-	case *storage_engine.DeleteOp:
+	case *db_conn.DeleteOp:
 		return nil
-	case *storage_engine.UpdateOp:
+	case *db_conn.UpdateOp:
 		prevDoc := getPrevDoc(input)
 		if prevDoc == nil {
 			return nil

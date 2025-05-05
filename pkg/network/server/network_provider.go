@@ -12,4 +12,5 @@ type NetworkProvider interface {
 	GetStatus() NetworkStatus
 	SubscribeStatusChange() <-chan NetworkStatus
 	UnsubscribeStatusChange(ch <-chan NetworkStatus)
+	WaitForStatus(targetStatus NetworkStatus) <-chan struct{}
 }

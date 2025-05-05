@@ -11,6 +11,7 @@ const (
 	LevelInfo
 	LevelWarn
 	LevelError
+	LevelFatal
 )
 
 type Logger struct {
@@ -19,6 +20,7 @@ type Logger struct {
 	infoLogger  *go_log.Logger
 	warnLogger  *go_log.Logger
 	errorLogger *go_log.Logger
+	fatalLogger *go_log.Logger
 }
 
 var Log *Logger
@@ -30,6 +32,7 @@ func init() {
 		infoLogger:  go_log.New(os.Stdout, "\033[34m[INFO]\033[0m  ", go_log.LstdFlags),
 		warnLogger:  go_log.New(os.Stderr, "\033[33m[WARN]\033[0m  ", go_log.LstdFlags),
 		errorLogger: go_log.New(os.Stderr, "\033[1;31m[ERROR]\033[0m ", go_log.LstdFlags),
+		fatalLogger: go_log.New(os.Stderr, "\033[1;31m[FATAL]\033[0m ", go_log.LstdFlags),
 	}
 }
 
@@ -91,6 +94,20 @@ func Errorf(format string, v ...any) {
 		return
 	}
 	Log.errorLogger.Printf(format, v...)
+}
+
+func Fatal(v ...any) {
+	if Log.Level > LevelFatal {
+		return
+	}
+	Log.fatalLogger.Println(v...)
+}
+
+func Fatalf(format string, v ...any) {
+	if Log.Level > LevelFatal {
+		return
+	}
+	Log.fatalLogger.Printf(format, v...)
 }
 
 func Terrorf(t *testing.T, format string, v ...any) {

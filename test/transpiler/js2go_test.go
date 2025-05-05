@@ -11,7 +11,7 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/permission_proxy"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1534,11 +1534,11 @@ func TestLoroValueAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			propGetter := transpiler.NewPropGetter(
-				query.LoroDocAccessHandler,
-				query.LoroTextAccessHandler,
-				query.LoroMapAccessHandler,
-				query.LoroListAccessHandler,
-				query.LoroMovableListAccessHandler,
+				permission_proxy.LoroDocAccessHandler,
+				permission_proxy.LoroTextAccessHandler,
+				permission_proxy.LoroMapAccessHandler,
+				permission_proxy.LoroListAccessHandler,
+				permission_proxy.LoroMovableListAccessHandler,
 			)
 			ctx := transpiler.NewScope(nil, propGetter, nil)
 			goFunc, err := transpiler.TranspileJsScriptToGoFunc(tt.js, ctx)

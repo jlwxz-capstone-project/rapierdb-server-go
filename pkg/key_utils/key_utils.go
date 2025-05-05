@@ -1,4 +1,4 @@
-package storage_engine
+package key_utils
 
 import (
 	"strings"
@@ -6,11 +6,21 @@ import (
 	pe "github.com/pkg/errors"
 )
 
-// CalcDocKey 计算文档的键值
-// 键值格式为 "d<collectionName>:<docID>"，每个字段都填充到固定长度
-// 如果 collectionName 或 docID 超过最大长度限制，则返回错误
+const (
+	STORAGE_META_KEY         = "m" // Key for storing metadata
+	DOC_KEY_PREFIX           = "d" // Prefix for document keys
+	COLLECTION_SIZE_IN_BYTES = 16  // Maximum bytes for collection name
+	DOC_ID_SIZE_IN_BYTES     = 16  // Maximum bytes for document ID
+)
+
+// Total bytes for a document key = prefix(1) + collection name bytes(16) + sep(1) + doc id bytes(16)
+var KEY_SIZE_IN_BYTES = 1 + COLLECTION_SIZE_IN_BYTES + 1 + DOC_ID_SIZE_IN_BYTES
+
+// CalcDocKey calculates the key for a document.
+// Key format is "d<collectionName>:<docID>", each field is padded to a fixed length.
+// Returns an error if collectionName or docID exceeds the maximum length limit.
 func CalcDocKey(collectionName, docID string) ([]byte, error) {
-	// 先检查长度限制
+	// Check length limits first
 	if len(collectionName) > COLLECTION_SIZE_IN_BYTES {
 		return nil, pe.Errorf("collection name too large: %s", collectionName)
 	}
@@ -21,7 +31,7 @@ func CalcDocKey(collectionName, docID string) ([]byte, error) {
 	result := make([]byte, KEY_SIZE_IN_BYTES)
 	n := copy(result, DOC_KEY_PREFIX)
 
-	// 填充集合名称
+	// Pad collection name
 	collectionNameLen := copy(result[n:], collectionName)
 	for i := n + collectionNameLen; i < n+COLLECTION_SIZE_IN_BYTES; i++ {
 		result[i] = 0
@@ -30,7 +40,7 @@ func CalcDocKey(collectionName, docID string) ([]byte, error) {
 	result[n] = ':'
 	n++
 
-	// 填充文档ID
+	// Pad document ID
 	docIDLen := copy(result[n:], docID)
 	for i := n + docIDLen; i < n+DOC_ID_SIZE_IN_BYTES; i++ {
 		result[i] = 0
@@ -39,14 +49,14 @@ func CalcDocKey(collectionName, docID string) ([]byte, error) {
 	return result, nil
 }
 
-// CalcCollectionLowerBound 计算集合键值范围的下界
-// 下界格式为 "d<collectionName>:"，每个字段都填充到固定长度，后面用0填充
-// 如果 collectionName 超过最大长度限制，则返回错误
+// CalcCollectionLowerBound calculates the lower bound of the key range for a collection.
+// Lower bound format is "d<collectionName>:", each field is padded to a fixed length, followed by 0s.
+// Returns an error if collectionName exceeds the maximum length limit.
 func CalcCollectionLowerBound(collectionName string) ([]byte, error) {
 	result := make([]byte, KEY_SIZE_IN_BYTES)
 	n := copy(result, DOC_KEY_PREFIX)
 
-	// 填充集合名称
+	// Pad collection name
 	collectionNameLen := copy(result[n:], collectionName)
 	if collectionNameLen > COLLECTION_SIZE_IN_BYTES {
 		return nil, pe.Errorf("collection name too large: %s", collectionName)
@@ -58,7 +68,7 @@ func CalcCollectionLowerBound(collectionName string) ([]byte, error) {
 	result[n] = ':'
 	n++
 
-	// 填充文档ID部分为0
+	// Pad the document ID part with 0s
 	for i := n; i < KEY_SIZE_IN_BYTES; i++ {
 		result[i] = 0
 	}
@@ -66,14 +76,14 @@ func CalcCollectionLowerBound(collectionName string) ([]byte, error) {
 	return result, nil
 }
 
-// CalcCollectionUpperBound 计算集合键值范围的上界
-// 上界格式为 "d<collectionName>:"，每个字段都填充到固定长度，后面用0xFF填充
-// 如果 collectionName 超过最大长度限制，则返回错误
+// CalcCollectionUpperBound calculates the upper bound of the key range for a collection.
+// Upper bound format is "d<collectionName>:", each field is padded to a fixed length, followed by 0xFF.
+// Returns an error if collectionName exceeds the maximum length limit.
 func CalcCollectionUpperBound(collectionName string) ([]byte, error) {
 	result := make([]byte, KEY_SIZE_IN_BYTES)
 	n := copy(result, DOC_KEY_PREFIX)
 
-	// 填充集合名称
+	// Pad collection name
 	collectionNameLen := copy(result[n:], collectionName)
 	if collectionNameLen > COLLECTION_SIZE_IN_BYTES {
 		return nil, pe.Errorf("collection name too large: %s", collectionName)
@@ -85,7 +95,7 @@ func CalcCollectionUpperBound(collectionName string) ([]byte, error) {
 	result[n] = ':'
 	n++
 
-	// 填充文档ID部分为0xFF
+	// Pad the document ID part with 0xFF
 	for i := n; i < KEY_SIZE_IN_BYTES; i++ {
 		result[i] = 0xFF
 	}
@@ -93,16 +103,18 @@ func CalcCollectionUpperBound(collectionName string) ([]byte, error) {
 	return result, nil
 }
 
+// GetCollectionNameFromKey extracts the collection name from a document key.
 func GetCollectionNameFromKey(key []byte) string {
 	n := len(DOC_KEY_PREFIX)
-	// 去除尾部的空字节
+	// Remove trailing null bytes
 	collectionName := string(key[n : n+COLLECTION_SIZE_IN_BYTES])
 	return strings.TrimRight(collectionName, "\x00")
 }
 
+// GetDocIdFromKey extracts the document ID from a document key.
 func GetDocIdFromKey(key []byte) string {
-	n := len(DOC_KEY_PREFIX) + COLLECTION_SIZE_IN_BYTES + 1 // +1 跳过冒号
-	// 去除尾部的空字节
+	n := len(DOC_KEY_PREFIX) + COLLECTION_SIZE_IN_BYTES + 1 // +1 to skip the colon
+	// Remove trailing null bytes
 	docId := string(key[n : n+DOC_ID_SIZE_IN_BYTES])
 	return strings.TrimRight(docId, "\x00")
 }

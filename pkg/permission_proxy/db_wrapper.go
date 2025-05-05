@@ -1,23 +1,29 @@
-package query
+package permission_proxy
 
 import (
 	"fmt"
+	"unsafe"
 
-	"github.com/cockroachdb/errors"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js2go_transpiler/transpiler"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query_executor"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
+	"github.com/pkg/errors"
 )
 
+// a wrapper around a query executor, used as a readonly
+// view of a database in the permission system
 type DbWrapper struct {
-	QueryExecutor *QueryExecutor
+	QueryExecutor *query_executor.QueryExecutor
 }
 
+// allow users to write `db["<collection_name>"]` to get a collection wrapper
 func DbWrapperAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 	if dbWrapper, ok := obj.(*DbWrapper); ok {
 		if !access.IsCall {
 			if collection, ok := access.Prop.(string); ok {
-				ok := dbWrapper.QueryExecutor.StorageEngine.IsValidCollection(collection)
+				ok := dbWrapper.QueryExecutor.IsValidCollection(collection)
 				if !ok {
 					return nil, errors.WithStack(fmt.Errorf("collection %s not found", collection))
 				}
@@ -32,10 +38,28 @@ func DbWrapperAccessHandler(access transpiler.PropAccess, obj any) (any, error) 
 }
 
 type CollectionWrapper struct {
-	QueryExecutor *QueryExecutor
+	QueryExecutor *query_executor.QueryExecutor
 	Collection    string
 }
 
+// allow users to write
+//
+//	<collection_wrapper>.findMany({
+//	  filter: {...},
+//	  sort: [...],
+//	  skip: 0,
+//	  limit: 10,
+//	})
+//
+// to create and execute a findMany query
+//
+// also allow users to write
+//
+//	<collection_wrapper>.findOne({
+//	  filter: {...},
+//	})
+//
+// to create and execute a findOne query
 func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
 	if cw, ok := obj.(*CollectionWrapper); ok {
 		if access.IsCall {
@@ -48,21 +72,23 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 				skip := transpiler.GetField(access.Args[0], "skip")
 				limit := transpiler.GetField(access.Args[0], "limit")
 
-				query := &FindManyQuery{
+				q := &query.FindManyQuery{
 					Collection: cw.Collection,
 				}
 
+				// construct filter
 				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
-					query.Filter = filter
+					q.Filter = filter
 				} else {
 					return nil, errors.WithStack(fmt.Errorf("invalid query: filter must be a QueryFilterExpr"))
 				}
 
+				// construct sort
 				if sort != nil {
 					if sortAnyArray, ok := sort.([]any); ok {
-						sortArray := make([]SortField, len(sortAnyArray))
+						sortArray := make([]query.SortField, len(sortAnyArray))
 						for i, v := range sortAnyArray {
-							if sortField, ok := v.(SortField); ok {
+							if sortField, ok := v.(query.SortField); ok {
 								sortArray[i] = sortField
 							} else {
 								return nil, errors.WithStack(fmt.Errorf("invalid query: sort must be a []SortField"))
@@ -73,25 +99,28 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 					}
 				}
 
+				// construct skip
 				if skip != nil {
 					switch v := skip.(type) {
 					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-						query.Skip = util.ToInt64(v)
+						q.Skip = util.ToInt64(v)
 					default:
 						return nil, errors.WithStack(fmt.Errorf("invalid query: skip must be an int-like value"))
 					}
 				}
 
+				// construct limit
 				if limit != nil {
 					switch v := limit.(type) {
 					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-						query.Limit = util.ToInt64(v)
+						q.Limit = util.ToInt64(v)
 					default:
 						return nil, errors.WithStack(fmt.Errorf("invalid query: limit must be an int-like value"))
 					}
 				}
 
-				docs, err := cw.QueryExecutor.FindMany(query)
+				// execute query
+				docs, err := cw.QueryExecutor.FindMany(q)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
@@ -102,17 +131,17 @@ func CollectionWrapperAccessHandler(access transpiler.PropAccess, obj any) (any,
 					return nil, errors.WithStack(fmt.Errorf("query expects 1 argument"))
 				}
 
-				query := &FindOneQuery{
+				q := &query.FindOneQuery{
 					Collection: cw.Collection,
 				}
 				filter := transpiler.GetField(access.Args[0], "filter")
 				if filter, ok := filter.(qfe.QueryFilterExpr); ok {
-					query.Filter = filter
+					q.Filter = filter
 				} else {
 					return nil, errors.WithStack(fmt.Errorf("invalid query: filter must be a QueryFilterExpr"))
 				}
 
-				doc, err := cw.QueryExecutor.FindOne(query)
+				doc, err := cw.QueryExecutor.FindOne(q)
 				if err != nil {
 					return nil, errors.WithStack(err)
 				}
@@ -139,8 +168,6 @@ func ToQueryFilterExpr(v any) (qfe.QueryFilterExpr, error) {
 	}
 }
 
-// 说明！下面的 Wrapper 函数在出错时会直接 panic！！！！！
-
 func EqWrapper(o1 any, o2 any) qfe.QueryFilterExpr {
 	o1_, err := ToQueryFilterExpr(o1)
 	if err != nil {
@@ -162,21 +189,40 @@ func FieldWrapper(field string) qfe.QueryFilterExpr {
 	}
 }
 
-func SortAscWrapper(path string) SortField {
-	return SortField{
+func SortAscWrapper(path string) query.SortField {
+	return query.SortField{
 		Field: path,
-		Order: SortOrderAsc,
+		Order: query.SortOrderAsc,
 	}
 }
 
-func SortDescWrapper(path string) SortField {
-	return SortField{
+func SortDescWrapper(path string) query.SortField {
+	return query.SortField{
 		Field: path,
-		Order: SortOrderDesc,
+		Order: query.SortOrderDesc,
 	}
 }
 
-// TODO 仅用于测试
-func LogWrapper(msg any) {
-	fmt.Println(msg)
+func isNil(v any) bool {
+	return (*[2]uintptr)(unsafe.Pointer(&v))[1] == 0
+}
+
+func LogWrapper(args ...any) {
+	fmt.Println(args...)
+}
+
+func DocWithIdAccessHandler(access transpiler.PropAccess, obj any) (any, error) {
+	if docWithId, ok := obj.(*query.DocWithId); ok {
+		if !access.IsCall {
+			if prop, ok := access.Prop.(string); ok {
+				if prop == "id" {
+					return docWithId.DocId, nil
+				} else {
+					// delegate to LoroDocAccessHandler
+					return LoroDocAccessHandler(access, docWithId.Doc)
+				}
+			}
+		}
+	}
+	return nil, transpiler.ErrPropNotSupport
 }

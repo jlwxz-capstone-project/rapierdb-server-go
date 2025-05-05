@@ -1,4 +1,4 @@
-package query
+package permission_proxy
 
 import (
 	"fmt"

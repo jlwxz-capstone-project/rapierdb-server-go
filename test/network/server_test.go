@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -16,7 +17,8 @@ func TestHttpServerNetwork(t *testing.T) {
 		ReceiveEndpoint: "/api",
 		SendEndpoint:    "/sse",
 	}
-	server := network_server.NewHttpNetwork(opts)
+	ctx, _ := context.WithCancel(context.Background())
+	server := network_server.NewHttpNetworkWithContext(opts, ctx)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

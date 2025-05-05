@@ -21,10 +21,16 @@ var _ Query = &FindOneQuery{}
 
 func (q *FindOneQuery) isQuery() {}
 
+type FindOneResult = *DocWithId
+
 // DebugSprint 返回查询的调试字符串表示
 // 实现 log.DebugPrintable 接口
 func (q *FindOneQuery) DebugSprint() string {
-	return fmt.Sprintf("FindOneQuery{Collection: %s, Filter: %s}", q.Collection, q.Filter.DebugSprint())
+	filterStr := "nil"
+	if q.Filter != nil {
+		filterStr = q.Filter.DebugSprint()
+	}
+	return fmt.Sprintf("FindOneQuery{Collection: %s, Filter: %s}", q.Collection, filterStr)
 }
 
 // SetFilter 设置查询的过滤条件

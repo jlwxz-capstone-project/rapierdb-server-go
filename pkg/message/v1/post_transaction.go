@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
 // PostTransactionMessageV1 由客户端发送给服务端
 // 表示客户端提交的事务
 type PostTransactionMessageV1 struct {
-	Transaction *storage_engine.Transaction
+	Transaction *db_conn.Transaction
 }
 
 var _ Message = &PostTransactionMessageV1{}
@@ -25,7 +25,7 @@ func (m *PostTransactionMessageV1) DebugSprint() string {
 func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteUint8(buf, uint8(m.Type()))
-	msgBytes, err := storage_engine.EncodeTransaction(m.Transaction)
+	msgBytes, err := db_conn.EncodeTransaction(m.Transaction)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (m *PostTransactionMessageV1) Encode() ([]byte, error) {
 }
 
 func decodePostTransactionMessageV1(b *bytes.Buffer) (*PostTransactionMessageV1, error) {
-	tr, err := storage_engine.ReadTransaction(b)
+	tr, err := db_conn.ReadTransaction(b)
 	if err != nil {
 		return nil, err
 	}

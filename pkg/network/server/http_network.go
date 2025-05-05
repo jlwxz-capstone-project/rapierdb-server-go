@@ -56,10 +56,6 @@ func (s *HttpNetwork) ensureOptionsValid() {
 	}
 }
 
-func NewHttpNetwork(options *HttpNetworkOptions) *HttpNetwork {
-	return NewHttpNetworkWithContext(options, context.Background())
-}
-
 func NewHttpNetworkWithContext(options *HttpNetworkOptions, ctx context.Context) *HttpNetwork {
 	subCtx, cancel := context.WithCancel(ctx)
 
@@ -195,6 +191,14 @@ func (s *HttpNetwork) SubscribeStatusChange() <-chan NetworkStatus {
 
 func (s *HttpNetwork) UnsubscribeStatusChange(ch <-chan NetworkStatus) {
 	s.statusEb.Unsubscribe(ch)
+}
+
+func (s *HttpNetwork) WaitForStatus(status NetworkStatus) <-chan struct{} {
+	statusCh := s.SubscribeStatusChange()
+	cleanup := func() {
+		s.UnsubscribeStatusChange(statusCh)
+	}
+	return util.WaitForStatus(s.GetStatus, status, statusCh, cleanup, 0)
 }
 
 func (s *HttpNetwork) stopServerWhenDone() {

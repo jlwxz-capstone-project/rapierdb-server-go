@@ -1,4 +1,4 @@
-package storage_engine
+package db_conn
 
 import (
 	"bytes"
@@ -8,23 +8,27 @@ import (
 )
 
 type DatabaseMeta struct {
-	DatabaseSchema *DatabaseSchema
-	// 权限定义的 Js 代码
-	Permissions string
-	CreatedAt   uint64
+	// Database schema, includes
+	// - name of database
+	// - version of database
+	// - schema of all collections
+	databaseSchema *DatabaseSchema
+	// Permission definition in Js
+	permissionJs string
+	createdAt    uint64
 }
 
-// ToBytes 将数据库元数据序列化为字节数组
+// ToBytes serializes the database meta to bytes
 func (s *DatabaseMeta) ToBytes() ([]byte, error) {
 	var buf bytes.Buffer
-	schemaJson := s.DatabaseSchema.ToJSON()
+	schemaJson := s.databaseSchema.ToJSON()
 	schemaJsonStr, err := json.Marshal(schemaJson)
 	if err != nil {
 		return nil, err
 	}
 	util.WriteVarByteArray(&buf, schemaJsonStr)
-	util.WriteVarString(&buf, s.Permissions)
-	util.WriteUint64(&buf, s.CreatedAt)
+	util.WriteVarString(&buf, s.permissionJs)
+	util.WriteUint64(&buf, s.createdAt)
 	return buf.Bytes(), nil
 }
 
@@ -53,17 +57,21 @@ func NewDatabaseMetaFromBytes(data []byte) (*DatabaseMeta, error) {
 		return nil, err
 	}
 	return &DatabaseMeta{
-		DatabaseSchema: schema,
-		Permissions:    permissionsJs,
-		CreatedAt:      createdAt,
+		databaseSchema: schema,
+		permissionJs:   permissionsJs,
+		createdAt:      createdAt,
 	}, nil
 }
 
 // GetCollectionNames 获取数据库中所有集合的名字
 func (s *DatabaseMeta) GetCollectionNames() []string {
-	collections := make([]string, 0, len(s.DatabaseSchema.Collections))
-	for collectionName := range s.DatabaseSchema.Collections {
+	collections := make([]string, 0, len(s.databaseSchema.Collections))
+	for collectionName := range s.databaseSchema.Collections {
 		collections = append(collections, collectionName)
 	}
 	return collections
+}
+
+func (s *DatabaseMeta) GetPermissionJs() string {
+	return s.permissionJs
 }
