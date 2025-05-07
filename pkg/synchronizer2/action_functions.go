@@ -58,15 +58,21 @@ func GetActionFunction(actionName eventreduce.ActionName) ActionFunction {
 	}
 }
 
+// updateClientUpdates updates in.clientUpdates based on in.op
 func updateClientUpdates(in ActionFunctionInput) {
-	lq, isFindMany := in.listeningQuery.(*query.FindManyListeningQuery)
-	if !isFindMany {
-		panic("find one query is not supported")
+	var collection string
+	switch lq := in.listeningQuery.(type) {
+	case *query.FindManyListeningQuery:
+		collection = lq.Query.Collection
+	case *query.FindOneListeningQuery:
+		collection = lq.Query.Collection
+	default:
+		panic("unexpected listening query")
 	}
 
 	switch op := in.op.(type) {
 	case *db_conn.InsertOp:
-		key, err := key_utils.CalcDocKey(lq.Query.Collection, op.DocID)
+		key, err := key_utils.CalcDocKey(collection, op.DocID)
 		if err != nil {
 			panic(fmt.Sprintf("calc doc key error: %v", err))
 		}
@@ -75,7 +81,7 @@ func updateClientUpdates(in ActionFunctionInput) {
 		delete(in.clientUpdates.Deletes, stringKey)
 		in.clientUpdates.Updates[stringKey] = op.Snapshot
 	case *db_conn.UpdateOp:
-		key, err := key_utils.CalcDocKey(lq.Query.Collection, op.DocID)
+		key, err := key_utils.CalcDocKey(collection, op.DocID)
 		if err != nil {
 			panic(fmt.Sprintf("calc doc key error: %v", err))
 		}
@@ -85,7 +91,7 @@ func updateClientUpdates(in ActionFunctionInput) {
 			in.clientUpdates.Updates[stringKey] = op.Update
 		}
 	case *db_conn.DeleteOp:
-		key, err := key_utils.CalcDocKey(lq.Query.Collection, op.DocID)
+		key, err := key_utils.CalcDocKey(collection, op.DocID)
 		if err != nil {
 			panic(fmt.Sprintf("calc doc key error: %v", err))
 		}
@@ -272,7 +278,12 @@ func ActionRemoveExistingAndInsertAtSortPosition(in ActionFunctionInput) {
 func ActionRunFullQueryAgain(in ActionFunctionInput) {
 	switch lq := in.listeningQuery.(type) {
 	case *query.FindOneListeningQuery:
-		panic("find one query is not supported")
+		res, err := in.queryExecutor.FindOne(lq.Query)
+		if err != nil {
+			panic(fmt.Sprintf("find one error: %v", err))
+		}
+		lq.Result = res
+		updateClientUpdates(in)
 	case *query.FindManyListeningQuery:
 		res, err := in.queryExecutor.FindMany(lq.Query)
 		if err != nil {
