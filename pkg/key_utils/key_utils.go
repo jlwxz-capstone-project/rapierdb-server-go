@@ -104,17 +104,24 @@ func CalcCollectionUpperBound(collectionName string) ([]byte, error) {
 }
 
 // GetCollectionNameFromKey extracts the collection name from a document key.
-func GetCollectionNameFromKey(key []byte) string {
+func GetCollectionNameFromKey(key []byte) (string, error) {
+	if len(key) < len(DOC_KEY_PREFIX)+COLLECTION_SIZE_IN_BYTES {
+		return "", pe.Errorf("key too short: %v", key)
+	}
 	n := len(DOC_KEY_PREFIX)
 	// Remove trailing null bytes
 	collectionName := string(key[n : n+COLLECTION_SIZE_IN_BYTES])
-	return strings.TrimRight(collectionName, "\x00")
+	return strings.TrimRight(collectionName, "\x00"), nil
 }
 
 // GetDocIdFromKey extracts the document ID from a document key.
-func GetDocIdFromKey(key []byte) string {
+func GetDocIdFromKey(key []byte) (string, error) {
+	expectedLen := len(DOC_KEY_PREFIX) + COLLECTION_SIZE_IN_BYTES + 1 + DOC_ID_SIZE_IN_BYTES
+	if len(key) < expectedLen {
+		return "", pe.Errorf("key too short: %v", key)
+	}
 	n := len(DOC_KEY_PREFIX) + COLLECTION_SIZE_IN_BYTES + 1 // +1 to skip the colon
 	// Remove trailing null bytes
 	docId := string(key[n : n+DOC_ID_SIZE_IN_BYTES])
-	return strings.TrimRight(docId, "\x00")
+	return strings.TrimRight(docId, "\x00"), nil
 }

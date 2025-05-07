@@ -10,8 +10,8 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 
-// VersionQueryMessageV1 由服务端发送给客户端
-// 表示服务端希望查询客户端指定文档的版本
+// VersionQueryMessageV1 is sent from server to client
+// Indicates that the server wants to query the version of specified documents from the client
 type VersionQueryMessageV1 struct {
 	Queries map[string]struct{} // collection -> doc_ids
 }
@@ -21,12 +21,19 @@ var _ Message = &VersionQueryMessageV1{}
 func (m *VersionQueryMessageV1) isMessage() {}
 
 func (m *VersionQueryMessageV1) DebugSprint() string {
+	fallback := "Invalid Version Query Message"
 	queryStrs := make([]string, len(m.Queries))
 	i := 0
 	for docKey, version := range m.Queries {
 		docKeyBytes := util.String2Bytes(docKey)
-		collection := key_utils.GetCollectionNameFromKey(docKeyBytes)
-		docId := key_utils.GetDocIdFromKey(docKeyBytes)
+		collection, err := key_utils.GetCollectionNameFromKey(docKeyBytes)
+		if err != nil {
+			return fallback
+		}
+		docId, err := key_utils.GetDocIdFromKey(docKeyBytes)
+		if err != nil {
+			return fallback
+		}
 		queryStrs[i] = fmt.Sprintf("[%s.%s]: %s", collection, docId, version)
 		i++
 	}
@@ -39,7 +46,7 @@ func NewVersionQueryMessageV1() *VersionQueryMessageV1 {
 	}
 }
 
-// Encode 将 VersionQueryMessageV1 编码为 []byte
+// Encode encodes VersionQueryMessageV1 into []byte
 func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	util.WriteUint8(buf, m.Type())
@@ -51,8 +58,8 @@ func (m *VersionQueryMessageV1) Encode() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// decodeVersionQueryMessageV1Body 从 bytes.Buffer 中解码得到 VersionQueryMessageV1
-// 如果解码失败，返回 nil
+// decodeVersionQueryMessageV1Body decodes VersionQueryMessageV1 from bytes.Buffer
+// Returns nil if decoding fails
 func decodeVersionQueryMessageV1(b *bytes.Buffer) (*VersionQueryMessageV1, error) {
 	nDocs, err := util.ReadVarUint(b)
 	if err != nil {
@@ -78,7 +85,7 @@ func (m *VersionQueryMessageV1) Type() uint8 {
 func (m *VersionQueryMessageV1) AddDoc(collection string, docId string) {
 	docKeyBytes, err := key_utils.CalcDocKey(collection, docId)
 	if err != nil {
-		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
+		log.Errorf("VersionQueryMessageV1: Failed to calculate document key: %v", err)
 		return
 	}
 	docKey := util.Bytes2String(docKeyBytes)
@@ -88,7 +95,7 @@ func (m *VersionQueryMessageV1) AddDoc(collection string, docId string) {
 func (m *VersionQueryMessageV1) RemoveDoc(collection string, docId string) {
 	docKeyBytes, err := key_utils.CalcDocKey(collection, docId)
 	if err != nil {
-		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
+		log.Errorf("VersionQueryMessageV1: Failed to calculate document key: %v", err)
 		return
 	}
 	docKey := util.Bytes2String(docKeyBytes)
@@ -99,7 +106,12 @@ func (m *VersionQueryMessageV1) GetAllCollections() []string {
 	collections := make([]string, 0, len(m.Queries))
 	for docKey := range m.Queries {
 		docKeyBytes := util.String2Bytes(docKey)
-		collections = append(collections, key_utils.GetCollectionNameFromKey(docKeyBytes))
+		collection, err := key_utils.GetCollectionNameFromKey(docKeyBytes)
+		if err != nil {
+			log.Errorf("VersionQueryMessageV1: Failed to get collection name: %v", err)
+			continue
+		}
+		collections = append(collections, collection)
 	}
 	return collections
 }
@@ -107,7 +119,7 @@ func (m *VersionQueryMessageV1) GetAllCollections() []string {
 func (m *VersionQueryMessageV1) ContainsDoc(collection string, docId string) bool {
 	docKeyBytes, err := key_utils.CalcDocKey(collection, docId)
 	if err != nil {
-		log.Errorf("VersionQueryMessageV1: 计算文档键失败: %v", err)
+		log.Errorf("VersionQueryMessageV1: Failed to calculate document key: %v", err)
 		return false
 	}
 	docKey := util.Bytes2String(docKeyBytes)

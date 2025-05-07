@@ -214,9 +214,8 @@ func setupConn(t *testing.T) db_conn.DbConnection {
 	postMeta1Map.InsertValueCoerce("title", "Learn Go In 5 Minutes")
 
 	tr := &db_conn.Transaction{
-		TxID:           "123e4567-e89b-12d3-a456-426614174000",
-		TargetDatabase: "testdb",
-		Committer:      "user1",
+		TxID:      "123e4567-e89b-12d3-a456-426614174000",
+		Committer: "user1",
 		Operations: []db_conn.TransactionOp{
 			&db_conn.InsertOp{
 				Collection: "users",

@@ -352,8 +352,16 @@ func (s *Synchronizer) handleMessage(clientId string, msgBytes []byte) {
 		toDelete := make([]string, 0)
 		for docKey, vvBytes := range msg.Responses {
 			docKeyBytes := util.String2Bytes(docKey)
-			collection := key_utils.GetCollectionNameFromKey(docKeyBytes)
-			docId := key_utils.GetDocIdFromKey(docKeyBytes)
+			collection, err := key_utils.GetCollectionNameFromKey(docKeyBytes)
+			if err != nil {
+				log.Errorf("Synchronizer.handleMessage: Failed to get collection name from doc key %s: %v", docKey, err)
+				continue
+			}
+			docId, err := key_utils.GetDocIdFromKey(docKeyBytes)
+			if err != nil {
+				log.Errorf("Synchronizer.handleMessage: Failed to get doc id from doc key %s: %v", docKey, err)
+				continue
+			}
 			if vvBytes == nil || len(vvBytes) == 0 {
 				doc, err := s.managedDb.conn.LoadDoc(collection, docId)
 				if err != nil {

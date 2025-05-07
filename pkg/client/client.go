@@ -13,7 +13,6 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/message/v1"
 	network_client "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/network/client"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
-	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/storage_engine"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 )
 

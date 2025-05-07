@@ -284,7 +284,10 @@ func (conn *PebbleDbConn) LoadCollection(collectionName string) (map[string]*lor
 		snapshot := iter.Value()
 		doc := loro.NewLoroDoc()
 		doc.Import(snapshot)
-		docId := key_utils.GetDocIdFromKey(key)
+		docId, err := key_utils.GetDocIdFromKey(key)
+		if err != nil {
+			return nil, err
+		}
 		result[docId] = doc
 
 		conn.cache.docs.Set(string(key), doc)

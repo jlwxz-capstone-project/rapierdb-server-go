@@ -21,11 +21,18 @@ var _ Message = &PostDocMessageV1{}
 func (m *PostDocMessageV1) isMessage() {}
 
 func (m *PostDocMessageV1) DebugSprint() string {
+	fallback := "Invalid Sync Message"
 	upsertStrs := make([]string, len(m.Upsert))
 	i := 0
 	for docKey := range m.Upsert {
-		collection := key_utils.GetCollectionNameFromKey([]byte(docKey))
-		docId := key_utils.GetDocIdFromKey([]byte(docKey))
+		collection, err := key_utils.GetCollectionNameFromKey([]byte(docKey))
+		if err != nil {
+			return fallback
+		}
+		docId, err := key_utils.GetDocIdFromKey([]byte(docKey))
+		if err != nil {
+			return fallback
+		}
 		upsertStrs[i] = fmt.Sprintf("%s.%s", collection, docId)
 		i++
 	}

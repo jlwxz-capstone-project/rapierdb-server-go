@@ -17,8 +17,12 @@ func TestKeyUtils(t *testing.T) {
 	t.Run("calcDocKey 应该正确计算文档键值", func(t *testing.T) {
 		key, err := key_utils.CalcDocKey("users", "doc1")
 		assert.NoError(t, err)
-		assert.Equal(t, "users", key_utils.GetCollectionNameFromKey(key))
-		assert.Equal(t, "doc1", key_utils.GetDocIdFromKey(key))
+		collection, err := key_utils.GetCollectionNameFromKey(key)
+		assert.NoError(t, err)
+		assert.Equal(t, "users", collection)
+		docId, err := key_utils.GetDocIdFromKey(key)
+		assert.NoError(t, err)
+		assert.Equal(t, "doc1", docId)
 	})
 
 	t.Run("calcDocKey 应该检查字段长度限制", func(t *testing.T) {
@@ -39,17 +43,23 @@ func TestKeyUtils(t *testing.T) {
 		assert.NoError(t, err)
 
 		// 验证下界和上界包含相同的数据库和集合名称
-		assert.Equal(t, "users", key_utils.GetCollectionNameFromKey(lower))
-		assert.Equal(t, "users", key_utils.GetCollectionNameFromKey(upper))
+		collection, err := key_utils.GetCollectionNameFromKey(lower)
+		assert.NoError(t, err)
+		assert.Equal(t, "users", collection)
+		collection, err = key_utils.GetCollectionNameFromKey(upper)
+		assert.NoError(t, err)
+		assert.Equal(t, "users", collection)
 
 		// 验证下界的文档ID部分全为0
-		docIdLower := key_utils.GetDocIdFromKey(lower)
+		docIdLower, err := key_utils.GetDocIdFromKey(lower)
+		assert.NoError(t, err)
 		for _, b := range []byte(docIdLower) {
 			assert.Equal(t, byte(0), b)
 		}
 
 		// 验证上界的文档ID部分全为0xFF
-		docIdUpper := key_utils.GetDocIdFromKey(upper)
+		docIdUpper, err := key_utils.GetDocIdFromKey(upper)
+		assert.NoError(t, err)
 		for _, b := range []byte(docIdUpper) {
 			assert.Equal(t, byte(0xFF), b)
 		}

@@ -21,12 +21,19 @@ var _ Message = &VersionQueryRespMessageV1{}
 func (m *VersionQueryRespMessageV1) isMessage() {}
 
 func (m *VersionQueryRespMessageV1) DebugSprint() string {
+	fallback := "Invalid Version Query Response Message"
 	respStrs := make([]string, len(m.Responses))
 	i := 0
 	for docKey, version := range m.Responses {
 		docKeyBytes := util.String2Bytes(docKey)
-		collection := key_utils.GetCollectionNameFromKey(docKeyBytes)
-		docId := key_utils.GetDocIdFromKey(docKeyBytes)
+		collection, err := key_utils.GetCollectionNameFromKey(docKeyBytes)
+		if err != nil {
+			return fallback
+		}
+		docId, err := key_utils.GetDocIdFromKey(docKeyBytes)
+		if err != nil {
+			return fallback
+		}
 		respStrs[i] = fmt.Sprintf("[%s.%s]: %s", collection, docId, version)
 		i++
 	}
