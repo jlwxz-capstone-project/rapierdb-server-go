@@ -33,14 +33,15 @@ type HttpConnection struct {
 }
 
 type HttpNetwork struct {
-	server      *http.Server
-	options     *HttpNetworkOptions
-	status      atomic.Int32
-	statusEb    *util.EventBus[NetworkStatus]
-	ctx         context.Context
-	cancel      context.CancelFunc
-	connections sync.Map //[string, HttpConnection]
-	msgHandler  func(clientId string, msg []byte)
+	server       *http.Server
+	options      *HttpNetworkOptions
+	status       atomic.Int32
+	statusEb     *util.EventBus[NetworkStatus]
+	connClosedEb *util.EventBus[ConnectionClosedEvent]
+	ctx          context.Context
+	cancel       context.CancelFunc
+	connections  sync.Map //[string, HttpConnection]
+	msgHandler   func(clientId string, msg []byte)
 }
 
 var _ NetworkProvider = &HttpNetwork{}
@@ -60,14 +61,15 @@ func NewHttpNetworkWithContext(options *HttpNetworkOptions, ctx context.Context)
 	subCtx, cancel := context.WithCancel(ctx)
 
 	s := &HttpNetwork{
-		server:      nil, // init later
-		options:     options,
-		status:      atomic.Int32{},
-		statusEb:    util.NewEventBus[NetworkStatus](),
-		ctx:         subCtx,
-		cancel:      cancel,
-		connections: sync.Map{},
-		msgHandler:  nil,
+		server:       nil, // init later
+		options:      options,
+		status:       atomic.Int32{},
+		statusEb:     util.NewEventBus[NetworkStatus](),
+		connClosedEb: util.NewEventBus[ConnectionClosedEvent](),
+		ctx:          subCtx,
+		cancel:       cancel,
+		connections:  sync.Map{},
+		msgHandler:   nil,
 	}
 	s.ensureOptionsValid()
 
@@ -201,6 +203,14 @@ func (s *HttpNetwork) WaitForStatus(status NetworkStatus) <-chan struct{} {
 	return util.WaitForStatus(s.GetStatus, status, statusCh, cleanup, 0)
 }
 
+func (s *HttpNetwork) SubscribeConnectionClosed() <-chan ConnectionClosedEvent {
+	return s.connClosedEb.Subscribe()
+}
+
+func (s *HttpNetwork) UnsubscribeConnectionClosed(ch <-chan ConnectionClosedEvent) {
+	s.connClosedEb.Unsubscribe(ch)
+}
+
 func (s *HttpNetwork) stopServerWhenDone() {
 	<-s.ctx.Done()
 	s.setStatus(NetworkStopping)
@@ -322,7 +332,20 @@ func (s *HttpNetwork) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	s.connections.Store(clientId, conn)
 
+	// listen to request context done, and close connection
+	// when client close the connection, the request context will be done
+	go func() {
+		<-r.Context().Done()
+		s.closeHttpConnection(&conn)
+	}()
+
 	<-conn.closeCh
+
+	// publish connection closed event
+	s.connClosedEb.Publish(ConnectionClosedEvent{
+		ClientId: clientId,
+	})
+
 	log.Debugf("Connection for client %s closed, remote addr: %s", clientId, conn.remoteAddr)
 }
 

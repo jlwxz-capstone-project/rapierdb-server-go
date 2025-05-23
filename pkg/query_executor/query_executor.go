@@ -6,6 +6,7 @@ import (
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
 )
 
 type QueryExecutor struct {
@@ -27,6 +28,10 @@ func (q *QueryExecutor) FindOneById(collection string, id string) (query.FindOne
 
 	doc, ok := docs[id]
 	if !ok {
+		return nil, nil
+	}
+
+	if doc_visitor.IsDeleted(doc) {
 		return nil, nil
 	}
 

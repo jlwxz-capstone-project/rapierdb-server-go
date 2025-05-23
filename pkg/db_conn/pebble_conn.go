@@ -10,6 +10,7 @@ import (
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/key_utils"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/log"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/util"
 	pe "github.com/pkg/errors"
 )
@@ -348,14 +349,14 @@ func (conn *PebbleDbConn) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 
 				// Update cache
-				forkedDoc := doc.Fork()
+				forkedOldDoc := doc.Fork()
 				doc.Import(op.Update)
 				snapshot := doc.ExportSnapshot()
 
 				// Record rollback info
 				rbAction := [2]any{
 					key,
-					forkedDoc,
+					forkedOldDoc,
 				}
 				rb.toUpdate = append(rb.toUpdate, rbAction)
 
@@ -373,23 +374,25 @@ func (conn *PebbleDbConn) commitInner(tr *Transaction, rb *rollbackInfo) error {
 				}
 
 				// Check if document exists
-				oldDoc, ok := conn.cache.docs.Get(key)
+				doc, ok := conn.cache.docs.Get(key)
 				if !ok {
 					return pe.Errorf("doc does not exist: %s", key)
 				}
 
 				// Update cache
-				conn.cache.docs.Delete(key)
+				forkedOldDoc := doc.Fork()
+				doc_visitor.SetDeleted(doc, true)
+				snapshot := doc.ExportSnapshot()
 
 				// Record rollback info
 				rbAction := [2]any{
 					key,
-					oldDoc,
+					forkedOldDoc,
 				}
 				rb.toUpdate = append(rb.toUpdate, rbAction)
 
 				// Add to batch
-				batch.Delete(keyBytes, pebble.Sync)
+				batch.Set(keyBytes, snapshot.Bytes(), pebble.Sync)
 			}
 		}
 	}

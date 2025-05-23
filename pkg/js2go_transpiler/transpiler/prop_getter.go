@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/js_value"
-	"github.com/pkg/errors"
+	pe "github.com/pkg/errors"
 )
 
 // PropAccess 表示一次属性访问
@@ -50,14 +50,14 @@ func NewPropGetter(propAccessHandlers ...PropAccessHandler) PropGetter {
 					break
 				}
 				// 如果错误是 ErrPropNotSupport，则继续尝试下一个处理器
-				if errors.Is(err, ErrPropNotSupport) {
+				if pe.Is(err, ErrPropNotSupport) {
 					continue
 				}
 				// 如果错误不是 ErrPropNotSupport，则直接返回错误
 				return nil, err
 			}
 			if !success {
-				return nil, fmt.Errorf("%w: unsupported property access: %v", ErrPropNotSupport, access)
+				return nil, pe.Wrapf(ErrPropNotSupport, "unsupported property access: obj=%v, access=%v", obj, access)
 			}
 		}
 		return result, nil
@@ -119,7 +119,7 @@ func MethodCallHandler(access PropAccess, obj any) (any, error) {
 
 	prop, ok := access.Prop.(string)
 	if !ok {
-		return nil, errors.WithStack(fmt.Errorf("property must be a string: %v", access.Prop))
+		return nil, pe.Wrapf(ErrPropNotSupport, "property must be a string: %v", access.Prop)
 	}
 
 	val := reflect.ValueOf(obj)
@@ -142,13 +142,13 @@ func MethodCallHandler(access PropAccess, obj any) (any, error) {
 	// 如果获取方法失败，再尝试获取属性，如果获取到的属性值是函数也行
 	field := GetField(obj, prop)
 	if field == nil {
-		return nil, errors.WithStack(fmt.Errorf("property not found: %s", prop))
+		return nil, pe.Wrapf(ErrPropNotSupport, "property not found: %s", prop)
 	}
 
 	// 检查属性是否是可调用的函数
 	fieldVal := reflect.ValueOf(field)
 	if fieldVal.Kind() != reflect.Func {
-		return nil, errors.WithStack(fmt.Errorf("property %s is not callable", access.Prop))
+		return nil, pe.Wrapf(ErrPropNotSupport, "property %s is not callable", access.Prop)
 	}
 
 	// 调用函数
@@ -196,13 +196,13 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 
 			// 检查参数
 			if len(access.Args) < 1 || len(access.Args) > 2 {
-				return nil, fmt.Errorf("%w: slice method requires 1 or 2 arguments", ErrInCall)
+				return nil, pe.Wrapf(ErrPropNotSupport, "slice method requires 1 or 2 arguments")
 			}
 
 			// 获取起始位置
 			start, ok := toInt(access.Args[0])
 			if !ok {
-				return nil, fmt.Errorf("%w: first argument of slice must be a number", ErrInCall)
+				return nil, pe.Wrapf(ErrPropNotSupport, "first argument of slice must be a number")
 			}
 
 			// 处理负数索引
@@ -223,7 +223,7 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 						end = e
 					}
 				} else {
-					return nil, fmt.Errorf("%w: second argument of slice must be a number", ErrInCall)
+					return nil, pe.Wrapf(ErrPropNotSupport, "second argument of slice must be a number")
 				}
 			}
 
@@ -247,7 +247,7 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 			}
 
 			if len(access.Args) < 1 {
-				return nil, fmt.Errorf("%w: indexOf method requires 1 argument", ErrInCall)
+				return nil, pe.Wrapf(ErrPropNotSupport, "indexOf method requires 1 argument")
 			}
 
 			// 遍历查找元素
@@ -291,13 +291,13 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 
 			// 检查参数
 			if len(access.Args) < 1 {
-				return nil, fmt.Errorf("%w: splice method requires at least 1 argument", ErrInCall)
+				return nil, pe.Wrapf(ErrPropNotSupport, "splice method requires at least 1 argument")
 			}
 
 			// 获取起始位置
 			start, ok := toInt(access.Args[0])
 			if !ok {
-				return nil, fmt.Errorf("%w: first argument of splice must be a number", ErrInCall)
+				return nil, pe.Wrapf(ErrPropNotSupport, "first argument of splice must be a number")
 			}
 
 			// 处理负数索引
@@ -371,7 +371,7 @@ func ArrayPropAccessHandler(access PropAccess, obj any) (any, error) {
 	case int:
 		index := prop
 		if index < 0 || index >= val.Len() {
-			return nil, errors.WithStack(fmt.Errorf("index out of range: %d", index))
+			return nil, pe.Wrapf(ErrPropNotSupport, "index out of range: %d", index)
 		}
 		return val.Index(index).Interface(), nil
 	}
@@ -406,11 +406,11 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 		case "substring":
 			if access.IsCall {
 				if len(access.Args) < 1 {
-					return nil, errors.WithStack(fmt.Errorf("%w: substring method requires 1 argument", ErrInCall))
+					return nil, pe.Wrapf(ErrPropNotSupport, "substring method requires 1 argument")
 				}
 				start, ok := access.Args[0].(int)
 				if !ok {
-					return nil, errors.WithStack(fmt.Errorf("%w: first argument of substring must be a number", ErrInCall))
+					return nil, pe.Wrapf(ErrPropNotSupport, "first argument of substring must be a number")
 				}
 				if start < 0 {
 					start = 0
@@ -419,7 +419,7 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 				if len(access.Args) > 1 {
 					end, ok := access.Args[1].(int)
 					if !ok {
-						return nil, errors.WithStack(fmt.Errorf("%w: second argument of substring must be a number", ErrInCall))
+						return nil, pe.Wrapf(ErrPropNotSupport, "second argument of substring must be a number")
 					}
 					if end > len(str) {
 						end = len(str)
@@ -435,11 +435,11 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 			// 查找子串位置
 			if access.IsCall {
 				if len(access.Args) < 1 {
-					return nil, errors.WithStack(fmt.Errorf("%w: indexOf method requires 1 argument", ErrInCall))
+					return nil, pe.Wrapf(ErrPropNotSupport, "indexOf method requires 1 argument")
 				}
 				substr, ok := access.Args[0].(string)
 				if !ok {
-					return nil, errors.WithStack(fmt.Errorf("%w: argument of indexOf must be a string", ErrInCall))
+					return nil, pe.Wrapf(ErrPropNotSupport, "argument of indexOf must be a string")
 				}
 				return strings.Index(str, substr), nil
 			}
@@ -448,12 +448,12 @@ func StringPropAccessHandler(access PropAccess, obj any) (any, error) {
 			// 替换字符串
 			if access.IsCall {
 				if len(access.Args) < 2 {
-					return nil, errors.WithStack(fmt.Errorf("%w: replace method requires 2 arguments", ErrInCall))
+					return nil, pe.Wrapf(ErrPropNotSupport, "replace method requires 2 arguments")
 				}
 				old, ok1 := access.Args[0].(string)
 				new, ok2 := access.Args[1].(string)
 				if !ok1 || !ok2 {
-					return nil, errors.WithStack(fmt.Errorf("%w: arguments of replace must be strings", ErrInCall))
+					return nil, pe.Wrapf(ErrPropNotSupport, "arguments of replace must be strings")
 				}
 				return strings.Replace(str, old, new, 1), nil
 			}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/loro"
+	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/doc_visitor"
 	qfe "github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/query/query_filter_expr"
 )
 
@@ -43,6 +44,11 @@ func (q *FindOneQuery) SetFilter(filter qfe.QueryFilterExpr) {
 //   - 如果文档匹配查询条件，返回 true
 //   - 如果发生错误，返回 false 和错误信息
 func (q *FindOneQuery) Match(doc *loro.LoroDoc) (bool, error) {
+	// always ignore deleted docs
+	if doc_visitor.IsDeleted(doc) {
+		return false, nil
+	}
+
 	if q.Filter == nil {
 		return true, nil
 	}

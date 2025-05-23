@@ -90,6 +90,14 @@ func (s *QueryManager) SubscribeNewQuery(clientId string, newQuery query.Query) 
 	return nil
 }
 
+// RemoveAllSubscriptedQueries removes all the query subscriptions for the specified client
+func (s *QueryManager) RemoveAllSubscriptedQueries(clientId string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.subscriptions, clientId)
+}
+
 // RemoveSubscriptedQuery removes the query subscription for the specified client
 func (s *QueryManager) RemoveSubscriptedQuery(clientId string, q query.Query) error {
 	s.mu.Lock()

@@ -270,3 +270,21 @@ func unescapeString(str string, quoteChar byte) string {
 
 	return string(result)
 }
+
+func IsDeleted(doc *loro.LoroDoc) bool {
+	val, err := VisitDocByPath(doc, "deleted")
+	if err != nil {
+		return false
+	}
+
+	return val.(bool)
+}
+
+func SetDeleted(doc *loro.LoroDoc, deleted bool) {
+	dataMap := doc.GetMap(DATA_MAP_NAME)
+	if dataMap == nil {
+		return
+	}
+
+	dataMap.InsertValueCoerce("deleted", deleted)
+}

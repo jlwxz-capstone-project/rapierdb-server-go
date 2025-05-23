@@ -1,5 +1,9 @@
 package network_server
 
+type ConnectionClosedEvent struct {
+	ClientId string
+}
+
 type NetworkProvider interface {
 	Start() error
 	Stop() error
@@ -13,4 +17,6 @@ type NetworkProvider interface {
 	SubscribeStatusChange() <-chan NetworkStatus
 	UnsubscribeStatusChange(ch <-chan NetworkStatus)
 	WaitForStatus(targetStatus NetworkStatus) <-chan struct{}
+	SubscribeConnectionClosed() <-chan ConnectionClosedEvent
+	UnsubscribeConnectionClosed(ch <-chan ConnectionClosedEvent)
 }

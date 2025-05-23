@@ -105,6 +105,18 @@ func (s *Synchronizer) Start() error {
 
 	s.network.SetMsgHandler(s.handleMessage)
 
+	// start a goroutine to handle connection closed events
+	connClosedCh := s.network.SubscribeConnectionClosed()
+	go func() {
+		defer s.network.UnsubscribeConnectionClosed(connClosedCh)
+		select {
+		case <-s.ctx.Done():
+			return
+		case ev := <-connClosedCh:
+			s.handleConnectionClosed(ev)
+		}
+	}()
+
 	if !s.swapStatus(SynchronizerStatusStarting, SynchronizerStatusRunning) {
 		return pe.Errorf("cannot start synchronizer, expect status SynchronizerStatusStarting, but got %s", s.GetStatus())
 	}
@@ -229,6 +241,7 @@ func (s *Synchronizer) handleMessage(clientId string, msgBytes []byte) {
 					oldDoc, err := s.managedDb.conn.LoadDoc(op.Collection, op.DocID)
 					if err != nil {
 						pass = false
+						log.Debugf("Synchronizer.handleMessage: trying to update doc %s.%s, but failed to load doc: %v", op.Collection, op.DocID, err)
 						break
 					}
 					newDoc := oldDoc.Fork()
@@ -248,9 +261,16 @@ func (s *Synchronizer) handleMessage(clientId string, msgBytes []byte) {
 				}
 			case *db_conn.DeleteOp:
 				{
+					oldDoc, err := s.managedDb.conn.LoadDoc(op.Collection, op.DocID)
+					if err != nil {
+						pass = false
+						log.Debugf("Synchronizer.handleMessage: trying to delete doc %s.%s, but failed to load doc: %v", op.Collection, op.DocID, err)
+						break
+					}
 					pass = s.managedDb.permissionProxy.CanDelete(permission_proxy.CanDeleteParams{
 						Collection: op.Collection,
 						DocId:      op.DocID,
+						Doc:        oldDoc,
 						ClientId:   clientId,
 						Db:         dbWrapper,
 					})
@@ -460,6 +480,12 @@ func (s *Synchronizer) handleTransactionRollbacked(ev *db_conn.TransactionRollba
 		return
 	}
 	log.Debugf("Synchronizer.handleTransactionRollbacked: Sent transaction failed message to %s", ev.Committer)
+}
+
+func (s *Synchronizer) handleConnectionClosed(ev network_server.ConnectionClosedEvent) {
+	// remove all subscriptions of a client when it disconnects
+	log.Debugf("Synchronizer.handleConnectionClosed: Client %s disconnected", ev.ClientId)
+	s.managedDb.queryManager.RemoveAllSubscriptedQueries(ev.ClientId)
 }
 
 func sendTransactionFailedMessage(network network_server.NetworkProvider, clientId string, txId string, reason error) error {
