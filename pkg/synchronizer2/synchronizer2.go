@@ -213,6 +213,9 @@ func (s *Synchronizer) handleMessage(clientId string, msgBytes []byte) {
 
 	switch msg := msg.(type) {
 	case *message.PostTransactionMessageV1:
+		// set committer to client id
+		msg.Transaction.Committer = clientId
+
 		// authorization
 		pass := true
 		dbWrapper := &permission_proxy.DbWrapper{
