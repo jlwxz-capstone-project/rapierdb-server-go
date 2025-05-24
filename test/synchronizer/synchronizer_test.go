@@ -4,6 +4,9 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"testing"
 	"time"
 
@@ -51,11 +54,28 @@ func TestSynchronizer(t *testing.T) {
 	err = synchronizer.Start()
 	assert.NoError(t, err)
 
-	<-time.After(WAIT_TIMEOUT) // run for WAIT_TIMEOUT
+	// Create signal channel to listen for SIGINT (Ctrl-C) and SIGTERM
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	log.Info("Test started running, press Ctrl-C to manually terminate...")
+
+	// Wait for signal or timeout
+	select {
+	case sig := <-sigCh:
+		log.Infof("Received termination signal: %v, starting graceful shutdown...", sig)
+	case <-time.After(WAIT_TIMEOUT):
+		log.Infof("Timeout reached %v, starting shutdown...", WAIT_TIMEOUT)
+	}
+
+	// Stop signal listening
+	signal.Stop(sigCh)
+	close(sigCh)
 
 	cancel()
 
 	<-synchronizer.WaitForStatus(synchronizer2.SynchronizerStatusStopped)
+	log.Info("Test completed")
 }
 
 func setupDb(t *testing.T) string {
@@ -103,7 +123,7 @@ func setupDb(t *testing.T) string {
 	cancel()
 
 	<-conn.WaitForStatus(db_conn.DbConnStatusClosed)
-	log.Debug("create admin user success")
+	log.Debug("Admin user created successfully")
 
 	return dbPath
 }

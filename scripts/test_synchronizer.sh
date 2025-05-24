@@ -1,0 +1,1 @@
+go test -timeout 1000s -run ^TestSynchronizer$ github.com/jlwxz-capstone-project/rapierdb-server-go/test/synchronizer -v
