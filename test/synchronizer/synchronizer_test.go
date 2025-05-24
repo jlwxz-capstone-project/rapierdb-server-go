@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jlwxz-capstone-project/rapierdb-server-go/pkg/db_conn"
@@ -26,8 +25,6 @@ var testSchema1 string
 
 //go:embed test_permission1.js
 var testPermission1 string
-
-const WAIT_TIMEOUT = 30 * time.Second
 
 func TestSynchronizer(t *testing.T) {
 	var err error
@@ -60,13 +57,9 @@ func TestSynchronizer(t *testing.T) {
 
 	log.Info("Test started running, press Ctrl-C to manually terminate...")
 
-	// Wait for signal or timeout
-	select {
-	case sig := <-sigCh:
-		log.Infof("Received termination signal: %v, starting graceful shutdown...", sig)
-	case <-time.After(WAIT_TIMEOUT):
-		log.Infof("Timeout reached %v, starting shutdown...", WAIT_TIMEOUT)
-	}
+	// Wait for signal
+	sig := <-sigCh
+	log.Infof("Received termination signal: %v, starting graceful shutdown...", sig)
 
 	// Stop signal listening
 	signal.Stop(sigCh)
