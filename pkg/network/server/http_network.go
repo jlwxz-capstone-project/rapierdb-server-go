@@ -18,11 +18,15 @@ import (
 )
 
 type HttpNetworkOptions struct {
-	BaseUrl         string
-	ReceiveEndpoint string
-	SendEndpoint    string
-	ShutdownTimeout time.Duration
-	Authenticator   auth.Authenticator[*http.Request]
+	BaseUrl          string
+	ReceiveEndpoint  string
+	SendEndpoint     string
+	ShutdownTimeout  time.Duration
+	Authenticator    auth.Authenticator[*http.Request]
+	AllowOrigin      string
+	AllowMethods     string
+	AllowHeaders     string
+	AllowCredentials bool
 }
 
 type HttpConnection struct {
@@ -55,6 +59,23 @@ func (s *HttpNetwork) ensureOptionsValid() {
 		log.Info("Authenticator is not set, using HttpMockAuthProvider")
 		s.options.Authenticator = &auth.HttpMockAuthProvider{}
 	}
+
+	if s.options.AllowOrigin == "" {
+		log.Info("AllowOrigin is not set, using default value *")
+		s.options.AllowOrigin = "*"
+	}
+	if s.options.AllowMethods == "" {
+		log.Info("AllowMethods is not set, using default value GET, POST, PUT, DELETE, OPTIONS")
+		s.options.AllowMethods = "GET, POST, PUT, DELETE, OPTIONS"
+	}
+	if s.options.AllowHeaders == "" {
+		log.Info("AllowHeaders is not set, using default value *")
+		s.options.AllowHeaders = "*"
+	}
+	if s.options.AllowCredentials == false {
+		log.Info("AllowCredentials is not set, using default value false")
+		s.options.AllowCredentials = false
+	}
 }
 
 func NewHttpNetworkWithContext(options *HttpNetworkOptions, ctx context.Context) *HttpNetwork {
@@ -76,9 +97,17 @@ func NewHttpNetworkWithContext(options *HttpNetworkOptions, ctx context.Context)
 	mux := http.NewServeMux()
 	mux.HandleFunc(options.ReceiveEndpoint, s.handleReceive) // endpoint for client->server
 	mux.HandleFunc(options.SendEndpoint, s.handleSend)       // endpoint for server->client (by SSE)
+
+	corsMiddleware := (&CorsMiddlewareBuilder{
+		AllowOrigin:      &options.AllowOrigin,
+		AllowMethods:     &options.AllowMethods,
+		AllowHeaders:     &options.AllowHeaders,
+		AllowCredentials: &options.AllowCredentials,
+	}).Build()
+
 	s.server = &http.Server{
 		Addr:    options.BaseUrl,
-		Handler: mux,
+		Handler: corsMiddleware(mux),
 	}
 
 	return s

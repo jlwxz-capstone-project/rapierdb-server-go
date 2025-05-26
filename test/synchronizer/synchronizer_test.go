@@ -37,6 +37,11 @@ func TestSynchronizer(t *testing.T) {
 		BaseUrl:         "localhost:8080",
 		ReceiveEndpoint: "/api",
 		SendEndpoint:    "/sse",
+		// cors configuration
+		AllowOrigin:      "*",
+		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
+		AllowHeaders:     "*",
+		AllowCredentials: true,
 	}, ctx)
 	err = network.Start()
 	assert.NoError(t, err)
