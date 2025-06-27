@@ -7,6 +7,8 @@ require (
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/pebble v1.1.4
 	github.com/dop251/goja v0.0.0-20250125213203-5ef83b82af17
+	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/nukilabs/unicodeid v0.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.7.1
@@ -30,7 +32,6 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.16.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect

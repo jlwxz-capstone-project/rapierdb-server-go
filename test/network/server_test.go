@@ -12,13 +12,12 @@ import (
 )
 
 func TestHttpServerNetwork(t *testing.T) {
-	opts := &network_server.HttpNetworkOptions{
-		BaseUrl:         "localhost:8088",
-		ReceiveEndpoint: "/api",
-		SendEndpoint:    "/sse",
+	opts := &network_server.WebSocketNetworkOptions{
+		BaseUrl:       "localhost:8088",
+		WebSocketPath: "/ws",
 	}
 	ctx, _ := context.WithCancel(context.Background())
-	server := network_server.NewHttpNetworkWithContext(opts, ctx)
+	server := network_server.NewWebSocketNetworkWithContext(opts, ctx)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

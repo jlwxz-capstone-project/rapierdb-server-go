@@ -21,24 +21,41 @@ import (
 )
 
 //go:embed test_schema1.js
-var testSchema1 string
+var testSchemaUnified string
 
 //go:embed test_permission1.js
-var testPermission1 string
+var testPermissionUnified string
 
-func TestSynchronizer(t *testing.T) {
+// TestUnifiedSynchronizerWebSocket 使用统一工厂创建WebSocket同步器
+func TestUnifiedSynchronizerWebSocket(t *testing.T) {
+	testUnifiedSynchronizer(t, network_server.NetworkTypeWebSocket)
+}
+
+// TestUnifiedSynchronizerHTTP 使用统一工厂创建HTTP+SSE同步器
+func TestUnifiedSynchronizerHTTP(t *testing.T) {
+	testUnifiedSynchronizer(t, network_server.NetworkTypeHTTP)
+}
+
+func testUnifiedSynchronizer(t *testing.T, networkType network_server.NetworkType) {
 	var err error
 
-	dbPath := setupDb(t)
+	dbPath := setupDbUnified(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	network := network_server.NewWebSocketNetworkWithContext(&network_server.WebSocketNetworkOptions{
-		BaseUrl:       "localhost:8080",
-		WebSocketPath: "/ws",
-		// cors configuration
-		AllowOrigin: "*",
-	}, ctx)
+	// 使用统一网络工厂创建网络提供者
+	var networkOptions *network_server.UnifiedNetworkOptions
+
+	switch networkType {
+	case network_server.NetworkTypeWebSocket:
+		networkOptions = network_server.DefaultWebSocketOptions("localhost:8095")
+		log.Info("Testing with WebSocket network")
+	case network_server.NetworkTypeHTTP:
+		networkOptions = network_server.DefaultHttpOptions("localhost:8096")
+		log.Info("Testing with HTTP+SSE network")
+	}
+
+	network := network_server.CreateNetworkProvider(networkOptions, ctx)
 	err = network.Start()
 	assert.NoError(t, err)
 
@@ -52,32 +69,32 @@ func TestSynchronizer(t *testing.T) {
 	err = synchronizer.Start()
 	assert.NoError(t, err)
 
-	// Create signal channel to listen for SIGINT (Ctrl-C) and SIGTERM
+	// 创建信号通道监听 SIGINT (Ctrl-C) 和 SIGTERM
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Info("Test started running, press Ctrl-C to manually terminate...")
+	log.Infof("Unified Synchronizer (%s) test started running, press Ctrl-C to manually terminate...", networkType)
 
-	// Wait for signal
+	// 等待信号
 	sig := <-sigCh
 	log.Infof("Received termination signal: %v, starting graceful shutdown...", sig)
 
-	// Stop signal listening
+	// 停止信号监听
 	signal.Stop(sigCh)
 	close(sigCh)
 
 	cancel()
 
 	<-synchronizer.WaitForStatus(synchronizer2.SynchronizerStatusStopped)
-	log.Info("Test completed")
+	log.Infof("Unified Synchronizer (%s) test completed", networkType)
 }
 
-func setupDb(t *testing.T) string {
+func setupDbUnified(t *testing.T) string {
 	dbPath := t.TempDir()
-	fmt.Println("dbPath", dbPath)
-	dbSchema, err := db_conn.NewDatabaseSchemaFromJs(testSchema1)
+	fmt.Println("Unified test dbPath", dbPath)
+	dbSchema, err := db_conn.NewDatabaseSchemaFromJs(testSchemaUnified)
 	assert.NoError(t, err)
-	dbPermissionsJs := testPermission1
+	dbPermissionsJs := testPermissionUnified
 	err = db_conn.CreateNewPebbleDb(dbPath, dbSchema, dbPermissionsJs)
 	assert.NoError(t, err)
 
@@ -117,7 +134,7 @@ func setupDb(t *testing.T) string {
 	cancel()
 
 	<-conn.WaitForStatus(db_conn.DbConnStatusClosed)
-	log.Debug("Admin user created successfully")
+	log.Debug("Admin user created successfully for unified test")
 
 	return dbPath
 }
